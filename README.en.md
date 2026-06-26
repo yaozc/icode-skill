@@ -51,7 +51,13 @@ Use this skill for:
 Substantial tasks store artifacts under:
 
 ```text
-.ai/icode/<YYYYMMDD-HHMM>-<short-task>/
+.ai/icode/{timestamp}-{short-task}/
+```
+
+Example:
+
+```text
+.ai/icode/20260626-1430-fix-ble-timeout/
 ```
 
 Expected files:
@@ -64,6 +70,16 @@ Expected files:
 - `EXTERNAL_REVIEW.md`, only when external review is requested, run, or skipped with a reason
 
 Small tasks keep the RCA, review, and verification notes in the conversation.
+
+## External Review
+
+When the user or config enables external review, use Claude CLI as the default read-only final reviewer. See [references/external-review.md](references/external-review.md) for the command template.
+
+Short example:
+
+```bash
+claude -p "Review .ai/icode/{run_dir}/RCA.md, PLAN.md, IMPLEMENT.md, SELF_REVIEW.md, AUDIT.md and the current git diff. Output EXTERNAL_REVIEW.md with PASS or FIX_REQUIRED."
+```
 
 ## Structure
 

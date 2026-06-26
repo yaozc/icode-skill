@@ -19,7 +19,7 @@ If the user asks to skip diagnosis, keep the work small and state the risk. Do n
 
 ## Artifact Policy
 
-For substantial tasks, create artifacts under `.ai/icode/<YYYYMMDD-HHMM>-<short-task>/`:
+For substantial tasks, create artifacts under `.ai/icode/{timestamp}-{short-task}/`, for example `.ai/icode/20260626-1430-fix-ble-timeout/`:
 
 - `RCA.md`
 - `PLAN.md`
@@ -74,6 +74,7 @@ Never overwrite previous `.ai/icode/` runs. If artifacts already exist for the s
    - Default reviewer is Claude CLI, but do not assume it is installed or authorized.
    - If unavailable, write or report `SKIPPED` with the exact reason.
    - Treat external findings as review input: verify them before changing code.
+   - Follow `references/external-review.md` for inputs, command template, and required output shape.
 
 ## Required Templates
 
@@ -138,6 +139,10 @@ Use these headings for substantial-task artifacts.
 ## Domain Checklists
 
 For Flutter, BLE, Linux, architecture, or embedded-style work, read `references/domain-checklists.md` during self review and self audit. Load only the relevant sections.
+
+## External Review Protocol
+
+When optional cross-model review is requested, read `references/external-review.md`. Do not run Claude CLI unless it is installed and the environment permits external command execution.
 
 ## Common Mistakes
 

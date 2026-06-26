@@ -51,7 +51,13 @@ git pull
 重大任务会把产物保存到：
 
 ```text
-.ai/icode/<YYYYMMDD-HHMM>-<short-task>/
+.ai/icode/{timestamp}-{short-task}/
+```
+
+例如：
+
+```text
+.ai/icode/20260626-1430-fix-ble-timeout/
 ```
 
 包含：
@@ -64,6 +70,16 @@ git pull
 - `EXTERNAL_REVIEW.md`，仅在请求异模型终审时生成或记录跳过原因
 
 小任务只在对话中给出简短 RCA、自审和验证结果，避免污染仓库。
+
+## 异模型终审
+
+当用户或配置开启 external review 时，默认使用 Claude CLI 做只读终审。命令模板见 [references/external-review.md](references/external-review.md)。
+
+简化示例：
+
+```bash
+claude -p "Review .ai/icode/{run_dir}/RCA.md, PLAN.md, IMPLEMENT.md, SELF_REVIEW.md, AUDIT.md and the current git diff. Output EXTERNAL_REVIEW.md with PASS or FIX_REQUIRED."
+```
 
 ## 结构
 
