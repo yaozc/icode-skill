@@ -1,103 +1,69 @@
-# ICODEX
+# ICODEX Review
 
-This is an ICODE-style Root Cause Analysis workflow for Codex App. It keeps the root-cause-first spirit of `ayukyo/icode-skill`, but adapts the process for:
+This is the read-only cross-model final review skill for ICODEX. Use it after another AI has completed `$icodex` implementation, self review, self audit, and verification.
 
-- Codex App implementation, self review, and audit
-- Mandatory same-model self review
-- Cross-model final review is split into the separate `$icodex-review` skill, typically run by Claude CLI / Claude Code
-- Any software project, especially changes that need strict root-cause analysis, self review, and verification
+Core constraints:
+
+- Review only; do not modify code
+- Do not implement, format, stage, commit, or push
+- Output `EXTERNAL_REVIEW.md`
+- Final decision must be `PASS`, `FIX_REQUIRED`, or `SKIPPED`
 
 ## Install
 
-Clone the implementation and internal self-review skill into the Codex skills directory:
-
-```bash
-git clone -b codex https://github.com/yaozc/icode-skill.git ~/.codex/skills/icodex
-```
-
-For cross-model final review, install the external review skill into the other AI's skills directory:
+Install it in the AI environment that performs external review. For example, Claude Code:
 
 ```bash
 git clone -b external-review https://github.com/yaozc/icode-skill.git ~/.claude/skills/icodex-review
 ```
 
-If already cloned:
+To install it in Codex as well:
 
 ```bash
-cd ~/.codex/skills/icodex
-git fetch origin
-git checkout codex
-git pull
+git clone -b external-review https://github.com/yaozc/icode-skill.git ~/.codex/skills/icodex-review
 ```
 
-Explicit invocation:
-
-```text
-Use $icodex to handle this issue with root-cause-first development.
-```
-
-## Use Cases
-
-Use this skill for:
-
-- Non-trivial bug fixes or regression fixes
-- Risky refactors
-- Async, lifecycle, state machine, or resource ownership issues
-- Any project development task that benefits from stricter root-cause analysis, self review, and verification
-- Root-cause-first diagnosis
-- Mandatory same-model self review
-
-## Workflow
-
-1. Diagnose: reproduce, observe, hypothesize, disprove, then identify the root cause.
-2. Plan: connect the fix strategy directly to the root cause, risks, alternatives, and verification.
-3. Implement: make the smallest precise change.
-4. Self Review: re-read RCA, plan, and diff as a Senior Reviewer.
-5. Self Audit: attack the solution as a Principal Engineer assuming it is wrong.
-6. Verify: run the most relevant checks and report residual risk if checks cannot run.
-7. Handoff: if cross-model review is needed, pass the artifact directory and git diff to `$icodex-review`.
-
-## Artifacts
-
-Substantial tasks store artifacts under:
-
-```text
-.ai/icode/{timestamp}-{short-task}/
-```
-
-Example:
-
-```text
-.ai/icode/20260626-1430-fix-ble-timeout/
-```
-
-Expected files:
-
-- `RCA.md`
-- `PLAN.md`
-- `IMPLEMENT.md`
-- `SELF_REVIEW.md`
-- `AUDIT.md`
-
-Small tasks keep the RCA, review, and verification notes in the conversation.
-
-## External Review
-
-External review is handled by a separate skill:
+## Invocation
 
 ```text
 $icodex-review Review the current git diff and .ai/icode/{run_dir} artifacts. Only output EXTERNAL_REVIEW.md. Do not modify code.
 ```
 
-## Structure
+## Inputs
+
+- `.ai/icode/{run_dir}/RCA.md`
+- `.ai/icode/{run_dir}/PLAN.md`
+- `.ai/icode/{run_dir}/IMPLEMENT.md`
+- `.ai/icode/{run_dir}/SELF_REVIEW.md`
+- `.ai/icode/{run_dir}/AUDIT.md`
+- Current `git diff`
+- Available verification output
+
+## Output
+
+Output `EXTERNAL_REVIEW.md` content with:
+
+- Root Cause Review
+- Implementation Review
+- Architecture and Contract Review
+- Regression Review
+- Security Review
+- Performance Review
+- Findings
+- Final Decision
+
+## Recommended Flow
 
 ```text
-.
-├── SKILL.md
-├── agents/
-│   └── openai.yaml
-└── references/
-    └── domain-checklists.md
+$icodex
+  ↓
+RCA / PLAN / IMPLEMENT / SELF_REVIEW / AUDIT / VERIFY
+  ↓
+$icodex-review
+  ↓
+EXTERNAL_REVIEW.md
+  ↓
+PASS, or return FIX_REQUIRED findings to $icodex
 ```
 
 ## License

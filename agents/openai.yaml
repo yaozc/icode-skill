@@ -1,4 +1,4 @@
 interface:
-  display_name: "ICODEX"
-  short_description: "Root-cause workflow with self audit"
-  default_prompt: "Use $icodex to diagnose this regression before changing code."
+  display_name: "ICODEX Review"
+  short_description: "Read-only external final review"
+  default_prompt: "Use $icodex-review to review the current git diff and ICODEX artifacts without modifying code."
