@@ -5,7 +5,7 @@ This is an ICODE-style Root Cause Analysis workflow for Codex App. It keeps the 
 - Codex App implementation, self review, and audit
 - Mandatory same-model self review
 - Optional cross-model final review, typically through Claude CLI
-- Flutter, BLE, Linux, embedded, async lifecycle, state machine, and architecture-risk tasks
+- Any software project, especially changes that need strict root-cause analysis, self review, and verification
 
 ## Install
 
@@ -31,7 +31,7 @@ Use this skill for:
 - Non-trivial bug fixes or regression fixes
 - Risky refactors
 - Async, lifecycle, state machine, or resource ownership issues
-- Flutter, BLE, Linux, or embedded problems
+- Any project development task that benefits from stricter root-cause analysis, self review, and verification
 - Root-cause-first diagnosis
 - Mandatory same-model self review
 - Optional cross-model final review

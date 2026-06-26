@@ -1,6 +1,6 @@
 ---
 name: icode-dual-review
-description: Use when handling non-trivial bug fixes, regressions, risky refactors, async/lifecycle/state-machine issues, embedded/BLE/Flutter/Linux problems, or user requests for root-cause-first diagnosis, self review, audit, or optional cross-model review.
+description: Use when handling non-trivial software development work in any project, including bug fixes, regressions, risky refactors, async/lifecycle/state-machine issues, or user requests for root-cause-first diagnosis, self review, audit, or optional cross-model review.
 ---
 
 # ICODE Dual Review
@@ -61,7 +61,7 @@ Never overwrite previous `.ai/icode/` runs. If artifacts already exist for the s
 5. Self audit as Principal Engineer.
    - Assume the implementation is wrong.
    - Use reverse reasoning: if the fix fails, what symptom appears and why?
-   - Attack the chosen design with domain-specific checklists.
+   - Attack the chosen design with the general engineering risk checklist.
    - Fix valid findings, then re-run relevant verification.
 
 6. Verify.
@@ -136,9 +136,9 @@ Use these headings for substantial-task artifacts.
 - Performance Review: `PASS`, `FAIL`, or `N/A`
 - Final Decision: `PASS`, `FIX_REQUIRED`, or `SKIPPED`
 
-## Domain Checklists
+## Engineering Risk Checklist
 
-For Flutter, BLE, Linux, architecture, or embedded-style work, read `references/domain-checklists.md` during self review and self audit. Load only the relevant sections.
+For substantial work, read `references/domain-checklists.md` during self review and self audit. Load only the sections relevant to the current project risk.
 
 ## External Review Protocol
 

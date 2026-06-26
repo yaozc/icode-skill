@@ -1,32 +1,36 @@
-# Domain Checklists
+# Engineering Risk Checklists
 
 Load only the sections relevant to the current task.
 
-## Flutter
+## Root Cause
 
-- Widget lifecycle: `mounted`, `dispose`, async gaps, context validity.
-- Navigation: route lifetime, duplicate pops, stale context, dialog ownership.
-- State management: Riverpod/provider listener lifetime, notifier disposal, stale state.
-- Streams and timers: cancellation, double subscription, late events after disposal.
-- UI regression: loading, error, empty, retry, background/foreground transitions.
+- Symptom, trigger, and root cause are clearly separated.
+- The causal chain is supported by observations, logs, tests, or code paths.
+- Rejected hypotheses have counter-evidence, not just intuition.
+- The fix targets the cause, not only the visible failure.
 
-## BLE
+## State and Workflow
 
-- Connection state machine: scanning, connecting, connected, disconnecting, disconnected.
-- Timeout and retry: no infinite waits, bounded retry policy, user-visible failure path.
-- Callback ownership: late callbacks, duplicate callbacks, missing completion/error.
-- MTU and characteristic handling: negotiation, partial writes, notification subscription.
-- Recovery: disconnect, reconnect, device power loss, permission changes, Bluetooth off/on.
+- State transitions are explicit and valid for success, failure, timeout, and cancellation.
+- Partial progress, retry, rollback, and recovery paths are intentional.
+- Invalid or duplicate events cannot corrupt state.
+- User-visible or caller-visible outcomes are deterministic.
 
-## Linux
+## Async and Concurrency
 
-- Threads: join/detach ownership, cancellation path, shared data lifetime.
-- Synchronization: mutex ordering, condition-variable predicates, deadlocks, races.
-- File descriptors: close-on-error, duplicate ownership, epoll/select cleanup.
-- Signals: async-signal safety, interrupted syscalls, shutdown ordering.
-- Memory: allocation ownership, double free, leaks, use-after-free.
+- Async gaps, late callbacks, cancellation, and timeout paths are handled.
+- Shared mutable state has clear synchronization or sequencing.
+- Work cannot complete twice, hang forever, or silently disappear.
+- Cleanup runs exactly once for subscriptions, timers, handles, jobs, and background work.
 
-## Architecture
+## Resource Ownership
+
+- Ownership boundaries are explicit for memory, handles, connections, files, tasks, and cached data.
+- Create/open/start paths have matching close/dispose/stop paths.
+- Errors do not leak resources or leave partially initialized state.
+- Shutdown and retry paths preserve invariants.
+
+## Architecture and Contracts
 
 - Dependency direction remains consistent with the project.
 - Ownership boundaries are explicit and unchanged unless the plan says otherwise.
@@ -34,10 +38,10 @@ Load only the sections relevant to the current task.
 - Public contracts and serialized formats remain compatible.
 - Error handling is intentional rather than swallowed or converted into silent success.
 
-## Embedded and Recovery
+## Regression and Compatibility
 
-- State machines have explicit transitions for success, failure, timeout, and cancellation.
-- Power/network/device-loss scenarios have deterministic recovery paths.
 - Retry loops are bounded and observable.
-- Logs identify state, event, and reason without leaking sensitive data.
-- Backward compatibility is considered for old firmware, old app versions, or stale persisted state.
+- Existing callers and workflows keep their expected behavior.
+- Persisted data, serialized formats, APIs, and configuration remain compatible or have a migration path.
+- Logs and errors identify state, event, and reason without leaking sensitive data.
+- Tests or manual checks cover the original failure and likely neighboring regressions.

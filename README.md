@@ -5,7 +5,7 @@
 - Codex App 负责诊断、实现、自审和审计
 - 同模型自审强制执行
 - 异模型终审可选，默认使用 Claude CLI
-- 适合 Flutter、BLE、Linux、Embedded、异步生命周期、状态机和架构风险类问题
+- 适用于任何项目开发，尤其适合需要严格根因分析、自审和验证闭环的变更
 
 ## 安装
 
@@ -31,7 +31,7 @@ git pull
 - 非平凡 bug fix 或 regression fix
 - risky refactor
 - async、lifecycle、state machine、resource ownership 问题
-- Flutter、BLE、Linux、Embedded 问题
+- 任何需要更严格根因分析、自审和验证闭环的项目开发任务
 - 需要 root-cause-first diagnosis
 - 需要 mandatory same-model self review
 - 需要 optional cross-model final review
