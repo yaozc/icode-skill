@@ -1,4 +1,4 @@
-# ICODE Dual Review for Codex
+# ICODEX
 
 This is an ICODE-style Root Cause Analysis workflow for Codex App. It keeps the root-cause-first spirit of `ayukyo/icode-skill`, but adapts the process for:
 
@@ -12,16 +12,22 @@ This is an ICODE-style Root Cause Analysis workflow for Codex App. It keeps the 
 Clone the `codex` branch into the Codex skills directory:
 
 ```bash
-git clone -b codex https://github.com/yaozc/icode-skill.git ~/.codex/skills/icode-dual-review
+git clone -b codex https://github.com/yaozc/icode-skill.git ~/.codex/skills/icodex
 ```
 
 If already cloned:
 
 ```bash
-cd ~/.codex/skills/icode-dual-review
+cd ~/.codex/skills/icodex
 git fetch origin
 git checkout codex
 git pull
+```
+
+Explicit invocation:
+
+```text
+Use $icodex to handle this issue with root-cause-first development.
 ```
 
 ## Use Cases

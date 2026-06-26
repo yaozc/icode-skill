@@ -1,4 +1,4 @@
-# ICODE Dual Review for Codex
+# ICODEX
 
 这是面向 Codex App 的 ICODE 风格 Root Cause Analysis 工作流。它基于 `ayukyo/icode-skill` 的根因优先思想，改成：
 
@@ -12,16 +12,22 @@
 将本仓库的 `codex` 分支安装到 Codex skills 目录：
 
 ```bash
-git clone -b codex https://github.com/yaozc/icode-skill.git ~/.codex/skills/icode-dual-review
+git clone -b codex https://github.com/yaozc/icode-skill.git ~/.codex/skills/icodex
 ```
 
 如果已经克隆过：
 
 ```bash
-cd ~/.codex/skills/icode-dual-review
+cd ~/.codex/skills/icodex
 git fetch origin
 git checkout codex
 git pull
+```
+
+显式调用：
+
+```text
+使用 $icodex 按根因分析流程处理这个问题
 ```
 
 ## 使用场景

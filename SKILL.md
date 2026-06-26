@@ -1,9 +1,9 @@
 ---
-name: icode-dual-review
+name: icodex
 description: Use when handling non-trivial software development work in any project, including bug fixes, regressions, risky refactors, async/lifecycle/state-machine issues, or user requests for root-cause-first diagnosis, self review, audit, or optional cross-model review.
 ---
 
-# ICODE Dual Review
+# ICODEX
 
 ## Overview
 
