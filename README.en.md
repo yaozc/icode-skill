@@ -4,15 +4,21 @@ This is an ICODE-style Root Cause Analysis workflow for Codex App. It keeps the 
 
 - Codex App implementation, self review, and audit
 - Mandatory same-model self review
-- Optional cross-model final review, typically through Claude CLI
+- Cross-model final review is split into the separate `$icodex-review` skill, typically run by Claude CLI / Claude Code
 - Any software project, especially changes that need strict root-cause analysis, self review, and verification
 
 ## Install
 
-Clone the `codex` branch into the Codex skills directory:
+Clone the implementation and internal self-review skill into the Codex skills directory:
 
 ```bash
 git clone -b codex https://github.com/yaozc/icode-skill.git ~/.codex/skills/icodex
+```
+
+For cross-model final review, install the external review skill into the other AI's skills directory:
+
+```bash
+git clone -b external-review https://github.com/yaozc/icode-skill.git ~/.claude/skills/icodex-review
 ```
 
 If already cloned:
@@ -40,7 +46,6 @@ Use this skill for:
 - Any project development task that benefits from stricter root-cause analysis, self review, and verification
 - Root-cause-first diagnosis
 - Mandatory same-model self review
-- Optional cross-model final review
 
 ## Workflow
 
@@ -50,7 +55,7 @@ Use this skill for:
 4. Self Review: re-read RCA, plan, and diff as a Senior Reviewer.
 5. Self Audit: attack the solution as a Principal Engineer assuming it is wrong.
 6. Verify: run the most relevant checks and report residual risk if checks cannot run.
-7. External Review: run only when explicitly enabled or requested.
+7. Handoff: if cross-model review is needed, pass the artifact directory and git diff to `$icodex-review`.
 
 ## Artifacts
 
@@ -73,18 +78,15 @@ Expected files:
 - `IMPLEMENT.md`
 - `SELF_REVIEW.md`
 - `AUDIT.md`
-- `EXTERNAL_REVIEW.md`, only when external review is requested, run, or skipped with a reason
 
 Small tasks keep the RCA, review, and verification notes in the conversation.
 
 ## External Review
 
-When the user or config enables external review, use Claude CLI as the default read-only final reviewer. See [references/external-review.md](references/external-review.md) for the command template.
+External review is handled by a separate skill:
 
-Short example:
-
-```bash
-claude -p "Review .ai/icode/{run_dir}/RCA.md, PLAN.md, IMPLEMENT.md, SELF_REVIEW.md, AUDIT.md and the current git diff. Output EXTERNAL_REVIEW.md with PASS or FIX_REQUIRED."
+```text
+$icodex-review Review the current git diff and .ai/icode/{run_dir} artifacts. Only output EXTERNAL_REVIEW.md. Do not modify code.
 ```
 
 ## Structure

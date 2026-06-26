@@ -1,13 +1,13 @@
 ---
 name: icodex
-description: Use when handling non-trivial software development work in any project, including bug fixes, regressions, risky refactors, async/lifecycle/state-machine issues, or user requests for root-cause-first diagnosis, self review, audit, or optional cross-model review.
+description: Use when implementing non-trivial software development work in any project, including bug fixes, regressions, risky refactors, async/lifecycle/state-machine issues, or user requests for root-cause-first diagnosis, same-model self review, audit, and verification.
 ---
 
 # ICODEX
 
 ## Overview
 
-先定位根因，再修改代码。任何非平凡变更都必须经过同模型自审和审计；异模型终审只在用户或配置明确开启时执行。
+先定位根因，再修改代码。任何非平凡变更都必须经过同模型自审、审计和验证。异模型终审由独立的 `$icodex-review` skill 处理。
 
 ## Mode Selection
 
@@ -26,7 +26,6 @@ For substantial tasks, create artifacts under `.ai/icode/{timestamp}-{short-task
 - `IMPLEMENT.md`
 - `SELF_REVIEW.md`
 - `AUDIT.md`
-- `EXTERNAL_REVIEW.md` only when external review runs or is explicitly skipped after being requested
 
 For small tasks, keep these artifacts in the conversation instead of creating files.
 
@@ -69,12 +68,10 @@ Never overwrite previous `.ai/icode/` runs. If artifacts already exist for the s
    - Prefer reproducing the original failure and showing it no longer occurs.
    - If a check cannot run, record the reason and residual risk.
 
-7. Optional external review.
-   - Run only when `external_review.enabled: true`, the user asks for it, or the project explicitly requires it.
-   - Default reviewer is Claude CLI, but do not assume it is installed or authorized.
-   - If unavailable, write or report `SKIPPED` with the exact reason.
-   - Treat external findings as review input: verify them before changing code.
-   - Follow `references/external-review.md` for inputs, command template, and required output shape.
+7. Optional handoff to external review.
+   - Do not perform cross-model review inside this skill.
+   - If external review is requested, hand off to `$icodex-review` after local verification.
+   - Provide the artifact directory, current git diff context, and verification results to the external reviewer.
 
 ## Required Templates
 
@@ -124,30 +121,14 @@ Use these headings for substantial-task artifacts.
 - Free Attack Findings
 - Final Local Decision: `PASS` or `FIX_REQUIRED`
 
-### EXTERNAL_REVIEW.md
-
-- Reviewer
-- Inputs
-- Root Cause Review: `PASS` or `FAIL`
-- Implementation Review: `PASS` or `FAIL`
-- Architecture Review: `PASS` or `FAIL`
-- Regression Review: `PASS` or `FAIL`
-- Security Review: `PASS`, `FAIL`, or `N/A`
-- Performance Review: `PASS`, `FAIL`, or `N/A`
-- Final Decision: `PASS`, `FIX_REQUIRED`, or `SKIPPED`
-
 ## Engineering Risk Checklist
 
 For substantial work, read `references/domain-checklists.md` during self review and self audit. Load only the sections relevant to the current project risk.
-
-## External Review Protocol
-
-When optional cross-model review is requested, read `references/external-review.md`. Do not run Claude CLI unless it is installed and the environment permits external command execution.
 
 ## Common Mistakes
 
 - Fixing the visible symptom without proving the causal chain.
 - Treating the first implementation as correct because tests pass once.
 - Writing review artifacts that summarize work but do not attack it.
-- Running external review before local self review and audit are complete.
+- Trying to perform external cross-model review inside `$icodex` instead of handing off to `$icodex-review`.
 - Creating large `.ai/` artifacts for tiny edits where a concise conversation note is enough.
