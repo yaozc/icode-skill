@@ -1,0 +1,4 @@
+interface:
+  display_name: "ICODE Dual Review"
+  short_description: "Root-cause workflow with self audit"
+  default_prompt: "Use $icode-dual-review to diagnose this regression before changing code."
