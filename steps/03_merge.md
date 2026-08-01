@@ -1,6 +1,6 @@
 # 步骤 3 — 吸纳评审意见、合并优化定稿
 
-**命令**: `/icode merge`
+**Codex 调用**: `$icodex stage=03_merge`
 **产出**: `{ICODE_OUT_DIR}/03_plan_final.md`
 **会话**: 主会话
 

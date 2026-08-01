@@ -17,9 +17,48 @@ Use lightweight mode only for obvious typos, comments, formatting, small mechani
 
 If the user asks to skip diagnosis, keep the work small and state the risk. Do not invent certainty.
 
+## Execution Modes
+
+Support both execution modes:
+
+- **Full mode**: run Diagnose through Verify in one task, pausing only when user input is required.
+- **Staged mode**: preserve the original seven-stage workflow and stop after the requested stage. Use this for large tasks that need explicit discussion and approval between stages.
+
+Select staged mode when the user mentions a numbered stage, asks to pause between stages, or uses `stage=00_init` through `stage=06_audit`. Load the matching instruction from `steps/` before acting:
+
+| Stage | Purpose | Reference |
+|---|---|---|
+| `00_init` | Requirement draft and multi-turn discussion | `steps/00_init.md` |
+| `01_plan` | Formal implementation plan | `steps/01_plan.md` |
+| `02_review` | Multi-round plan review | `steps/02_review.md` |
+| `03_merge` | Incorporate review findings and finalize plan | `steps/03_merge.md` |
+| `04_code` | Implement the finalized plan | `steps/04_code.md` |
+| `05_deepcheck` | Reverse, fixed-dimension, and free-form checks | `steps/05_deepcheck.md` |
+| `06_audit` | Final audit, required fixes, and verification | `steps/06_audit.md` |
+
+Codex invocation examples:
+
+```text
+$icodex stage=00_init <rough requirement>
+$icodex stage=01_plan
+$icodex stage=02_review rounds=3
+$icodex stage=03_merge
+$icodex stage=04_code
+$icodex stage=05_deepcheck
+$icodex stage=06_audit
+```
+
+Natural-language equivalents such as `使用 $icodex 执行 00_init` are also valid. After `00_init`, continue the discussion in the same task; do not invoke `00_init` again for every message. Start a new `00_init` only when beginning a separate requirement.
+
+When a stage is requested without `stage=`, infer the stage from the explicit numbered name. Do not infer a later stage from a vague request such as "继续"; read `.ico_metadata.json` and continue from the highest completed stage only when the user clearly asks to resume.
+
+The legacy `/icode ...` notation remains a documentation alias only. In Codex, use `$icodex stage=...` or natural language; do not assume `/icode` is a registered command.
+
 ## Artifact Policy
 
-For substantial tasks, create artifacts under `.ai/icode/{timestamp}-{short-task}/`, for example `.ai/icode/20260626-1430-fix-ble-timeout/`:
+For substantial tasks, create artifacts under `.ai/icode/{timestamp}-{short-task}/`, for example `.ai/icode/20260626-1430-fix-ble-timeout/`.
+
+In full mode, use the concise artifact names below:
 
 - `RCA.md`
 - `PLAN.md`
@@ -27,11 +66,26 @@ For substantial tasks, create artifacts under `.ai/icode/{timestamp}-{short-task
 - `SELF_REVIEW.md`
 - `AUDIT.md`
 
+In staged mode, preserve the original numbered artifacts in the same run directory:
+
+- `00_init.md`
+- `01_plan.md`
+- `02_review.md` and any `review_round_*.json`
+- `03_plan_final.md`
+- code changes from `04_code`
+- `05_reverse.json`, `05_review_rounds.json`, and any deep-check records
+- `06_audit.md`, `06_fixes.log`, and the generated change README when applicable
+- `.ico_metadata.json`
+
+The staged files are the source of truth for staged execution. Do not create a second run directory when advancing from one stage to the next. If an older `.icode_output/.icode_output_N/` run exists, read it as legacy input when explicitly requested, but write new Codex runs under `.ai/icode/`.
+
 For small tasks, keep these artifacts in the conversation instead of creating files.
 
 Never overwrite previous `.ai/icode/` runs. If artifacts already exist for the same task, append a short update section instead of replacing evidence.
 
 ## Workflow
+
+### Full mode workflow
 
 1. Diagnose before editing.
    - Reproduce or explain why reproduction is impractical.
@@ -72,6 +126,24 @@ Never overwrite previous `.ai/icode/` runs. If artifacts already exist for the s
    - Do not perform cross-model review inside this skill.
    - If external review is requested, hand off to `$icodex-review` after local verification.
    - Provide the artifact directory, current git diff context, and verification results to the external reviewer.
+
+### Staged mode workflow
+
+When staged mode is selected, follow the referenced `steps/NN_*.md` file as the detailed procedure. Keep the original stage behavior, including `00_init` multi-turn updates, `02_review` round limits and extensions, `05_deepcheck` phases, and `06_audit` required fixes. Adapt only the invocation and storage conventions described in this file.
+
+At the end of each explicitly requested stage:
+
+1. Write or update the stage artifact and `.ico_metadata.json` in the same `.ai/icode/{timestamp}-{short-task}/` directory.
+2. Report the completed stage, artifact directory, unresolved issues, and the exact next stage.
+3. Stop and wait for the user unless the user explicitly requested full staged execution.
+
+For full staged execution, the user may say:
+
+```text
+$icodex 请按 00_init → 06_audit 完整执行，每个阶段完成后自动进入下一阶段。
+```
+
+This is the only staged form that may advance without confirmation. If a stage finds unresolved blocking issues, pause even in full staged execution.
 
 ## Required Templates
 

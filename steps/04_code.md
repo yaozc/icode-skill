@@ -1,12 +1,12 @@
 # 步骤 4 — 严格落地实施编码
 
-**命令**: `/icode code`
+**Codex 调用**: `$icodex stage=04_code`
 **产出**: 代码文件
 **会话**: 主会话
 
 ## 前置校验
 
-检查 `{ICODE_OUT_DIR}/03_plan_final.md` 是否存在，不存在则报错并提示先执行 `/icode merge`。
+检查 `{ICODE_OUT_DIR}/03_plan_final.md` 是否存在，不存在则报错并提示先执行 `$icodex stage=03_merge`。
 
 ## 执行步骤
 
