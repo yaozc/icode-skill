@@ -1,6 +1,6 @@
 # 步骤 6 — 终极终审 + 出具报告 + 统一修复
 
-**Codex 调用**: `$icodex stage=06_audit`
+**Codex 调用**: `$icodex audit`（兼容：`$icodex stage=06_audit`）
 **产出**: `{ICODE_OUT_DIR}/06_audit.md` + `{ICODE_OUT_DIR}/06_fixes.log`
 **会话**: 主会话
 
@@ -103,7 +103,7 @@
    ```markdown
    # {项目标题} — 本次变更说明
 
-   > 本文档由 `$icodex stage=06_audit` 步骤 6.4 自动生成于 {timestamp}。基于本次流程的最终产物（计划 + 代码 + 修复历史）智能识别内容类型，仅包含与本次变更相关的章节。
+   > 本文档由 `$icodex audit` 步骤 6.4 自动生成于 {timestamp}。基于本次流程的最终产物（计划 + 代码 + 修复历史）智能识别内容类型，仅包含与本次变更相关的章节。
 
    ## 1. 变更概述
    {一句话概括本次做了什么 + 为什么做 + 影响范围}

@@ -38,32 +38,32 @@ git pull
 
 ## 大型任务：阶段模式
 
-`$icodex` 同时保留原 ICODE 的七阶段流程。Codex 不把 `/icode` 识别为内置斜杠命令，因此使用 `stage=` 选择阶段：
+`$icodex` 同时保留原 ICODE 的七阶段流程。Codex 不把 `/icode` 识别为内置斜杠命令，因此直接使用子命令：
 
 ```text
-$icodex stage=00_init 修复当前数据同步问题
-$icodex stage=01_plan
-$icodex stage=02_review rounds=3
-$icodex stage=03_merge
-$icodex stage=04_code
-$icodex stage=05_deepcheck
-$icodex stage=06_audit
+$icodex init 修复当前数据同步问题
+$icodex plan
+$icodex review 3
+$icodex merge
+$icodex code
+$icodex deepcheck
+$icodex audit
 ```
 
 也可以使用自然语言：
 
 ```text
-使用 $icodex 执行 00_init，先和我多轮讨论需求，不要写代码
-使用 $icodex 继续执行 01_plan
+使用 $icodex init，先和我多轮讨论需求，不要写代码
+使用 $icodex 继续执行 plan
 ```
 
 `00_init` 开始后，同一会话中的补充信息会持续更新当前 `00_init.md`，不需要每轮重新调用。每个阶段默认完成后暂停，等待确认再进入下一阶段；如果希望自动串联全部阶段，可以明确说：
 
 ```text
-$icodex 请按 00_init → 06_audit 完整执行，每个阶段完成后自动进入下一阶段
+$icodex 请按 init → plan → review → merge → code → deepcheck → audit 完整执行，每个阶段完成后自动进入下一阶段
 ```
 
-所有阶段共用同一个 `.ai/icode/{timestamp}-{short-task}/` 目录，不会为每个阶段创建新目录。旧版 `/icode init`、`/icode plan` 等写法仅作为兼容文档，不应当视为 Codex 的内置命令。
+`$icodex start` 是 `$icodex plan` 的别名，`$icodex review rounds=3` 等价于 `$icodex review 3`。旧版 `stage=00_init` 等写法仍兼容，但推荐使用子命令。所有阶段共用同一个 `.ai/icode/{timestamp}-{short-task}/` 目录，不会为每个阶段创建新目录。旧版 `/icode init`、`/icode plan` 等写法仅作为兼容文档，不应当视为 Codex 的内置命令。
 
 ## 使用场景
 

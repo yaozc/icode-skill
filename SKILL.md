@@ -24,35 +24,39 @@ Support both execution modes:
 - **Full mode**: run Diagnose through Verify in one task, pausing only when user input is required.
 - **Staged mode**: preserve the original seven-stage workflow and stop after the requested stage. Use this for large tasks that need explicit discussion and approval between stages.
 
-Select staged mode when the user mentions a numbered stage, asks to pause between stages, or uses `stage=00_init` through `stage=06_audit`. Load the matching instruction from `steps/` before acting:
+Select staged mode when the user mentions a numbered stage, asks to pause between stages, or uses one of the stage subcommands below. Load the matching instruction from `steps/` before acting:
 
 | Stage | Purpose | Reference |
 |---|---|---|
-| `00_init` | Requirement draft and multi-turn discussion | `steps/00_init.md` |
-| `01_plan` | Formal implementation plan | `steps/01_plan.md` |
-| `02_review` | Multi-round plan review | `steps/02_review.md` |
-| `03_merge` | Incorporate review findings and finalize plan | `steps/03_merge.md` |
-| `04_code` | Implement the finalized plan | `steps/04_code.md` |
-| `05_deepcheck` | Reverse, fixed-dimension, and free-form checks | `steps/05_deepcheck.md` |
-| `06_audit` | Final audit, required fixes, and verification | `steps/06_audit.md` |
+| Command | Stage | Purpose |
+|---|---|---|
+| `init` | `00_init` | Requirement draft and multi-turn discussion |
+| `plan` or `start` | `01_plan` | Formal implementation plan |
+| `review [N]` | `02_review` | Multi-round plan review |
+| `merge` | `03_merge` | Incorporate review findings and finalize plan |
+| `code` | `04_code` | Implement the finalized plan |
+| `deepcheck` | `05_deepcheck` | Reverse, fixed-dimension, and free-form checks |
+| `audit` | `06_audit` | Final audit, required fixes, and verification |
 
-Codex invocation examples:
+Load the stage reference matching the stage number in the table.
+
+Preferred Codex invocation:
 
 ```text
-$icodex stage=00_init <rough requirement>
-$icodex stage=01_plan
-$icodex stage=02_review rounds=3
-$icodex stage=03_merge
-$icodex stage=04_code
-$icodex stage=05_deepcheck
-$icodex stage=06_audit
+$icodex init <rough requirement>
+$icodex plan
+$icodex review 3
+$icodex merge
+$icodex code
+$icodex deepcheck
+$icodex audit
 ```
 
-Natural-language equivalents such as `使用 $icodex 执行 00_init` are also valid. After `00_init`, continue the discussion in the same task; do not invoke `00_init` again for every message. Start a new `00_init` only when beginning a separate requirement.
+`$icodex start` is an alias for `$icodex plan`. `$icodex review rounds=3` is equivalent to `$icodex review 3`. Natural-language equivalents such as `使用 $icodex 执行 00_init` are also valid. After `init`, continue the discussion in the same task; do not invoke `init` again for every message. Start a new `init` only when beginning a separate requirement.
 
-When a stage is requested without `stage=`, infer the stage from the explicit numbered name. Do not infer a later stage from a vague request such as "继续"; read `.ico_metadata.json` and continue from the highest completed stage only when the user clearly asks to resume.
+The previous `stage=00_init` through `stage=06_audit` forms remain supported as compatibility aliases. When a command is requested without an explicit stage number, use the command table above. Do not infer a later stage from a vague request such as "继续"; read `.ico_metadata.json` and continue from the highest completed stage only when the user clearly asks to resume.
 
-The legacy `/icode ...` notation remains a documentation alias only. In Codex, use `$icodex stage=...` or natural language; do not assume `/icode` is a registered command.
+The legacy `/icode ...` notation remains a documentation alias only. In Codex, use `$icodex <command>` or its `stage=` compatibility alias; do not assume `/icode` is a registered command.
 
 ## Artifact Policy
 
@@ -140,7 +144,7 @@ At the end of each explicitly requested stage:
 For full staged execution, the user may say:
 
 ```text
-$icodex 请按 00_init → 06_audit 完整执行，每个阶段完成后自动进入下一阶段。
+$icodex 请按 init → plan → review → merge → code → deepcheck → audit 完整执行，每个阶段完成后自动进入下一阶段。
 ```
 
 This is the only staged form that may advance without confirmation. If a stage finds unresolved blocking issues, pause even in full staged execution.

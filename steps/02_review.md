@@ -1,12 +1,12 @@
 # 步骤 2 — 多轮专项审查
 
-**Codex 调用**: `$icodex stage=02_review [rounds=N]`
+**Codex 调用**: `$icodex review [N]`（兼容：`$icodex stage=02_review rounds=N`）
 **产出**: `{ICODE_OUT_DIR}/02_review.md`
 **会话**: 主会话
 
 采用**独立计划对比 + 多轮循环审查**模式：
 - **首轮**：先基于原始需求独立编制简要计划，再与步骤1计划逐项对比，最后做6维度审查
-- **后续轮次**：**增量审查**，只审查上一轮修改的部分 + 跨章节影响分析。**软上限 N 轮**（N 由 `stage=02_review rounds=N` 指定，默认 3）；达到 N 但**仍有新问题**时**自动延长 +2 轮**，直到连续 2 轮无新问题，或触达**硬上限** `absolute_cap = max(10, N×2)`
+- **后续轮次**：**增量审查**，只审查上一轮修改的部分 + 跨章节影响分析。**软上限 N 轮**（N 由 `$icodex review N` 或 `$icodex review rounds=N` 指定，默认 3）；达到 N 但**仍有新问题**时**自动延长 +2 轮**，直到连续 2 轮无新问题，或触达**硬上限** `absolute_cap = max(10, N×2)`
 - **终止条件**：以下任一满足即终止——(a) 连续 2 轮无新问题；(b) 触达 `absolute_cap`（若此时仍有新问题，落盘告警并提示用户回到步骤1修计划）
 
 ## 前置校验
@@ -19,7 +19,7 @@
 2. 读取 `{ICODE_OUT_DIR}/01_plan.md` 和 `.ico_metadata.json` 获取原始需求
 3. **强制思考前置**（不可跳过，缺证据视为不合规）：先输出 `ultrathink` 触发词；再完成结构化思考——**首选**调用 `sequential-thinking` MCP（至少 3 步），**MCP 不可用时降级**为输出 `### 结构化思考` 文字块（逐项完成，不可省略）；每步/每项对应一个子项：需求分解 → 独立方案构思 → 对比要点预判
 4. **分步续跑检测**：
-   - 解析调用参数获取 `max_rounds`：若 `stage=02_review rounds=N` 提供了正整数 N，则 `max_rounds = N`；否则 `max_rounds = 3`
+   - 解析调用参数获取 `max_rounds`：若 `$icodex review N` 或 `$icodex review rounds=N` 提供了正整数 N，则 `max_rounds = N`；否则 `max_rounds = 3`
    - 计算 `absolute_cap = max(10, max_rounds × 2)`（硬上限，防止无限循环）
    - 若 `.ico_metadata.json.status == "review_in_progress"`，从 metadata 恢复 `total_rounds` / `clean_rounds` / `max_rounds` / `absolute_cap` / `extended_rounds` 字段
    - 同时读取所有已存在的 `review_round_*.json` 汇总历史问题
@@ -115,7 +115,7 @@
      ## ⚠️ 未解决问题告警
 
      已审查 {total_rounds-1} 轮（含 {extended_rounds} 次自动延长），触达硬上限 {absolute_cap} 轮，但**最后一轮仍发现新问题**。
-     **建议**：回到步骤1（`$icodex stage=01_plan`）重新审视计划本身的根本性缺陷，而非继续在步骤2修补。
+     **建议**：回到步骤1（`$icodex plan`）重新审视计划本身的根本性缺陷，而非继续在步骤2修补。
      **未解决问题概览**：见最后一轮 `review_round_{total_rounds-1}.json` 的 `new_issues` 字段。
      ```
 
@@ -124,5 +124,5 @@
 
 5. **终止后更新 metadata**：`status = review_done`，`completed_steps` 追加 `"2"`，保留 `extended_rounds` / `unresolved_issues_at_cap` 字段供后续步骤参考
 6. **全流程模式**：
-   - 若 `unresolved_issues_at_cap == true`：**暂停**全流程串联，输出 `⚠️ 步骤2 存在未解决问题，请手动决定是否继续 $icodex stage=03_merge 或回到 $icodex stage=01_plan`
+   - 若 `unresolved_issues_at_cap == true`：**暂停**全流程串联，输出 `⚠️ 步骤2 存在未解决问题，请手动决定是否继续 $icodex merge 或回到 $icodex plan`
    - 否则：**立即继续执行步骤3**

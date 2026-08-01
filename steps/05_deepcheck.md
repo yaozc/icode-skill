@@ -1,12 +1,12 @@
 # 步骤 5 — 三阶段递进深度复检
 
-**Codex 调用**: `$icodex stage=05_deepcheck`
+**Codex 调用**: `$icodex deepcheck`（兼容：`$icodex stage=05_deepcheck`）
 **产出**: `{ICODE_OUT_DIR}/05_reverse.json` + `{ICODE_OUT_DIR}/05_review_rounds.json`
 **会话**: 主会话
 
 ## 前置校验
 
-检查 `{ICODE_OUT_DIR}/03_plan_final.md` 和步骤4创建的代码文件是否存在，缺失则报错并提示先执行 `$icodex stage=04_code`。
+检查 `{ICODE_OUT_DIR}/03_plan_final.md` 和步骤4创建的代码文件是否存在，缺失则报错并提示先执行 `$icodex code`。
 
 ## 三阶段说明
 
