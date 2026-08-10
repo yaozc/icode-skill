@@ -4,7 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.icode_state import ARTIFACT_KEYS, validate_metadata
+from tools.icode_state import (
+    ARTIFACT_KEYS,
+    iter_merged_files,
+    load_merged_index,
+    merged_source_digest,
+    publish_artifact,
+    validate_metadata,
+)
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "metadata"
@@ -76,6 +83,15 @@ class MetadataValidationTests(unittest.TestCase):
             validate_metadata(metadata, self.run_dir),
         )
 
+    def test_rejects_staged_status_mismatch(self) -> None:
+        metadata = load_fixture("staged_completed.json")
+        metadata["status"] = "code_done"
+        materialize_mapped_files(self.run_dir, metadata)
+        self.assertIn(
+            "status is inconsistent with completed_steps",
+            validate_metadata(metadata, self.run_dir),
+        )
+
     def test_requires_patch_artifact_when_patch_count_is_positive(self) -> None:
         metadata = load_fixture("staged_completed.json")
         metadata["patch_count"] = 1
@@ -93,6 +109,89 @@ class MetadataValidationTests(unittest.TestCase):
             "artifact_map.plan escapes the run directory",
             validate_metadata(metadata, self.run_dir),
         )
+
+    def test_rejects_inconsistent_full_phase(self) -> None:
+        metadata = load_fixture("concise_in_progress.json")
+        metadata["current_phase"] = "audit"
+        materialize_mapped_files(self.run_dir, metadata)
+        self.assertIn(
+            "current_phase must be the next incomplete phase",
+            validate_metadata(metadata, self.run_dir),
+        )
+
+    def test_publish_artifact_updates_mapping_after_file_publish(self) -> None:
+        metadata = load_fixture("concise_in_progress.json")
+        metadata["completed_phases"] = ["diagnose"]
+        metadata["current_phase"] = "plan"
+        metadata["artifact_map"]["plan"] = None
+        metadata["artifact_map"]["final_plan"] = None
+        materialize_mapped_files(self.run_dir, metadata)
+        (self.run_dir / ".ico_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+        source = self.run_dir / "draft.tmp"
+        source.write_text("approved plan\n", encoding="utf-8")
+
+        published = publish_artifact(self.run_dir, "plan", source, "PLAN.md")
+
+        updated = json.loads((self.run_dir / ".ico_metadata.json").read_text(encoding="utf-8"))
+        self.assertEqual(published.read_text(encoding="utf-8"), "approved plan\n")
+        self.assertEqual(updated["artifact_map"]["plan"], "PLAN.md")
+
+
+class MergedViewTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        root = Path(self.temp_dir.name)
+        self.codex_root = root / "codex"
+        self.claude_root = root / "claude"
+        self.codex_root.mkdir()
+        self.claude_root.mkdir()
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def write_index(self, root: Path, tickets: list) -> None:
+        (root / "index.json").write_text(json.dumps({"tickets": tickets}), encoding="utf-8")
+
+    def test_same_id_different_sources_remain_visible(self) -> None:
+        self.write_index(
+            self.codex_root,
+            [{"ticket_id": "demo-1", "out_dir": "/new/run", "status": "completed"}],
+        )
+        self.write_index(
+            self.claude_root,
+            [{"ticket_id": "demo-1", "out_dir": "/old/run", "status": "plan_done"}],
+        )
+        tickets = load_merged_index(self.codex_root, self.claude_root)["tickets"]
+        self.assertEqual(len(tickets), 2)
+        self.assertEqual(tickets[0]["ticket_id"], "demo-1")
+        self.assertTrue(tickets[1]["ticket_id"].startswith("legacy:demo-1:"))
+
+    def test_overlay_only_changes_mutable_fields(self) -> None:
+        legacy = {"ticket_id": "demo-2", "out_dir": "/old/two", "status": "plan_done", "hit_count": 1}
+        overlay = {
+            "ticket_id": "legacy:demo-2:abcd1234",
+            "legacy_ticket_id": "demo-2",
+            "legacy_source": "/old/two",
+            "legacy_overlay": True,
+            "hit_count": 4,
+            "status": "completed",
+        }
+        self.write_index(self.codex_root, [overlay])
+        self.write_index(self.claude_root, [legacy])
+        ticket = load_merged_index(self.codex_root, self.claude_root)["tickets"][0]
+        self.assertEqual(ticket["hit_count"], 4)
+        self.assertEqual(ticket["status"], "plan_done")
+
+    def test_files_use_codex_precedence_and_digest_tracks_content(self) -> None:
+        for root, content in ((self.claude_root, "old"), (self.codex_root, "new")):
+            target = root / "project_docs" / "demo" / "overview.md"
+            target.parent.mkdir(parents=True)
+            target.write_text(content, encoding="utf-8")
+        files = iter_merged_files("project_docs", self.codex_root, self.claude_root)
+        self.assertEqual([(item.key, item.source) for item in files], [("demo/overview.md", "codex")])
+        before = merged_source_digest(self.codex_root, self.claude_root)
+        (self.codex_root / "project_docs" / "demo" / "overview.md").write_text("changed", encoding="utf-8")
+        self.assertNotEqual(before, merged_source_digest(self.codex_root, self.claude_root))
 
 
 if __name__ == "__main__":
