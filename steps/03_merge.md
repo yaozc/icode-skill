@@ -1,8 +1,11 @@
 # 步骤 3 — 吸纳评审意见、合并优化定稿
 
-**命令**: `/icode merge`
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex merge`
 **产出**: `{ICODE_OUT_DIR}/03_plan_final.md`
 **会话**: 主会话
+**Codex 发布键**: 完整定稿使用 `final_plan`。机器校验、`publish-artifact --name 03_plan_final.md` 与 `validate` 全部通过后才追加 step `3`。
 
 ## 本步骤 L1/L2 检查项声明
 

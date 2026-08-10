@@ -1,8 +1,11 @@
 # 步骤 5 — 三阶段递进深度复检
 
-**命令**: `/icode deepcheck`
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex deepcheck`
 **产出**: `{ICODE_OUT_DIR}/05_deepcheck.md`（合并三阶段产物，不再单独存 JSON）
 **会话**: 主会话
+**Codex 发布键**: 收敛后的 `05_deepcheck.md` 使用 `deepcheck`；附属 JSON 不替代稳定映射。发布与 `validate` 成功后才追加 step `5`。
 
 ## 本步骤 L1/L2 检查项声明
 
@@ -10,7 +13,7 @@
 
 | 级别 | 检查项 | 触发后行为 |
 |---|---|---|
-| **L1·致命** | 前置产物缺失（`03_plan_final.md` 或步骤 4 代码文件不存在） | 报错退出，提示先跑 `/icode merge` 或 `/icode code` |
+| **L1·致命** | 前置产物缺失（`03_plan_final.md` 或步骤 4 代码文件不存在） | 报错退出，提示先跑 `$icodex merge` 或 `$icodex code` |
 
 **L3·重要**（矩阵段定义）：Reverse/Fixed/Free 任一阶段发现 issue → 进修复循环（最多 2 轮，clean 后退出）；阶段间切换不阻断。
 
@@ -26,11 +29,11 @@
 
 > **读决策锚点**（启动时）：若 `metadata.anchors_enabled != false`，Read `{ICODE_OUT_DIR}/.decision_anchors.json`（不存在则跳过），获取上游关键决策摘要（requirement_digest/key_decisions/design_4dims/deviations/open_risks）作本步骤上下文，不替代产物。详见 [references/decision_anchors.md](../references/decision_anchors.md)。
 
-检查 `{ICODE_OUT_DIR}/03_plan_final.md` 和步骤4创建的代码文件是否存在，缺失则报错并提示先执行 `/icode code`。
+检查 `{ICODE_OUT_DIR}/03_plan_final.md` 和步骤4创建的代码文件是否存在，缺失则报错并提示先执行 `$icodex code`。
 
 ## 前置：patch 配合
 
-> 工单可能已走过 `/icode patch` 追加修改（`{ICODE_OUT_DIR}/08_patch.md` 存在且有 Patch 段，或 `metadata.patch_count > 0`）。本步骤启动时 **Read `08_patch.md`**（不存在则跳过本段，走原流程），按以下规则配合：
+> 工单可能已走过 `$icodex patch` 追加修改（`{ICODE_OUT_DIR}/08_patch.md` 存在且有 Patch 段，或 `metadata.patch_count > 0`）。本步骤启动时 **Read `08_patch.md`**（不存在则跳过本段，走原流程），按以下规则配合：
 
 1. **Reverse 对比基准扩展**：Reverse 逆推后与计划对比时，计划侧输入 = `03_plan_final.md` + `08_patch.md` 全部 Patch 段（补丁的增量计划/实施是已落地的设计依据）——**patch 已记录的修改视为"已计划"**，不标"偏离/冗余"；代码中**未在** `08_patch.md` 记录的修改仍按偏离处理。**续跑场景**：`deepcheck_in_progress` 中断态期间存在补丁修改时，续跑**不跳过 Reverse**（有补丁必须重跑逆推覆盖更新，见「执行步骤」第 4 步）
 2. **追溯矩阵扩展**：Fixed/Free 阶段的计划-代码追溯矩阵 = `03_plan_final.md` 功能点 + `08_patch.md` Patch 功能点（补丁功能点标注"补丁"来源）

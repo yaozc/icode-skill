@@ -1,27 +1,31 @@
 # 步骤 list — 跨工程工单查找（纯查询）
 
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
 **命令**:
-- `/icode list [关键词] [--project <path>] [--status <status>] [--since <duration>] [--limit N] [--no-color] [--include-stale]`
+- `$icodex list [关键词] [--project <path>] [--status <status>] [--since <duration>] [--limit N] [--no-color] [--include-stale]`
 
 **产出**: 默认无（只读，控制台输出表格）；不写 metadata、不写 index.json、不写工程内任何文件
 **会话**: 主会话
 
 ## 定位
 
-解决"工单目录 `icode_output_N` 分散在多工程，找历史工单要打开很多工程一个个点开"的痛点。`/icode status` 模式一只看当前工程最近一个工单，**`/icode list` 是它的跨工程增强版**：从全局索引 `~/.claude/icode_data/index.json` 的 `tickets` 数组全量读取，按需过滤+排序+格式化输出。
+解决"工单目录 `icode_N` 分散在多工程，找历史工单要打开很多工程一个个点开"的痛点。`$icodex status` 模式一只看当前工程最近一个工单，**`$icodex list` 是它的跨工程增强版**：从全局索引 `~/.codex/icode_data/index.json` 的 `tickets` 数组全量读取，按需过滤+排序+格式化输出。
 
-**与 `/icode status` 职责分离**：
+**与 `$icodex status` 职责分离**：
 - `status`：当前工程最近一个工单的**详细状态**（含 mode/verdict/下一步推断/索引概览）
 - `list`：全索引的**鸟瞰视图**（一行一个工单，便于浏览+筛选）
 
 ## 关键约定（必读）
 
 - **只读**：不写 metadata、不写 index.json、不写工程内任何文件。**禁止**任何 `--write` 之类的破坏性扩展
-- **不创建工单目录**：与 `/icode start` / `/icode init` / `/icode log` 区别（那些是"创建/复用"，list 是"查找"）
-- **不参与步骤1~6 推进**：与 `/icode plan` / `/icode review` / `/icode merge` 等区别（那些是"推进流程"，list 是"查询"）
+- **不创建工单目录**：与 `$icodex run` / `$icodex init` / `$icodex log` 区别（那些是"创建/复用"，list 是"查找"）
+- **不参与步骤1~6 推进**：与 `$icodex plan` / `$icodex review` / `$icodex merge` 等区别（那些是"推进流程"，list 是"查询"）
 - **不修改全局索引**：与 `--verdict` / `--scan-verdict` 区别（那些是"标注"，list 是"只读浏览"）
 
 ## 执行步骤
+
+读取动作先运行 `python3 ~/.codex/skills/icodex/tools/icode_state.py merged-index --codex-root ~/.codex/icode_data --claude-root ~/.claude/icode_data`，后续过滤、排序与格式化全部基于该 JSON。不得只在 Codex index 不存在时整体回退；`source=claude` 和 `legacy:*` 条目保持只读。
 
 1. **解析命令行参数**（顺序无关）：
    - 位置参数：可选关键词（无则不过滤）
@@ -31,9 +35,9 @@
    - `--limit N`：限制条数（默认 50，0 = 不限）
    - `--no-color`：禁用 ANSI 颜色（管道/重定向场景）
    - `--include-stale`：包含 stale 工单（默认排除）
-2. **读取全局索引**：`json.load` 全量解析 `~/.claude/icode_data/index.json` 的 `tickets` 数组（**禁止按行截断**）
+2. **读取全局索引**：`json.load` 全量解析上述合并视图的 `tickets` 数组（**禁止按行截断**）
 3. **空索引处理**：
-   - 文件不存在 → 提示"无全局索引，请先跑 `/icode start` 或 `/icode init` 创建工单"后退出
+   - 文件不存在 → 提示"无全局索引，请先跑 `$icodex run` 或 `$icodex init` 创建工单"后退出
    - `tickets=[]` → 提示"无工单记录"后退出
 4. **逐条过滤**（AND 关系，所有条件同时满足才保留）：
    - **关键词过滤**：在 `ticket_id` / `project_path` / `requirement_summary` / `keywords` 中大小写不敏感扫子串（关键词用空格分词后所有 token 都需命中，AND 关系）
@@ -67,13 +71,13 @@
    2. **完整路径 > 60 字符**：按以下优先级智能截断
       - **优先一**：`$HOME` 替换为 `~`（如 `/home/user/myproject` → `~/myproject`），剩余若仍超 60 字符进行下一级
       - **优先二**：保留 basename + 关键父路径段（保留 basename 和最后 N 级父目录，体现工程身份而非纯路径）
-      - **最终兜底**：从路径尾部取 60 字符，前缀加 `…`（如 `…ng-project-name/subdir/.icode_output`），保留可点击的尾部信息
+      - **最终兜底**：从路径尾部取 60 字符，前缀加 `…`（如 `…ng-project-name/subdir/.ai/icode`），保留可点击的尾部信息
    3. **截断示例**：
       - `/home/user/myproject` → `~/myproject`（19 字符）
       - `/home/user/very-long-namespace-name/myproject` → `~/very-long-namespace-name/myproject`（41 字符，原样）
-      - `/home/user/very-long-namespace-name/myproject/.icode_output` → `~/…/.icode_output/`（智能缩中段）
-      - `/home/user/very-long-namespace-name/myproject/.icode_output/.icode_output_3` → `~/<truncated header>…myproject/.icode_output_3`（保留尾段）
-   4. **绝对优先**：保留的最后一段必须是工单目录名（`.icode_output_N`），让用户能直接 `cd` 进去
+      - `/home/user/very-long-namespace-name/myproject/.ai/icode` → `~/…/.ai/icode/`（智能缩中段）
+      - `/home/user/very-long-namespace-name/myproject/.ai/icode/icode_3` → `~/<truncated header>…myproject/.ai/icode_3`（保留尾段）
+   4. **绝对优先**：保留的最后一段必须是工单目录名（`.ai/icode/icode_N`），让用户能直接 `cd` 进去
 
    **stale 工单**（如 `--include-stale` 显式包含）：`STATUS` 列前缀 `[stale] `，`SUMMARY` 后缀 ` [stale_reason: X]`
 
@@ -99,7 +103,7 @@
 
 | 场景 | 行为 |
 |------|------|
-| 全局索引文件不存在 | 提示"无全局索引，请先跑 `/icode start` 或 `/icode init` 创建工单"后退出，不报错 |
+| 全局索引文件不存在 | 提示"无全局索引，请先跑 `$icodex run` 或 `$icodex init` 创建工单"后退出，不报错 |
 | 索引为空（`tickets=[]`） | 提示"无工单记录"后退出 |
 | 关键词无匹配 | 提示"无匹配工单（索引共 N 条，尝试其他关键词或去掉过滤条件）" |
 | 旧 metadata 无 `workload_estimate` | WORKLOAD 列显示 `-`，不报错（向后兼容） |
@@ -118,11 +122,11 @@
 - **禁止猜测字段值**：缺失字段退化为 `-`，不编造
 - **禁止改 user 项目路径**：只读索引，不 `cd` / 不 `open`（"纯查询不跳转"原则）
 
-## 与 `/icode status` 的协作
+## 与 `$icodex status` 的协作
 
-- 用户从 `/icode list` 看到感兴趣的 ticket_id → 用 `/icode status --verdict {ticket_id} ...` 标注
-- 用户从 `/icode list` 看到要继续推进的工单 → 用对应工程的 `/icode start` / `/icode plan`（**仍需在工程目录下运行**，list 不支持跳转）
-- 用户想批量扫证伪信号 → `/icode status --scan-verdict`（跨工程批量治理）
+- 用户从 `$icodex list` 看到感兴趣的 ticket_id → 用 `$icodex status --verdict {ticket_id} ...` 标注
+- 用户从 `$icodex list` 看到要继续推进的工单 → 用对应工程的 `$icodex run` / `$icodex plan`（**仍需在工程目录下运行**，list 不支持跳转）
+- 用户想批量扫证伪信号 → `$icodex status --scan-verdict`（跨工程批量治理）
 
 ## 性能
 
@@ -135,28 +139,28 @@
 
 ```bash
 # 列所有工单（默认 last_used_at 倒序，前 50 条）
-/icode list
+$icodex list
 
 # 关键词搜索（找含 "mcu" 的工单）
-/icode list mcu
+$icodex list mcu
 
 # 按工程过滤（只显示 <品类代号> 相关的工单）
-/icode list --project <品类代号>
+$icodex list --project <品类代号>
 
 # 按状态过滤（只显示已完成工单）
-/icode list --status completed
+$icodex list --status completed
 
 # 组合过滤（<工程名> 工程下 plan_done 或 code_done 的工单，近 30 天用过）
-/icode list --project <工程名> --status plan_done,code_done --since 30d
+$icodex list --project <工程名> --status plan_done,code_done --since 30d
 
 # 禁用颜色（管道场景）
-/icode list --no-color | grep <品类代号>
+$icodex list --no-color | grep <品类代号>
 
 # 不限条数
-/icode list --limit 0
+$icodex list --limit 0
 
 # 包含 stale 工单（默认排除）
-/icode list --include-stale
+$icodex list --include-stale
 ```
 ## MCP 推荐
 

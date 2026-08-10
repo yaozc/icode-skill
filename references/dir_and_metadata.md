@@ -4,24 +4,24 @@
 
 ## 目录管理
 
-### 创建新目录（用于 init / log，以及 start / plan 在不满足复用条件时）
+### 创建新目录（用于 init / log，以及 run / plan 在不满足复用条件时）
 
 ```bash
-mkdir -p .icode_output   # 统一父目录，所有产物收纳于此
-LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_output_)\d+' | sort -n | tail -1)
+mkdir -p .ai/icode   # 统一父目录，所有产物收纳于此
+LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n | tail -1)
 NEXT=${LAST:-0}; NEXT=$((NEXT + 1))
-ICODE_OUT_DIR=".icode_output/.icode_output_${NEXT}"
+ICODE_OUT_DIR=".ai/icode/icode_${NEXT}"
 mkdir -p "$ICODE_OUT_DIR"
 ```
 
-### 复用 / 创建新目录决策（仅用于 start / plan）
+### 复用 / 创建新目录决策（仅用于 run / plan）
 
 ```bash
-mkdir -p .icode_output
-LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_output_)\d+' | sort -n | tail -1)
+mkdir -p .ai/icode
+LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n | tail -1)
 REUSE=0
 if [ -n "$LAST" ]; then
-  CAND=".icode_output/.icode_output_${LAST}"
+  CAND=".ai/icode/icode_${LAST}"
   # 判定最新目录是否为"入口态"：有 .ico_metadata.json + 00_init.md，且无 01_plan.md
   if [ -f "$CAND/.ico_metadata.json" ] && [ -f "$CAND/00_init.md" ] && [ ! -f "$CAND/01_plan.md" ]; then
     STATUS=$(grep -oP '"status"\s*:\s*"\K[^"]+' "$CAND/.ico_metadata.json")
@@ -34,7 +34,7 @@ fi
 # REUSE=2：有歧义，问用户"复用 / 新建"；REUSE=0：非入口态，带参新建 / 无参报错
 if [ "$REUSE" = "0" ]; then
   NEXT=${LAST:-0}; NEXT=$((NEXT + 1))
-  ICODE_OUT_DIR=".icode_output/.icode_output_${NEXT}"
+  ICODE_OUT_DIR=".ai/icode/icode_${NEXT}"
   mkdir -p "$ICODE_OUT_DIR"
 fi
 ```
@@ -48,32 +48,32 @@ fi
 ### 检测最新目录（用于 review / merge / code / deepcheck / audit）
 
 ```bash
-LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_output_)\d+' | sort -n | tail -1)
+LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n | tail -1)
 if [ -z "$LAST" ]; then
-  echo "错误：没有找到 .icode_output/.icode_output_N 目录，请先运行 /icode start <需求> 或 /icode init"
+  echo "错误：没有找到 .ai/icode/icode_N 目录，请先运行 $icodex run <需求> 或 $icodex init"
   exit 1
 fi
-ICODE_OUT_DIR=".icode_output/.icode_output_${LAST}"
+ICODE_OUT_DIR=".ai/icode/icode_${LAST}"
 ```
 
 ## ticket_id 生成规则
 
-- `ticket_id` = `{工程名}-{N}`（工程名取 `project_path` 的 basename；N 为当前 `.icode_output_N` 的 N）
+- `ticket_id` = `{工程名}-{N}`（工程名取 `project_path` 的 basename；N 为当前 `.ai/icode/icode_N` 的 N）
 - **工程名冲突处理（生成时必须检查）**：生成 ticket_id 后，**必须 Python 解析 index.json 检查是否已有相同 `{工程名}-{N}` 但 `project_path` 不同的条目**；有则追加 `project_path` 短 hash 后缀（`sha256(project_path)[:4]`，如 `myproject-1-a3f2`）保唯一。**写后唯一性验证兜底**（见「全局索引写入」段），即使生成时漏检，写后硬检查会自动修正
-- **入口命令（init/log）共享 N 序列**：init/log 各自创建新目录时，N 是当前目录下**所有** `.icode_output_*` 中的最大 N + 1，不区分 init/log（demo-5 是 init，demo-9 是 log，N 单调递增）
+- **入口命令（init/log）共享 N 序列**：init/log 各自创建新目录时，N 是当前目录下**所有** `.ai/icode_*` 中的最大 N + 1，不区分 init/log（demo-5 是 init，demo-9 是 log，N 单调递增）
 - 生成后**回填 metadata 的 `ticket_id` 字段**，供后续步骤检索时排除当前工单（避免反推）
 - **唯一性保证**：写索引前 Python 解析 index.json 检查无重复 ticket_id；**写后唯一性验证兜底**（见「全局索引写入」段，强制硬检查）：发现同 ticket_id 不同 project_path 自动加 hash 后缀修正，同 ticket_id 同 project_path 去重（保留 status 最靠后的）。手工误操作或 AI 漏检均由写后硬检查兜底
 
 ## 全局索引写入（首次写入）
 
-Read `~/.claude/icode_data/index.json`（不存在则创建 `{"version":"1","updated_at":"当前时间","tickets":[]}`），追加一条新记录：
+Read `~/.codex/icode_data/index.json`（不存在则创建 `{"version":"1","updated_at":"当前时间","tickets":[]}`），追加一条新记录：
 
 > **"当前时间"取值约定（强制，防 LRU 失效）**：`updated_at` / `created_at` / `last_used_at` 等**所有时间字段必须是运行时取的真实系统当前时间**（如 Bash `date +%Y-%m-%dT%H:%M:%S`、Python `datetime.now()`），**禁止写死固定值**（如 `2026-06-29T09:30:00`）。理由：LRU 淘汰与排序依赖 `last_used_at` 区分新旧，若时间戳被写死成同一个固定值，所有条目时间相同 → LRU 退化为随机删除、排序失序、续期续错（见历史 bug：某工单 `last_used_at` 被刷新但 `hit_count=0` 的数据失真）。
 
-- `ticket_id` / `project_path`（当前工程根绝对路径）/ `out_dir`（`.icode_output/.icode_output_{N}`）
+- `ticket_id` / `project_path`（当前工程根绝对路径）/ `out_dir`（`.ai/icode/icode_{N}`）
 - `requirement_summary` / `requirement_points` / `keywords` / `workload_estimate` / `workload_reason` 取自本步骤 metadata
 - 入口命令的标记：
-  - `/icode log` 产出：`has_00_init` = true（已产出 00_init.md）、`has_plan` = false、`status` = `log_done`
+  - `$icodex log` 产出：`has_00_init` = true（已产出 00_init.md）、`has_plan` = false、`status` = `log_done`
   - 步骤0 init 首轮：`has_00_init` = true、`has_plan` = false、`status` = `init_in_progress`、`requirement_points` 暂空
   - 步骤1 常规新建首跑（跳过 init/log）：`has_00_init` = false、`has_plan` = true、`status` = `plan_done`
 - `created_at` = 当前时间
@@ -104,9 +104,9 @@ Read `~/.claude/icode_data/index.json`（不存在则创建 `{"version":"1","upd
 
 ## 检索命中续期 + 过时校验（检索阶段执行）
 
-> **⚠️ index.json 读取方式（防与 DOC 混淆）**：本段 index.json 指**全局工单索引** `~/.claude/icode_data/index.json`，是完整 JSON 文件，必须用 `json.load` **整体解析 `tickets` 数组全量读**，禁止按行截断（如只读前 50 行--12 条工单约占 350 行，前 50 行仅覆盖 2 条，会漏掉其余工单导致检索失真）。「前 50 行」规则**仅适用于** `project_docs/<id>/*.md` 章节（见下文「段零·工程文档检索」段步骤 2），两者不可混用。
+> **⚠️ index.json 读取方式（防与 DOC 混淆）**：本段 index.json 指**全局工单索引** `~/.codex/icode_data/index.json`，是完整 JSON 文件，必须用 `json.load` **整体解析 `tickets` 数组全量读**，禁止按行截断（如只读前 50 行--12 条工单约占 350 行，前 50 行仅覆盖 2 条，会漏掉其余工单导致检索失真）。「前 50 行」规则**仅适用于** `project_docs/<id>/*.md` 章节（见下文「段零·工程文档检索」段步骤 2），两者不可混用。
 
-检索阶段（init/log/plan/start 启动时扫 index.json）采用**两段式检索**（详见 SKILL.md「检索注入流程」）——段一 keywords Jaccard 粗筛取 ≤10 候选（零 token，复活预扫后排除剩余 stale/当前 ticket_id），段二只把候选 keywords+requirement_points 喂 LLM 精读打分选 top-N 命中（N 由梯度决定）。对 top-N 命中工单，**先做过时校验，再续期**：
+检索阶段（init/log/plan/run 启动时扫 index.json）采用**两段式检索**（详见 SKILL.md「检索注入流程」）——段一 keywords Jaccard 粗筛取 ≤10 候选（零 token，复活预扫后排除剩余 stale/当前 ticket_id），段二只把候选 keywords+requirement_points 喂 LLM 精读打分选 top-N 命中（N 由梯度决定）。对 top-N 命中工单，**先做过时校验，再续期**：
 
 ### 项目路径校验（防注入已删除工程）
 
@@ -142,13 +142,13 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 通过全部校验→工单有效，**按 verdict 分流注入**（详见 SKILL.md「历史检索复用·注入分流」段）+ 续期（`stale_checked_commit=H` 在评估时已更新）：
 
 - `verdict="verified"`/`"unknown"`（含所有旧工单）：正常注入 ADR+风险章节（现状不变）；**`unknown` 强制走 A 层强化**（扩读 `00_init.md` 末轮对话摘要 + 对抗质疑三问 + ⚠️未验证警告，见 [thinking_core.md](thinking_core.md)「历史参考小节」）--这是旧工单（无 verdict）防误导的主防线，不依赖标注
-- `verdict="disproved"`（`verdict_review_needed=false`）：**反转注入避坑 + 证伪前提断言**--不注 ADR，改注 `verdict_reason`（作可验证断言）+ `correct_direction`，标 ⛔ 避坑；**强制新需求 Grep/Read 验证证伪前提是否仍成立**（如"某接口语义是重置"，须 Read 当前实现确认是否仍重置）：仍成立则确实避坑；已失效则方向或可重新考虑，提示 `/icode status --verdict` 标复活（unknown/verified）；`correct_direction` 缺失时降级注 ADR + ⛔ 警告（提示补标）
+- `verdict="disproved"`（`verdict_review_needed=false`）：**反转注入避坑 + 证伪前提断言**--不注 ADR，改注 `verdict_reason`（作可验证断言）+ `correct_direction`，标 ⛔ 避坑；**强制新需求 Grep/Read 验证证伪前提是否仍成立**（如"某接口语义是重置"，须 Read 当前实现确认是否仍重置）：仍成立则确实避坑；已失效则方向或可重新考虑，提示 `$icodex status --verdict` 标复活（unknown/verified）；`correct_direction` 缺失时降级注 ADR + ⛔ 警告（提示补标）
 - `verdict="disproved"`/`"superseded"`（`verdict_review_needed=true`，证伪前提依赖已变化）：**降级对抗质疑**--不硬反转，走 unknown A 层（扩读末轮+对抗质疑三问）+ 注"曾证伪 + 证伪前提 + 依赖从旧 commit 到新 commit 已变化"提示，让新需求重新评估证伪前提是否仍成立；前提失效则该方向或可重新考虑，提示标复活。**防漏过后来又可行的方向**
 - `verdict="superseded"`：注替代指针 `superseded_by` + `correct_direction` + 替代工单摘要，标 🔁 已替代
 
 > **stale 与 verdict 正交**：`stale=true` 优先跳过注入（技术过时，锚点都没了，连避坑都不用）；`stale=false` 才按 verdict 分流。verdict 抓"方向证伪"（锚点在但方向错），stale 抓"技术过时"（锚点没了），互补不重叠。
 
-> **verdict_review_needed 被动检测**（检索命中 disproved/superseded 注入前）：若 `verdict_premise_deps` 非空，逐 dep 取 `git -C {dep.path} rev-parse HEAD`（只读，stale 白名单内）比对 dep.commit，变了则置 `verdict_review_needed=true` 写回 index.json，该工单本次降级走 unknown 对抗质疑（不硬反转，防漏过后来又可行的方向）；未变则 `verdict_review_needed=false` 走硬反转+证伪前提断言。主动检测见 `/icode status --scan-verdict`（[steps/status.md](../steps/status.md)）
+> **verdict_review_needed 被动检测**（检索命中 disproved/superseded 注入前）：若 `verdict_premise_deps` 非空，逐 dep 取 `git -C {dep.path} rev-parse HEAD`（只读，stale 白名单内）比对 dep.commit，变了则置 `verdict_review_needed=true` 写回 index.json，该工单本次降级走 unknown 对抗质疑（不硬反转，防漏过后来又可行的方向）；未变则 `verdict_review_needed=false` 走硬反转+证伪前提断言。主动检测见 `$icodex status --scan-verdict`（[steps/status.md](../steps/status.md)）
 
 ### stale 字段
 
@@ -174,7 +174,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 ## 索引淘汰规则（LRU + 命中续期 + 永久保留）
 
-**目的**：index.json 是检索缓存非档案，随工单增长会膨胀。靠 LRU 淘汰失去复用价值的老工单，保留高价值工单。淘汰只删索引条目，**不删各工程 `.icode_output/` 产物**（产物保留，索引只是指针）。
+**目的**：index.json 是检索缓存非档案，随工单增长会膨胀。靠 LRU 淘汰失去复用价值的老工单，保留高价值工单。淘汰只删索引条目，**不删各工程 `.ai/icode/` 产物**（产物保留，索引只是指针）。
 
 **触发时机**：每次写索引（首次写入/条目更新/命中续期）后执行：先排序，再淘汰扫描，最后主动 stale 扫描。
 
@@ -212,19 +212,19 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 > - 失败兜底：迁移任何步骤失败，写 `{from, to, at, skip_reason}` 条目，不阻塞主流程
 > - 字段缺失兼容：旧 metadata 缺 `migration_log` 视为 `[]`；新增工单一律初始化为 `[]`
 
-> **三步迁移的相互独立性**：步骤 1 / 步骤 4 / 步骤 5 的迁移契约**互不依赖**——分别读 metadata、各自判定版本、各自追加产物段；同一工单走 `/icode start` 全流程时三步依次触发，migration_log 数组会按顺序追加 3 条（不全靠一记，单独 step 启动也 OK）。
+> **三步迁移的相互独立性**：步骤 1 / 步骤 4 / 步骤 5 的迁移契约**互不依赖**——分别读 metadata、各自判定版本、各自追加产物段；同一工单走 `$icodex run` 全流程时三步依次触发，migration_log 数组会按顺序追加 3 条（不全靠一记，单独 step 启动也 OK）。
 
-> **verdict 字段族**（方向结论，可选，详见 SKILL.md「verdict 字段族」）：所有入口模板均可选；**创建时可不写**（缺失视为 `"unknown"`，向后兼容旧 metadata）；需标注时回填 `verdict`+`verdict_reason`+`correct_direction`+`verdict_source`+`verdict_at`（`superseded` 额外填 `superseded_by`；`disproved`/`superseded` 可选填 `verdict_premise_deps` 支持硬复活），途径见 `/icode status --verdict`（[steps/status.md](../steps/status.md)）/ 步骤6 终审（[steps/06_audit.md](../steps/06_audit.md)）/ 批量识别扫描。**索引首次写入时 verdict 固定 `"unknown"`、关联字段 null、premise_deps `[]`/review_needed `false`**（见「全局索引写入」段）
+> **verdict 字段族**（方向结论，可选，详见 SKILL.md「verdict 字段族」）：所有入口模板均可选；**创建时可不写**（缺失视为 `"unknown"`，向后兼容旧 metadata）；需标注时回填 `verdict`+`verdict_reason`+`correct_direction`+`verdict_source`+`verdict_at`（`superseded` 额外填 `superseded_by`；`disproved`/`superseded` 可选填 `verdict_premise_deps` 支持硬复活），途径见 `$icodex status --verdict`（[steps/status.md](../steps/status.md)）/ 步骤6 终审（[steps/06_audit.md](../steps/06_audit.md)）/ 批量识别扫描。**索引首次写入时 verdict 固定 `"unknown"`、关联字段 null、premise_deps `[]`/review_needed `false`**（见「全局索引写入」段）
 
-> **`workload_estimate` 字段族**（工作量评估，v2 新增）：由步骤 0 init 收尾时自动评估，辅助用户决定走 `/icode start` 还是 `/icode fast`。详见 SKILL.md「workload_estimate 字段族」与 [steps/00_init.md](../steps/00_init.md)「步骤 9 工作量评估」段：
-> - `workload_estimate`（可选，枚举，默认 `"medium"`）：工作量等级。`"small"` 建议 `/icode fast`，`"medium"` 建议 `/icode start`，`"large"` **必须** `/icode start`
+> **`workload_estimate` 字段族**（工作量评估，v2 新增）：由步骤 0 init 收尾时自动评估，辅助用户决定走 `$icodex run` 还是 `$icodex fast`。详见 SKILL.md「workload_estimate 字段族」与 [steps/00_init.md](../steps/00_init.md)「步骤 9 工作量评估」段：
+> - `workload_estimate`（可选，枚举，默认 `"medium"`）：工作量等级。`"small"` 建议 `$icodex fast`，`"medium"` 建议 `$icodex run`，`"large"` **必须** `$icodex run`
 > - `workload_reason`（可选，≤80 token）：评估理由
 > - **字段缺失兼容**：旧 metadata 无 `workload_estimate` 视为 `"medium"`（中性默认），不阻塞后续步骤
 > - **4 维度 max 算法**：需求点数 / 涉及文件数 / 跨模块数 / 大改词命中，任一维度落入即评该级，取最严
 >
 > **大改词典**（大改词命中维度扫的关键词）：`重构` / `大改` / `跨模块` / `架构` / `迁移` / `拆分` / `整合` / `refactor` / `migration` / `overhaul`
 >
-> **入口建议映射**：`small` → 建议 `/icode fast`，`medium` → 建议 `/icode start`，`large` → **必须** `/icode start`
+> **入口建议映射**：`small` → 建议 `$icodex fast`，`medium` → 建议 `$icodex run`，`large` → **必须** `$icodex run`
 >
 > **阈值表**（任一维度落入即评该级）：
 >
@@ -249,7 +249,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 > - 作用：决定是否允许"主代理代行三视角判断"——**仅** `no_spawn_env = true` 时允许；`false` 时**硬禁止**主代理代行（即使部分子代理未回结果，详见 [adversarial.md](adversarial.md)「环境无 spawn 工具场景」第 4 步 flag 门控）
 > - 字段缺失兼容：旧 metadata 无 `no_spawn_env` 视为 `false`，不阻塞现有 spawn 协议
 
-### `/icode log` 产出后
+### `$icodex log` 产出后
 
 ```json
 {
@@ -312,7 +312,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 > 复用步骤0目录的情况：metadata 已存在，步骤1只更新 status（→plan_done）、completed_steps（追加"1"）、刷新检索字段，不重建。
 
-### `/icode fast` 新建目录
+### `$icodex fast` 新建目录
 
 ```json
 {
@@ -335,32 +335,32 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 **`mode` 字段**（新增，可选，默认 `"full"`）：
 
-- `"full"`：全流程模式（`/icode start`），步骤2 review 默认 3 轮 + 对抗，步骤5 deepcheck 三阶段循环
-- `"fast"`：精简模式（`/icode fast`），步骤2 review 固定 1 轮无对抗，步骤5 deepcheck 只跑 Reverse
+- `"full"`：全流程模式（`$icodex run`），步骤2 review 默认 3 轮 + 对抗，步骤5 deepcheck 三阶段循环
+- `"fast"`：精简模式（`$icodex fast`），步骤2 review 固定 1 轮无对抗，步骤5 deepcheck 只跑 Reverse
 - **字段缺失**视为 `"full"`（向后兼容旧 metadata）
 
 **`max_rounds` 字段**（新增，可选）：
 
 - 步骤2 review 软上限轮数。`"full"` 默认 3；`"fast"` 下区分场景（见下「步骤2/5 读 mode 字段的契约」）
-- 用户可通过 `/icode review N` 临时覆盖（仅本轮）。`mode="fast"` 时：自动串联（`/icode fast` 调起、未带参 N）固定 1 轮；fast 工单上显式跑 `/icode review N`（带参）则 N 生效触发升级（场景二）
+- 用户可通过 `$icodex review N` 临时覆盖（仅本轮）。`mode="fast"` 时：自动串联（`$icodex fast` 调起、未带参 N）固定 1 轮；fast 工单上显式跑 `$icodex review N`（带参）则 N 生效触发升级（场景二）
 - 字段缺失视为 3（向后兼容）
 
 **步骤2/5 读 mode 字段的契约**：
 
-- 步骤2 review：开头读 metadata.mode，若 `"fast"` 则按「是否带参 N」区分两种场景（详见 [steps/02_review.md](../steps/02_review.md)「fast 模式行为（区分两种场景）」段）——自动串联锁死1轮无对抗；单步命令 `/icode review N` 触发升级跑 N 轮+对抗
+- 步骤2 review：开头读 metadata.mode，若 `"fast"` 则按「是否带参 N」区分两种场景（详见 [steps/02_review.md](../steps/02_review.md)「fast 模式行为（区分两种场景）」段）——自动串联锁死1轮无对抗；单步命令 `$icodex review N` 触发升级跑 N 轮+对抗
 - 步骤5 deepcheck：开头读 metadata.mode，若 `"fast"` 则只跑 Reverse 阶段（详见 [steps/05_deepcheck.md](../steps/05_deepcheck.md)「fast 模式降级」段）
-- 单步命令（`/icode review N` / `/icode deepcheck`）独立调用时**仍读 mode 字段**——这是 fast→full 升级机制的核心：
-  - **fast→full 升级**：fast 工单上用户主动跑 `/icode review 5` 想做更深度审查时，**参数 N 覆盖 mode**（意图明确优先于工单模式），按 full 模式跑 N 轮+对抗（**此场景下 fast 的 `param_max_rounds` 忽略被绕开**——用户用参数显式表达升级意图，参数优先级最高）
-  - **full→fast 降级**：不允许——单步命令不强制按 fast 模式执行（用户若想走 fast 应改用 `/icode fast` 重启链路，而不是在 full 工单上强制 fast 降级）
+- 单步命令（`$icodex review N` / `$icodex deepcheck`）独立调用时**仍读 mode 字段**——这是 fast→full 升级机制的核心：
+  - **fast→full 升级**：fast 工单上用户主动跑 `$icodex review 5` 想做更深度审查时，**参数 N 覆盖 mode**（意图明确优先于工单模式），按 full 模式跑 N 轮+对抗（**此场景下 fast 的 `param_max_rounds` 忽略被绕开**——用户用参数显式表达升级意图，参数优先级最高）
+  - **full→fast 降级**：不允许——单步命令不强制按 fast 模式执行（用户若想走 fast 应改用 `$icodex fast` 重启链路，而不是在 full 工单上强制 fast 降级）
   - 单步命令读 mode 字段只用于 **状态显示**（如 `▶ 步骤2 检测到 fast 模式，但 N=5 显式升级，按 5 轮执行`），不强制降级
 
 ## 注入缓存机制（防重复注入，两源共用）
 
-> 本机制解决「同一开发链路内重复注入同一来源的同一信息切片」问题。**历史检索复用（现有）**和**段零工程文档检索（icode doc 新增）**共用此缓存。定义在此处一处，五入口（init/log/plan/start/fast）统一引用。
+> 本机制解决「同一开发链路内重复注入同一来源的同一信息切片」问题。**历史检索复用（现有）**和**段零工程文档检索（icode doc 新增）**共用此缓存。定义在此处一处，五入口（init/log/plan/run/fast）统一引用。
 
 ### 设计动机
 
-五入口（init/log/plan/start/fast）启动时都会触发检索注入，但一次开发链路常跨多命令（如 init→start 复用同目录），同一历史工单/文档章节会被多次命中，导致 **token 浪费**（重复注入同一切片）+ **hit_count 扭曲**（同目录多次续期虚高，扭曲 `hit_count >= 20` 永久保留判定）。
+五入口（init/log/plan/run/fast）启动时都会触发检索注入，但一次开发链路常跨多命令（如 init→run 复用同目录），同一历史工单/文档章节会被多次命中，导致 **token 浪费**（重复注入同一切片）+ **hit_count 扭曲**（同目录多次续期虚高，扭曲 `hit_count >= 20` 永久保留判定）。
 
 ### 缓存文件
 
@@ -393,11 +393,11 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 | source | slice | 注入命令 | 含义 |
 |--------|-------|---------|------|
 | `history` | `requirement_points` | init | 需求要点清单 |
-| `history` | `adr_risks` | plan / start / fast | ADR + 风险评估章节 |
+| `history` | `adr_risks` | plan / run / fast | ADR + 风险评估章节 |
 | `history` | `root_cause_evidence` | log | 根因结论 + 决定性证据 |
-| `history` | `verdict_lesson` | init/plan/start/fast/log | disproved/superseded 工单反转注入的避坑结论（`verdict_reason`+`correct_direction`，见「检索命中续期·过时校验」段 verdict 分流注入） |
-| `project_doc` | `section:<file>` | init/log/plan/start/fast | 工程文档章节（可细化到小节锚点 `section:<file>#<anchor>`） |
-| `project_doc` | `section:<file>#stale-summary` | init/log/plan/start/fast | stale 章节降级注入的简要说明（不读正文小节，见「stale 章节降级注入」） |
+| `history` | `verdict_lesson` | init/plan/run/fast/log | disproved/superseded 工单反转注入的避坑结论（`verdict_reason`+`correct_direction`，见「检索命中续期·过时校验」段 verdict 分流注入） |
+| `project_doc` | `section:<file>` | init/log/plan/run/fast | 工程文档章节（可细化到小节锚点 `section:<file>#<anchor>`） |
+| `project_doc` | `section:<file>#stale-summary` | init/log/plan/run/fast | stale 章节降级注入的简要说明（不读正文小节，见「stale 章节降级注入」） |
 
 ### 去重规则（核心）
 
@@ -408,7 +408,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 **不同 slice 允许共存**（不是 bug，是特性）：
 
-- init 注 `(history, demo-3, requirement_points)`，后续 start 注 `(history, demo-3, adr_risks)`——两个不同 slice，各自注入一次，合理
+- init 注 `(history, demo-3, requirement_points)`，后续 run 注 `(history, demo-3, adr_risks)`——两个不同 slice，各自注入一次，合理
 - 这是"一次开发链路里不同步骤注入同一工单的不同信息切片"的正常场景
 
 ### 续期去重（hit_count 防重复 +1）
@@ -423,22 +423,22 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 ### 生命周期与崩溃恢复
 
-- **跟随工单目录 + append-only**：`.icode_output_N/` 删除→缓存消失；每条注入立即写盘，崩溃不丢、重启不重复注入
+- **跟随工单目录 + append-only**：`.ai/icode/icode_N/` 删除→缓存消失；每条注入立即写盘，崩溃不丢、重启不重复注入
 - **与续跑机制正交**：不读 `*_in_progress`，不影响步骤 2/5 断点续跑
 - **向后兼容**：旧工单无缓存→首次检索创建空缓存 `{"ticket_id":"<本工单>","injections":[]}`（ticket_id 读 metadata，暂无填空串）
 
 ### 工程污染防护
 
-缓存只在 `.icode_output_N/` 内（不进工程根/git，建议 `.gitignore` 已含 `.icode_output/`），与 `.ico_metadata.json` 平级独立，不污染检索字段。
+缓存只在 `.ai/icode/icode_N/` 内（不进工程根/git，建议 `.gitignore` 已含 `.ai/icode/`），与 `.ico_metadata.json` 平级独立，不污染检索字段。
 
 ## project_docs 工程文档库（icode doc 步骤用）
 
-> `/icode doc` 生成的工程级知识库。**零配置、零状态文件、零索引文件**——只有章节 .md 文件，每个自带身份证（前 50 行三合一）。详见 [steps/doc.md](../steps/doc.md) 与 [references/doc_template.md](doc_template.md)。
+> `$icodex doc` 生成的工程级知识库。**零配置、零状态文件、零索引文件**——只有章节 .md 文件，每个自带身份证（前 50 行三合一）。详见 [steps/doc.md](../steps/doc.md) 与 [references/doc_template.md](doc_template.md)。
 
 ### 目录布局
 
 ```text
-~/.claude/icode_data/project_docs/
+~/.codex/icode_data/project_docs/
 └── <project_id>/                    # project_id = basename(git rev-parse --show-toplevel)
     ├── main/                        # 分支目录：DOC_DIR 按 <project_id>/<branch> 分目录
     │   ├── 00_overview.md           # 永远首章，元信息块含 generation_commit/branch/submodules
@@ -449,7 +449,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
     │   ├── 90_glossary.md
     │   ├── 99_code_facts_audit.md   # 永远末章
     │   └── _meta.json               # 含 branch + head_commit，跨分支不通用
-    ├── feature/                     # 同一工程在 feature 分支跑 /icode doc 落这里
+    ├── feature/                     # 同一工程在 feature 分支跑 $icodex doc 落这里
     │   ├── 00_overview.md
     │   └── ...
     └── (detached)/                  # detached HEAD 状态落此目录（罕见）
@@ -460,25 +460,25 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 - **git-root 模式**（cwd 在 git 仓库内）：`project_id` = `basename($(git rev-parse --show-toplevel))`，不区分子目录
 - **`repo` 根模式**（cwd 不在 git 仓库但有 `.repo/manifest.xml`，如 Google `repo` 管理的多仓库项目）：`project_id` = `basename(从 cwd 向上找第一个含 .repo/ 的目录)`
-- **branch 感知**：DOC_DIR = `~/.claude/icode_data/project_docs/<project_id>/<branch>/`，**按分支分目录存**（key 设计见下文「DOC_DIR 分支隔离」段）
+- **branch 感知**：DOC_DIR = `~/.codex/icode_data/project_docs/<project_id>/<branch>/`，**按分支分目录存**（key 设计见下文「DOC_DIR 分支隔离」段）
   - 同工程不同分支（如 `myproject/main/` vs `myproject/feature/`）→ 天然隔离互不覆盖
   - **detached HEAD** → 落到 `(detached)` 子目录
   - **非 git 仓库** → 落到 `(no-git)` 子目录
   - 分支名 sanitize：路径分隔符 `/`、`\` 与文件名非法字符 `: * ? " < > |` 替换为 `_`，避免破坏目录结构
 - 子目录（如 `myrepo/module_a/`）是同一 project 下的**章节模块**（章节名带模块前缀 `20_module_a_overview.md`），不是独立 project
-- **冲突处理**：若 `~/.claude/icode_data/project_docs/<project_id>/<branch>/` 已存在且其 `00_overview.md` 元信息块的 `project_path` 与当前 `git_root` 不同 → 自动追加 hash 后缀 `${PROJECT_ID}__${BRANCH_SAFE}__$(echo $GIT_ROOT|sha256sum|cut -c1-4)`，AI 靠元信息块的 git remote 区分同名工程同名分支
+- **冲突处理**：若 `~/.codex/icode_data/project_docs/<project_id>/<branch>/` 已存在且其 `00_overview.md` 元信息块的 `project_path` 与当前 `git_root` 不同 → 自动追加 hash 后缀 `${PROJECT_ID}__${BRANCH_SAFE}__$(echo $GIT_ROOT|sha256sum|cut -c1-4)`，AI 靠元信息块的 git remote 区分同名工程同名分支
 - **零配置**：不引入任何配置文件，工程名、分支等可配信息全在章节元信息块
 - **`resolve_project_id(cwd)` 算法**：
   1. `git rev-parse --show-toplevel` 成功 → git-root 模式，返回 `(basename(git_root), "git-root", git_root, abbrev-ref HEAD)`
   2. 否则从 cwd 向上逐级 `test -d $d/.repo`，首个命中 → repo-root 模式，返回 `(basename(repo_root), "repo-root", repo_root, "(no-git)")`
-  3. 都失败 → 报错"请在 git 仓库或 repo 管理的项目内运行 /icode doc 或段零检索"
+  3. 都失败 → 报错"请在 git 仓库或 repo 管理的项目内运行 $icodex doc 或段零检索"
   4. **多分支并存**：同 `project_id` 下可有多个 `<branch>/` 子目录，下游段零检索需枚举所有分支目录 + 按当前 cwd 分支过滤（详见「DOC_DIR 分支隔离」段）
 
 ### 章节前 50 行三合一（自带身份证）
 
 每个章节前 50 行承载项目元信息块（工程名/git/提交/子模块/产品线/模块/时间）+ KEYS 块（检索词带 `[小节锚点]`，段零按小节注入不灌全章）+ 简要说明（50~100 字），完整结构见 [references/doc_template.md](doc_template.md)。**元信息块替代 config + state + index 三个文件**——文件系统即数据库（`ls` 枚举、元信息查状态、KEYS 做检索）。
 
-### 段零·工程文档检索（init/log/plan/start/fast 共用）
+### 段零·工程文档检索（init/log/plan/run/fast 共用）
 
 五入口启动时，与历史检索复用并行做段零检索，**候选合并后统一排序**注入（不分来源，最相关者胜）。除工程自身章节（`project_docs/`）外，自动覆盖工程依赖的模块共享文档（`module_docs/`，按仓库+分支 key 跨工程共享，详见「module_docs 工程模块库」段）。
 
@@ -493,28 +493,28 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 ```text
 1. cwd → resolve_project_id(cwd) → (project_id, project_type)  # git-root 或 repo-root
-2. **DOC_DIR 分支过滤**（关键，多分支并存不交叉污染）：按 `resolve_project_id(cwd)` 算法算出 `<project_id>` + 当前分支 `<branch>`（sanitize 后），只读 `<DOC_DIR>=~/.claude/icode_data/project_docs/<project_id>/<branch_safe>/*.md`，**不交叉读其他分支子目录**（如当前在 `feature` 分支时不读 `main` 子目录，反之亦然）。理由：分支间代码差异大，跨分支工程文档互相借鉴必然失真。
-   - 列出其他分支子目录（仅枚举用于 ℹ️ 提示，不读章节）：`ls ~/.claude/icode_data/project_docs/<project_id>/` 各子目录 → 输出"本工程已有 N 个分支的知识库：main (a3f2b1c)、feature (b8c3d4e)、dev (c1e2f3a) — 当前分支 `<branch>` 已建则用，未建则提示按需 `/icode doc`"
-   - **legacy 兼容回退**（v1 升级到 v2 时的过渡关键，已存在但还没跑过 `/icode doc` 的工程）：若 `<DOC_DIR>` 不存在但 `<project_id>/` 目录下直接有 `00_overview.md` 等章节（v1 单级布局）→ 输出 ⚠️ 警告「该工程 project_docs 还在 v1 单级布局（旧版，未按分支分子目录）—— 本次段零检索**回退按 legacy 方式读**章节（不会判为零命中），但建议下次 `/icode doc` 时**自动迁移**到 `<id>/<branch>/` 多分支布局（迁移逻辑见 doc.md 步骤 5，保留旧章节 + 写到正确分支子目录）」→ 读 `<project_id>/00_overview.md` 元信息块的 `generation_commit` + `分支/提交` 字段 → 同上做分支 + 祖先 stale 校验（**强制分支校验**：从元信息块提取旧 branch 与当前 `git rev-parse --abbrev-ref HEAD` 比对，不一致→该工程所有章节 stale，按 stale 章节降级注入只注摘要 + 警告），KEYS 匹配 + 语义打分 → project 候选集 → **整段检索末尾汇总追加一行 ℹ️「本工程 v1→v2 迁移未完成，建议下个稳定时机跑 `/icode doc` 触发自动迁移，旧数据保留直到迁移成功」**（避免段零每次都重复警告）
+2. **DOC_DIR 分支过滤**（关键，多分支并存不交叉污染）：按 `resolve_project_id(cwd)` 算法算出 `<project_id>` + 当前分支 `<branch>`（sanitize 后），只读 `<DOC_DIR>=~/.codex/icode_data/project_docs/<project_id>/<branch_safe>/*.md`，**不交叉读其他分支子目录**（如当前在 `feature` 分支时不读 `main` 子目录，反之亦然）。理由：分支间代码差异大，跨分支工程文档互相借鉴必然失真。
+   - 列出其他分支子目录（仅枚举用于 ℹ️ 提示，不读章节）：`ls ~/.codex/icode_data/project_docs/<project_id>/` 各子目录 → 输出"本工程已有 N 个分支的知识库：main (a3f2b1c)、feature (b8c3d4e)、dev (c1e2f3a) — 当前分支 `<branch>` 已建则用，未建则提示按需 `$icodex doc`"
+   - **legacy 兼容回退**（v1 升级到 v2 时的过渡关键，已存在但还没跑过 `$icodex doc` 的工程）：若 `<DOC_DIR>` 不存在但 `<project_id>/` 目录下直接有 `00_overview.md` 等章节（v1 单级布局）→ 输出 ⚠️ 警告「该工程 project_docs 还在 v1 单级布局（旧版，未按分支分子目录）—— 本次段零检索**回退按 legacy 方式读**章节（不会判为零命中），但建议下次 `$icodex doc` 时**自动迁移**到 `<id>/<branch>/` 多分支布局（迁移逻辑见 doc.md 步骤 5，保留旧章节 + 写到正确分支子目录）」→ 读 `<project_id>/00_overview.md` 元信息块的 `generation_commit` + `分支/提交` 字段 → 同上做分支 + 祖先 stale 校验（**强制分支校验**：从元信息块提取旧 branch 与当前 `git rev-parse --abbrev-ref HEAD` 比对，不一致→该工程所有章节 stale，按 stale 章节降级注入只注摘要 + 警告），KEYS 匹配 + 语义打分 → project 候选集 → **整段检索末尾汇总追加一行 ℹ️「本工程 v1→v2 迁移未完成，建议下个稳定时机跑 `$icodex doc` 触发自动迁移，旧数据保留直到迁移成功」**（避免段零每次都重复警告）
    - ls `<DOC_DIR>/*.md`：
-     ├─ 不存在（且无 legacy 回退命中）→ 段零零命中（输出一行 ℹ️ 提示"本工程当前分支 `<branch>` 尚未生成知识库，可运行 `/icode doc`，或切换到已建分支"，不阻塞，不写缓存）
+     ├─ 不存在（且无 legacy 回退命中）→ 段零零命中（输出一行 ℹ️ 提示"本工程当前分支 `<branch>` 尚未生成知识库，可运行 `$icodex doc`，或切换到已建分支"，不阻塞，不写缓存）
      └─ 存在 → 逐章读前 50 行 → KEYS 匹配 + 简要说明语义打分 → project 候选集
    - **粗筛 0 命中早返回**：`project` 或 `module` 候选集任一为 0 条 → 不调 LLM 精读打分，直接合并入总候选集（节省 1-3K token，语义等价——粗筛 0 命中 LLM 精读也是 0）
 3. 读 `<DOC_DIR>/_meta.json` → `module_deps` 列表（**注意**：不是 `project_docs/<project_id>/_meta.json`，是按分支子目录里的；每个分支独立 _meta.json，互不继承）
-   对每个 dep：ls ~/.claude/icode_data/module_docs/<dep.key>/*.md
+   对每个 dep：ls ~/.codex/icode_data/module_docs/<dep.key>/*.md
    ├─ 目录不存在或无 .md：
-   │   - dep.generated == false（按需未生成，见 doc.md 步骤5「module_docs 生成范围」用户指定模块名场景）-> 不报缺失，提示"可 `/icode doc <name>` 按需生成"，跳过该 dep
+   │   - dep.generated == false（按需未生成，见 doc.md 步骤5「module_docs 生成范围」用户指定模块名场景）-> 不报缺失，提示"可 `$icodex doc <name>` 按需生成"，跳过该 dep
    │   - dep.generated 缺省或 true（本应生成却缺失）-> 收集到「缺失模块」列表（末尾汇总警告），跳过该 dep
    └─ 存在 → 读前 50 行 → KEYS 匹配 → module 候选集
       **commit 一致性校验（防跨工程 commit 漂移误导）**：比对工程 `_meta.json.module_deps[].commit`（本工程 pin 的 commit）与 `module_docs/<key>/_meta.json.current_commit`：
       - 一致 → 正常注入（模块文档版本与本工程代码版本匹配）
-      - 不一致（同分支不同 commit，跨工程 /icode doc 互相覆盖所致，见「module_docs key 计算」）→ **降级注入**：注入正文但附警告「⚠️ 模块 `<name>` 文档基于 commit `<current_commit>`，本工程 pin `<dep.commit>`，API/行为以本工程代码为准，须 Read 实证」，提示下游不得直接采信模块文档的 file:line / 接口描述
-      - key 只含 url+branch 不含 commit，同分支不同 commit 共用同一 key 无法靠目录隔离，段零必须运行时比对 commit 兜底；`/icode doc` 生成时的全量重生成覆盖（见 [doc.md](../steps/doc.md) 步骤5）只把文档更新到"最后一次跑 doc 的工程"的 commit，不能消除跨工程漂移
+      - 不一致（同分支不同 commit，跨工程 $icodex doc 互相覆盖所致，见「module_docs key 计算」）→ **降级注入**：注入正文但附警告「⚠️ 模块 `<name>` 文档基于 commit `<current_commit>`，本工程 pin `<dep.commit>`，API/行为以本工程代码为准，须 Read 实证」，提示下游不得直接采信模块文档的 file:line / 接口描述
+      - key 只含 url+branch 不含 commit，同分支不同 commit 共用同一 key 无法靠目录隔离，段零必须运行时比对 commit 兜底；`$icodex doc` 生成时的全量重生成覆盖（见 [doc.md](../steps/doc.md) 步骤5）只把文档更新到"最后一次跑 doc 的工程"的 commit，不能消除跨工程漂移
 3.5 **反查父项目**（子仓库内工作时）：如果 cwd 在 git-root 模式 → 计算 `cwd_relative = realpath(cwd) 相对 realpath(.repo 所在目录)`（**注意：是相对 .repo 根，不是相对 git_root**——例如 cwd 在 `myproject/module_a/`、.repo 在 `myproject/.repo/` 时，cwd_relative = `module_a/`）→ 若 `.repo/manifest.xml` 存在且 `cwd_relative` 精确匹配或为某 `<project path>` 的子路径 → 该 manifest project 的"父 repo 根"=`.repo/` 所在目录；把父 project（repo-root）也纳入检索（读 `project_docs/<父 project_id>/<父 branch>/_meta.json` + 章节，**按父 repo 自身分支子目录读**，勿读错的分支），候选合并排序时一并参与打分（来源标签标「来源：project:父 project_id」）
 3.6 **关联工程检索（跨工程参考，只读 overview）**：读步骤 2 本工程 `00_overview.md` 元信息块的「关联工程」字段（v2 字段，缺失则跳过此步不阻塞） -> 对每个关联标识（优先 project_id，也可能是工程名/产品代号）：
-   ├─ 先精确 ls `~/.claude/icode_data/project_docs/<关联 project_id>/<branch_safe>/00_overview.md`
+   ├─ 先精确 ls `~/.codex/icode_data/project_docs/<关联 project_id>/<branch_safe>/00_overview.md`
    ├─ 精确不存在且标识疑似工程名/代号 -> 遍历 `project_docs/*/<branch_safe>/00_overview.md` 元信息块的「工程名」「产品线/型号」字段模糊匹配关联标识，命中取其路径
-   └─ 命中路径 -> 读前 50 行 -> KEYS 匹配 + 简要说明语义打分 -> 关联工程候选集（**只取 00_overview，不读其他章节**，控 token 且防跨工程失真）；**强制 stale 校验**（分支 + 祖先双校验，同步骤 5 project 章节）+ ⚠️ 跨工程警告「关联工程 `<id>` 文档为快照，代码可能已分叉，下游须 Read 实证」；来源标签「来源：project:关联 `<id>`」；无任何命中 -> ℹ️ 提示「关联工程 `<标识>` 未生成知识库或分支 `<branch>` 不匹配，可提示用户 `/icode doc`」，跳过
+   └─ 命中路径 -> 读前 50 行 -> KEYS 匹配 + 简要说明语义打分 -> 关联工程候选集（**只取 00_overview，不读其他章节**，控 token 且防跨工程失真）；**强制 stale 校验**（分支 + 祖先双校验，同步骤 5 project 章节）+ ⚠️ 跨工程警告「关联工程 `<id>` 文档为快照，代码可能已分叉，下游须 Read 实证」；来源标签「来源：project:关联 `<id>`」；无任何命中 -> ℹ️ 提示「关联工程 `<标识>` 未生成知识库或分支 `<branch>` 不匹配，可提示用户 `$icodex doc`」，跳过
    - **3.6 源码路径定位**（为下游 Read 实证关联工程源码提供线索；仅给工程根路径不注正文 file:line，防跨工程失真）：对每个命中的关联工程，读其 00_overview 元信息块的 `project_path` + `Git 地址`，三级定位本机源码根：
      (a) **project_path 校验**：`project_path` 缺失/空（旧 v1 章节无此字段）则跳过本项进 (b)；`test -d <关联 project_path>` 有效 -> 取为源码线索（同机有效；绝对路径可能因换机器/换 clone 位置失效，故必校验）
      (b) **manifest 匹配**（当前工程 repo-root 模式 + `.repo/manifest.xml` 存在时）：按关联工程 `Git 地址` 精确匹配 manifest `<project name="<git 地址>" path="<本地路径>" />`，命中取 `path`（相对 .repo 根，拼绝对路径）-- 同 repo 关联工程最可靠定位（manifest 是本机源码权威映射）
@@ -535,7 +535,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 - **分支校验（最优先，主防线）**：
   - 工程 `_meta.json.branch` == `git rev-parse --abbrev-ref HEAD`（含 detachable 后 `HEAD` 字面量相等）→ 继续祖先校验
-  - **分支不一致**（如 `_meta.json.branch = main` 但 cwd HEAD 在 `feature`）→ **该工程所有章节直接判定 stale**（不只看 diff 命中，跨分支文档整体不可信），slice=`section:<file>#stale-branch-mismatch`，按「stale 章节降级注入」只注简要说明 + 警告行「⚠️ 文档基于分支 `<branch>`，当前 `<current-branch>`，跨分支差异可能很大，重跑 `/icode doc` 重生成」
+  - **分支不一致**（如 `_meta.json.branch = main` 但 cwd HEAD 在 `feature`）→ **该工程所有章节直接判定 stale**（不只看 diff 命中，跨分支文档整体不可信），slice=`section:<file>#stale-branch-mismatch`，按「stale 章节降级注入」只注简要说明 + 警告行「⚠️ 文档基于分支 `<branch>`，当前 `<current-branch>`，跨分支差异可能很大，重跑 `$icodex doc` 重生成」
   - 工程本身非 git 仓库（`_meta.json.branch = null`）→ 跳过分支校验，走祖先 + diff 路径
 - **祖先校验**（分支一致后）：
   - `git merge-base --is-ancestor <prev> HEAD` 退出 0（正常前向演进）→ HEAD 变更且 `git diff <commit>..HEAD --name-only` 命中该章 KEYS「文件位置」**或命中章节正文涉及的目录前缀**（应对 KEYS 文件位置不完整 / 新增文件 / 重构改路径导致漏判的假阴性）→ 判定该章 stale
@@ -544,9 +544,9 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 **两源合一**：先查工程 `_meta.json.stale_files`（主动扫描持久化结果，见下文「project_docs 主动 stale 扫描」）快速识别 stale 章节（降级注入摘要不注正文，见下文「stale 章节降级注入」），再运行时 `git diff` 兜底（`_meta.json` 可能比最新 HEAD 旧）。判定宁可放宽（假阳性仅触发降级，假阴性才会误导）。
 
-**stale 章节降级注入（不注正文，防误导）**：stale 章节**绝不注入正文小节**（避免过时 file:line / IPC 契约 / 调用链误导新工作流），改为**只注入「简要说明」（50~100 字概览，不含 file:line，误导风险低）+ 警告行**「⚠️ 章节 `<文件>` 基于旧 commit `<generation_commit>`，当前 HEAD `<HEAD>`，已过时仅注入摘要，建议重跑 `/icode doc` 更新」。与历史工单 stale「跳过注入」同等防误导强度--过时的正文小节不进新工作流思考输入；降级保留「简要说明」仅给新工作流方向性参考，不构成事实依据（配合下文「不盲信约束」）。 注入缓存 slice 记为 `section:<file>#stale-summary`（与正文小节 `section:<file>#<anchor>` 区分，避免去重混淆；章节重跑变新鲜后注入正文小节不被误跳过）。
+**stale 章节降级注入（不注正文，防误导）**：stale 章节**绝不注入正文小节**（避免过时 file:line / IPC 契约 / 调用链误导新工作流），改为**只注入「简要说明」（50~100 字概览，不含 file:line，误导风险低）+ 警告行**「⚠️ 章节 `<文件>` 基于旧 commit `<generation_commit>`，当前 HEAD `<HEAD>`，已过时仅注入摘要，建议重跑 `$icodex doc` 更新」。与历史工单 stale「跳过注入」同等防误导强度--过时的正文小节不进新工作流思考输入；降级保留「简要说明」仅给新工作流方向性参考，不构成事实依据（配合下文「不盲信约束」）。 注入缓存 slice 记为 `section:<file>#stale-summary`（与正文小节 `section:<file>#<anchor>` 区分，避免去重混淆；章节重跑变新鲜后注入正文小节不被误跳过）。
 
-**不盲信约束（段零注入的工程/模块文档仅作参考）**：段零注入的 project_docs / module_docs 章节是 `/icode doc` 生成时的**快照**，可能因工程迭代而过时（即使未标 stale 也只是「未检测到过时」，非「已验证最新」）。下游 init/plan/start/fast/log 步骤**不得将注入的文档描述当作事实直接采信**：凡涉及代码行为 / 位置 / 接口契约 / 调用链 / 错误码的断言，**必须用 Read/Grep 实证当前代码**后再纳入决策（与 [anti_laziness.md](anti_laziness.md)「段零文档不盲信」条 + [01_plan.md](../steps/01_plan.md) 计划断言实证一致）。文档只作「设计意图与模块关系」的启发，不作「代码事实」的依据。
+**不盲信约束（段零注入的工程/模块文档仅作参考）**：段零注入的 project_docs / module_docs 章节是 `$icodex doc` 生成时的**快照**，可能因工程迭代而过时（即使未标 stale 也只是「未检测到过时」，非「已验证最新」）。下游 init/plan/run/fast/log 步骤**不得将注入的文档描述当作事实直接采信**：凡涉及代码行为 / 位置 / 接口契约 / 调用链 / 错误码的断言，**必须用 Read/Grep 实证当前代码**后再纳入决策（与 [anti_laziness.md](anti_laziness.md)「段零文档不盲信」条 + [01_plan.md](../steps/01_plan.md) 计划断言实证一致）。文档只作「设计意图与模块关系」的启发，不作「代码事实」的依据。
 
 **质量信号（v2 新增，模板版本驱动的注入优先级）**：章节 `_meta.json.template_version` 与 [doc_template.md](../references/doc_template.md) 顶部 `SCHEMA_VERSION` 比对：
 
@@ -554,7 +554,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 |----------|---------|---------------|
 | `template_version == SCHEMA_VERSION`（v2 章节，如 v2.0.0）**且非 stale** | 正常注入（既新鲜又高质量） | `section:<file>#<anchor>` |
 | `template_version == SCHEMA_VERSION`（v2 章节）**但 stale** | 降级注入（stale 优先于模板版本——避免注入过时内容） | `section:<file>#stale-summary` |
-| `template_version < SCHEMA_VERSION`（v1 章节，含缺失字段）**且非 stale** | **降级注入**：只注「简要说明」+ 警告「⚠️ 章节基于旧模板版本 `<旧版本>`，当前 SCHEMA_VERSION `<SCHEMA_VERSION>`，建议重跑 `/icode doc` 触发模板迁移」+ 建议运行 `/icode doc` 升级；**不注正文小节**（旧模板未含 14 项必含元素 + 业务流独立章节 + 英文中文备注 + 链路中文说明，注入质量不可控） | `section:<file>#v1-summary` |
+| `template_version < SCHEMA_VERSION`（v1 章节，含缺失字段）**且非 stale** | **降级注入**：只注「简要说明」+ 警告「⚠️ 章节基于旧模板版本 `<旧版本>`，当前 SCHEMA_VERSION `<SCHEMA_VERSION>`，建议重跑 `$icodex doc` 触发模板迁移」+ 建议运行 `$icodex doc` 升级；**不注正文小节**（旧模板未含 14 项必含元素 + 业务流独立章节 + 英文中文备注 + 链路中文说明，注入质量不可控） | `section:<file>#v1-summary` |
 | v1 章节 + stale | 降级注入（取 stale-summary，stale 优先级 > 模板版本） | `section:<file>#stale-summary` |
 | 缺失 template_version 字段 | 视为 v1，走上一档降级路径 | 同上 |
 
@@ -562,16 +562,16 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 **双视角使用说明（v2 新增）**：v2 章节**同时服务两类读者**，段零注入策略因下游角色不同而不同：
 
-- **init/plan/start/fast 步骤**：偏重 AI 视角的 14 项必含元素（H2 摘要 + 锚点表 + API 速查表 + 状态转移表），用于让 AI 在写代码/做计划时直接 grep 定位
+- **init/plan/run/fast 步骤**：偏重 AI 视角的 14 项必含元素（H2 摘要 + 锚点表 + API 速查表 + 状态转移表），用于让 AI 在写代码/做计划时直接 grep 定位
 - **log 步骤**：偏重人/AI 双视角的故障现象索引表 + 故障排查表 + 状态转移表，用于日志根因分析时直接对照
 - **readme 步骤**：偏重人视角的 00_overview 6 项必含元素（新手导览 + 全栈图 + 角色路径），用于生成交付报告时引用
 
 下游步骤消费注入上下文时，应先识别自身角色，按上表选择最相关的必含元素。详见 [doc_template.md](../references/doc_template.md)「〇、模板版本与双视角设计」+「14 项必含元素」段。
 
 **附加输出**（段零末尾汇总）：
-- ⚠️ **缺失模块警告**（若步骤 3 收集到「缺失模块」列表）：输出「工程引用了以下 module_docs 但不存在：\`{dep1.name}\`(\`{dep1.key}\`), \`{dep2.name}\`(\`{dep2.key}\`)... — 请检查是否已 /icode doc 生成，或工程 _meta.json.module_deps 是否写错 key」
-- ⚠️ **未生成模块警告**（若工程 `_meta.json.unresolved_modules` 非空）：输出「工程有 N 个未生成模块（拉取失败）：\`{name1}\`(\`{reason1}\`), \`{name2}\`(\`{reason2}\`)... — 子仓库代码本地化后重跑 /icode doc 时自动恢复」
-- ℹ️ **按需未生成模块提示**（若步骤 3 收集到 `generated == false` 的模块）：输出「工程有 N 个模块未生成 module_docs（按需未生成，上次 /icode doc 指定了其他模块聚焦）：\`{name1}\`, \`{name2}\`... - 可 \`/icode doc <name>\` 按需生成」
+- ⚠️ **缺失模块警告**（若步骤 3 收集到「缺失模块」列表）：输出「工程引用了以下 module_docs 但不存在：\`{dep1.name}\`(\`{dep1.key}\`), \`{dep2.name}\`(\`{dep2.key}\`)... — 请检查是否已 $icodex doc 生成，或工程 _meta.json.module_deps 是否写错 key」
+- ⚠️ **未生成模块警告**（若工程 `_meta.json.unresolved_modules` 非空）：输出「工程有 N 个未生成模块（拉取失败）：\`{name1}\`(\`{reason1}\`), \`{name2}\`(\`{reason2}\`)... — 子仓库代码本地化后重跑 $icodex doc 时自动恢复」
+- ℹ️ **按需未生成模块提示**（若步骤 3 收集到 `generated == false` 的模块）：输出「工程有 N 个模块未生成 module_docs（按需未生成，上次 $icodex doc 指定了其他模块聚焦）：\`{name1}\`, \`{name2}\`... - 可 \`$icodex doc <name>\` 按需生成」
 
 **工程隔离**：段零严格按当前 cwd 的 project_id 检索**工程自身章节**（不跨 project 注入 `project_docs/` 正文），但**自动跨仓库跨分支覆盖依赖的 `module_docs/`**（多个 project 引用同一上游仓库同分支只一份，自动复用）。**关联工程**（姊妹/同族）通过 00_overview 元信息块「关联工程」字段显式声明，段零只检索其 00_overview「简要说明」+ ⚠️ 跨工程警告 + **源码路径线索**（步骤 3.6 源码路径定位：project_path/manifest/兜底）作为参考候选（**不注正文小节**，防跨工程代码分叉失真），不自动跨库注入全章。
 
@@ -579,20 +579,20 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 ### 检索结果缓存（5 分钟 TTL，可选 token 优化）
 
-> **目的**：5 分钟内连续触发同一入口（init/log/plan/start/fast）+ 相同关键词的检索时，跳过 LLM 精读打分，直接复用上次结果。**单工单节省 0.5-2K token**（仅命中场景，多入口连续触发时）。
+> **目的**：5 分钟内连续触发同一入口（init/log/plan/run/fast）+ 相同关键词的检索时，跳过 LLM 精读打分，直接复用上次结果。**单工单节省 0.5-2K token**（仅命中场景，多入口连续触发时）。
 >
 > **完全可选**：以下规则让 AI 自主遵循即可，**不强制 icode-skill 命令实施**（避免破坏现有命令链路）。Claude 等 LLM 看到本段会自然在连续调用间检查缓存。
 
 **缓存机制**（AI 自主执行，5 分钟内）：
 
-1. **缓存位置**：`~/.claude/icode_data/_search_cache.json`
+1. **缓存位置**：`~/.codex/icode_data/_search_cache.json`
 2. **缓存键**：`{cwd_absolute}:{sorted_keywords_joined_by_pipe}`（cwd 必须绝对路径，关键词按字典序排序确保等价输入命中同 key）
 3. **缓存值**：`{"results": [...], "created_at": <unix_timestamp>, "index_mtime": <index.json mtime>}`
 4. **TTL**：300 秒（5 分钟）
 5. **失效条件**（任一命中即跳过缓存）：
    - TTL 过期 → 重跑
    - cwd 变化 → 不复用（不同工程的检索不能跨）
-   - `~/.claude/icode_data/index.json` 的 mtime 变化 → 强制失效（索引有更新）
+   - `~/.codex/icode_data/index.json` 的 mtime 变化 → 强制失效（索引有更新）
 
 **AI 自主执行**（五入口启动时）：
 
@@ -611,11 +611,11 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 - 语义等价：相同 key 相同结果（LLM 精读本身有随机性，结果可能略变——缓存牺牲微弱随机性换 0.5-2K token）
 
 
-### project_docs 主动 stale 扫描（`/icode doc` 末尾执行，防过时章节堆积）
+### project_docs 主动 stale 扫描（`$icodex doc` 末尾执行，防过时章节堆积）
 
-对比 index.json 的主动 stale 扫描，project_docs 章节此前只有"段零命中前被动检测"一条路径--长期不跑 `/icode doc` 的工程，过时章节无机制标记，首次段零命中才被动检测（且只降级注入，不清理）。本机制补第二道清理（与 index.json「主动 stale 扫描」对齐，见上文「索引淘汰规则·主动 stale 扫描」）：
+对比 index.json 的主动 stale 扫描，project_docs 章节此前只有"段零命中前被动检测"一条路径--长期不跑 `$icodex doc` 的工程，过时章节无机制标记，首次段零命中才被动检测（且只降级注入，不清理）。本机制补第二道清理（与 index.json「主动 stale 扫描」对齐，见上文「索引淘汰规则·主动 stale 扫描」）：
 
-- **触发时机**：`/icode doc` 执行末尾（见 [doc.md](../steps/doc.md) 步骤8）
+- **触发时机**：`$icodex doc` 执行末尾（见 [doc.md](../steps/doc.md) 步骤8）
 - **扫描范围**：全库章节（project_docs 章节量可控，每章 Grep 锚点 <1K token，全量可控；不像 index.json 只扫最旧 K 条）
 - **校验方法**：逐章读其 KEYS「文件位置」列出的文件路径，用 Grep 确认锚点代码仍存在（方法同 index.json「过时校验」）
 - **结果写 `_meta.json.stale_files`**：失效的章节文件名写入工程 `_meta.json.stale_files` 数组；章节重生成（锚点恢复）后从此数组移除
@@ -639,7 +639,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 ### 目录布局（module_docs 层）
 
 ```text
-~/.claude/icode_data/
+~/.codex/icode_data/
 ├── project_docs/                          # 工程级（v1 已有）
 │   └── <project_id>/
 │       ├── _meta.json                    # 工程元信息（含 module_deps 列表）
@@ -664,7 +664,7 @@ key = <url_basename_sanitized> + "_" + sha256(repo_url + ":" + branch)[:12]
 - **例**：`git@example.com:user/myproject/module_a.git` @ `main` → basename `module_a` → key `module_a_9f3a2b1c4d8e`
 - 不同仓库（不同 URL）→ basename 或 hash 至少一个不同 → 不同 key
 - 同仓库不同分支（main vs dev）→ hash 包含 branch → 不同 key
-- 同仓库同分支不同 commit → 同一 key（key 不含 commit）。**段零检索时**比对工程 pin 的 commit 与 `module_docs/<key>/_meta.json.current_commit`，不一致→降级注入+警告（见「段零·工程文档检索」步骤 3 commit 一致性校验）；`/icode doc` 生成时 commit 不一致→全量重生成覆盖（见 [doc.md](../steps/doc.md) 步骤5）。两者不矛盾：生成时覆盖更新文档版本，检索时校验是否匹配当前工程 pin 的 commit
+- 同仓库同分支不同 commit → 同一 key（key 不含 commit）。**段零检索时**比对工程 pin 的 commit 与 `module_docs/<key>/_meta.json.current_commit`，不一致→降级注入+警告（见「段零·工程文档检索」步骤 3 commit 一致性校验）；`$icodex doc` 生成时 commit 不一致→全量重生成覆盖（见 [doc.md](../steps/doc.md) 步骤5）。两者不矛盾：生成时覆盖更新文档版本，检索时校验是否匹配当前工程 pin 的 commit
 
 ### `_meta.json` 模板（工程与模块各一份）
 
@@ -733,7 +733,7 @@ key = <url_basename_sanitized> + "_" + sha256(repo_url + ":" + branch)[:12]
 > - 章节生成时间：2026-07-06T15:30:00Z
 ```
 
-### 6 级模块检测（按优先级，`/icode doc` 执行）
+### 6 级模块检测（按优先级，`$icodex doc` 执行）
 
 | # | 方式 | 识别 | 提取 URL + branch | commit 获取 |
 | --- | --- | --- | --- | --- |

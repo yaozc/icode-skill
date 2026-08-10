@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# sync-to-global.sh —— 镜像同步 dev_repo → ~/.claude/skills/icode/
+# sync-to-global.sh —— 镜像同步 dev_repo → ~/.codex/skills/icodex/
 #
 # 关键机制:
 #   rsync --filter=':- .gitignore' 自动应用工程顶层 .gitignore 规则
@@ -13,7 +13,7 @@
 #
 # 设计意图:
 #   - 单一入口, 所有规则集中在顶层 .gitignore
-#   - 默认排除 .git/ .claude/ demo/ tests/ (开发仓库本地配置)
+#   - 默认排除 .git/ .codex/ demo/ tests/ (开发仓库本地配置)
 #   - 默认 dry-run, 显式 --apply 才落地, 防止误操作
 # ============================================================
 set -euo pipefail
@@ -21,7 +21,7 @@ set -euo pipefail
 # 路径
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEV_REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
-GLOBAL_DIR="${GLOBAL_DIR:-$HOME/.claude/skills/icode}"
+GLOBAL_DIR="${GLOBAL_DIR:-$HOME/.codex/skills/icodex}"
 
 # 参数解析
 MODE="dry-run"
@@ -58,9 +58,10 @@ if [ "$MODE" = "apply" ]; then
   echo "⚠️  即将执行实际同步 (--apply)"
   echo "   src: $DEV_REPO/"
   echo "   dst: $GLOBAL_DIR/"
-  echo "   规则: 顶层 .gitignore + 默认排除 .git/ .claude/ demo/ tests/"
+  echo "   规则: 顶层 .gitignore + 默认排除 .git/ .codex/ demo/ tests/"
   echo ""
 else
+  RSYNC_ARGS+=(--dry-run)
   echo "🔍 dry-run 模式 (默认),加 --apply 才会真正写入"
   echo "   src: $DEV_REPO/"
   echo "   dst: $GLOBAL_DIR/"
@@ -76,7 +77,7 @@ fi
 rsync -avc --delete "${RSYNC_ARGS[@]}" \
   --filter=':- .gitignore' \
   --exclude='.git/' \
-  --exclude='.claude/' \
+  --exclude='.codex/' \
   --exclude='demo/' \
   --exclude='tests/' \
   "$DEV_REPO/" "$GLOBAL_DIR/"
@@ -84,7 +85,7 @@ rsync -avc --delete "${RSYNC_ARGS[@]}" \
 echo ""
 if [ "$MODE" = "apply" ]; then
   echo "✅ 同步完成。如 vision-bridge 等 MCP 子工程首次使用,"
-  echo "   请执行: ./mcp/install.sh vision-bridge (会自动生成 config.json)"
+  echo "   请执行: ./mcp/install-codex.sh vision-bridge (会自动生成 config.json)"
 else
   echo "ℹ️  dry-run 未做任何修改。确认无误后重跑加 --apply"
 fi

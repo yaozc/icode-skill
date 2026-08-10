@@ -1,8 +1,11 @@
 # 步骤 6 — 终极终审 + 出具报告 + 统一修复
 
-**命令**: `/icode audit`
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex audit`
 **产出**: `{ICODE_OUT_DIR}/06_audit.md`（含修复日志段）+ 回写 `{ICODE_OUT_DIR}/03_plan_final.md` 的「实现偏差备忘」段（6.2 第5步）
 **会话**: 主会话
+**Codex 发布键**: 最终 `06_audit.md` 使用 `audit`；审计修复、最新验证、发布与 `validate` 全部成功后才追加 step `6` 并设置 `status=completed`。
 
 ## 本步骤 L1/L2 检查项声明
 
@@ -10,7 +13,7 @@
 
 | 级别 | 检查项 | 触发后行为 |
 |---|---|---|
-| **L1·致命** | 前置产物缺失（`03_plan_final.md` 或步骤 4 代码文件不存在） | 报错退出，提示先跑 `/icode merge` 或 `/icode code` |
+| **L1·致命** | 前置产物缺失（`03_plan_final.md` 或步骤 4 代码文件不存在） | 报错退出，提示先跑 `$icodex merge` 或 `$icodex code` |
 
 **L3·重要**（矩阵段定义）：
 - §6.7 视角 A（原始需求）失败 → 走 §6.2 强制修复流程（user 决定）
@@ -26,7 +29,7 @@
 
 ## 前置：patch 配合
 
-> 工单可能已走过 `/icode patch` 追加修改（`{ICODE_OUT_DIR}/08_patch.md` 存在且有 Patch 段，或 `metadata.patch_count > 0`）。本步骤启动时 **Read `08_patch.md`**（不存在则跳过本段，走原流程），按以下规则配合：
+> 工单可能已走过 `$icodex patch` 追加修改（`{ICODE_OUT_DIR}/08_patch.md` 存在且有 Patch 段，或 `metadata.patch_count > 0`）。本步骤启动时 **Read `08_patch.md`**（不存在则跳过本段，走原流程），按以下规则配合：
 
 1. **追溯矩阵扩展**：计划功能点 → 代码位置映射 = `03_plan_final.md` 功能点 + `08_patch.md` Patch 功能点（补丁功能点标注"补丁来源"），逐一给出代码证据位置
 2. **计划 vs 代码差异摘要扩展**（6.1 第7步）：`diff_summary` 的 `text_a`（计划文本）= `03_plan_final.md` + `08_patch.md` 补丁计划合并文本（手动对比降级路径同理）；patch 修改不再显示为"计划外偏离"
@@ -114,7 +117,7 @@
 
    **协同关系**：本段是本次新增的 audit 步骤第 7 维度（对照原始需求评估最终产物，追加未完成项为新任务），与现有 6 维度（实施完整度/执行精准度/方案偏离度/代码质量/跨文件一致性/残留风险）形成互补。
 
-   **与 limit 红线协同**：如果本工程有 limit（`~/.claude/icode_data/limits/<id>.md`），§6.7 还要额外核对**实际产物是否与 limit 红线一致**（与 plan §10 #6 + §3/§4/§6 引用契约形成三层验证：plan 引用 → 实施遵循 → audit 收敛）。
+   **与 limit 红线协同**：如果本工程有 limit（`~/.codex/icode_data/limits/<id>.md`），§6.7 还要额外核对**实际产物是否与 limit 红线一致**（与 plan §10 #6 + §3/§4/§6 引用契约形成三层验证：plan 引用 → 实施遵循 → audit 收敛）。
 
 ### 部署后验证建议（audit 附加输出）
 
@@ -153,7 +156,7 @@
 3. 全部修复后做全局编译验证，最多 3 次
 4. 更新 `.ico_metadata.json`：`status = completed`
 5. **回写实现偏差备忘到 `03_plan_final.md`**（不可跳过，详见下方「实现偏差备忘」规范）
-6. **刷新全局索引最终状态**：Read `~/.claude/icode_data/index.json`，**按 metadata 的 `ticket_id` 定位**本工单条目，更新 `status` = `completed`，`requirement_summary` 若与最终交付有显著偏差则基于 `03_plan_final.md`+交付成果刷新一次（确保未来检索命中的摘要准确反映最终成果而非中途状态）；**若该工单当前 `stale=true`，重置 `stale=false`+`stale_reason=null`+`stale_checked_commit=null`**（产物可能经本轮更新，旧 stale 判据失效；下次检索注入前由过时校验按当前 `01_plan` 锚点重评，盲重置安全不致误注入）；**确认 verdict（方向结论，v2 新增）**：向用户确认本工单核心方案最终方向结论--默认保持 `unknown` 不阻塞流程；若方案已实机验证有效标 `verified`，若核心方案被证伪/已回退标 `disproved`（填 `verdict_reason`+`correct_direction`；可选 `--premise-dep` 填证伪依赖的外部模块，支持硬复活检测），若被替代方案取代标 `superseded`（填 `superseded_by`）；标注时回填 `verdict`+`verdict_reason`+`correct_direction`+`verdict_source`（`machine_test`/`review`/`user`）+`verdict_at`（运行时取系统时间）；详见 SKILL.md「verdict 字段族」。写回 index.json（metadata + index 同步，不得只写其一）。
+6. **刷新全局索引最终状态**：Read `~/.codex/icode_data/index.json`，**按 metadata 的 `ticket_id` 定位**本工单条目，更新 `status` = `completed`，`requirement_summary` 若与最终交付有显著偏差则基于 `03_plan_final.md`+交付成果刷新一次（确保未来检索命中的摘要准确反映最终成果而非中途状态）；**若该工单当前 `stale=true`，重置 `stale=false`+`stale_reason=null`+`stale_checked_commit=null`**（产物可能经本轮更新，旧 stale 判据失效；下次检索注入前由过时校验按当前 `01_plan` 锚点重评，盲重置安全不致误注入）；**确认 verdict（方向结论，v2 新增）**：向用户确认本工单核心方案最终方向结论--默认保持 `unknown` 不阻塞流程；若方案已实机验证有效标 `verified`，若核心方案被证伪/已回退标 `disproved`（填 `verdict_reason`+`correct_direction`；可选 `--premise-dep` 填证伪依赖的外部模块，支持硬复活检测），若被替代方案取代标 `superseded`（填 `superseded_by`）；标注时回填 `verdict`+`verdict_reason`+`correct_direction`+`verdict_source`（`machine_test`/`review`/`user`）+`verdict_at`（运行时取系统时间）；详见 SKILL.md「verdict 字段族」。写回 index.json（metadata + index 同步，不得只写其一）。
 7. 输出交付总结
 
 ### 实现偏差备忘（回溯标注，防回读误解）
@@ -180,7 +183,7 @@
 ```markdown
 ## 实现偏差备忘（步骤6 终审回写）
 
-> 本段由 `/icode audit` 步骤6 在终审后回写，记录实际实现与定稿计划的实质偏差。计划正文保持原样不动，本段仅供回读对照，避免"计划说 X、代码做 Y"的误解。
+> 本段由 `$icodex audit` 步骤6 在终审后回写，记录实际实现与定稿计划的实质偏差。计划正文保持原样不动，本段仅供回读对照，避免"计划说 X、代码做 Y"的误解。
 
 ### 偏差-1: {简述}
 - **计划说法**：{03_plan_final.md 中的原设计，引用章节/行号}
@@ -210,15 +213,15 @@
 
 ## 6.4 交付报告提示
 
-步骤6 完成后，提示用户：`▶ 步骤6 终审完成。可选：运行 /icode readme 生成交付报告 + 跨领域简报（两份）`
+步骤6 完成后，提示用户：`▶ 步骤6 终审完成。可选：运行 $icodex readme 生成交付报告 + 跨领域简报（两份）`
 
-> 交付报告（原 6.4 文档化）已拆为独立步骤7 `/icode readme`，用户按需手动触发。步骤6 不再自动生成报告。详见 [07_readme.md](07_readme.md)。
+> 交付报告（原 6.4 文档化）已拆为独立步骤7 `$icodex readme`，用户按需手动触发。步骤6 不再自动生成报告。详见 [07_readme.md](07_readme.md)。
 
-## 补丁记录（/icode patch 追加）
+## 补丁记录（$icodex patch 追加）
 
-> 本段**不是**步骤6 的正文内容，而是后续 `/icode patch` 调用时**运行时追加**的说明——供回读区分主流程结论与补丁演进：
+> 本段**不是**步骤6 的正文内容，而是后续 `$icodex patch` 调用时**运行时追加**的说明——供回读区分主流程结论与补丁演进：
 
-- `/icode patch` 完成后，在本文件**末尾追加** `## 补丁记录（patch 追加）` 段（含 Patch N 摘要 + 终审结论是否需要修正；终审结论被补丁改变时**明确标注"原结论已过时，以补丁为准"**）
+- `$icodex patch` 完成后，在本文件**末尾追加** `## 补丁记录（patch 追加）` 段（含 Patch N 摘要 + 终审结论是否需要修正；终审结论被补丁改变时**明确标注"原结论已过时，以补丁为准"**）
 - **不覆盖原正文**——6.1 终审报告 / 6.2 修复 / 实现偏差备忘保持原样，补丁影响单独成段
 - 追加式演进：多次 patch 多次追加，每段带 Patch N 编号，回读即得完整演进链
 - 补丁的完整记录（增量计划/实施/验证）在 `08_patch.md` 的对应 Patch N 段，本段仅摘要

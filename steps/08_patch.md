@@ -1,6 +1,8 @@
 # 步骤 8（独立步骤）— 追加修改 patch
 
-**命令**: `/icode patch [问题描述或新需求...]`（可选 `--listen` → 阶段 4「1.5 实机部署验证」**自动监听**：连设备部署 + 持续轮询 + 实时链路分析，告知触发动作后立即监听、用户随时操作被捕获；可选 `--test` → 同实机部署验证但**显式触发验证**：明确告知「请执行触发动作」、空转短轮后停下确认用户已操作再继续；无 flag 默认跳过 1.5；**`--listen` 与 `--test` 互斥二选一，同时给出时以 `--test` 为准**）
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex patch [问题描述或新需求...]`（可选 `--listen` → 阶段 4「1.5 实机部署验证」**自动监听**：连设备部署 + 持续轮询 + 实时链路分析，告知触发动作后立即监听、用户随时操作被捕获；可选 `--test` → 同实机部署验证但**显式触发验证**：明确告知「请执行触发动作」、空转短轮后停下确认用户已操作再继续；无 flag 默认跳过 1.5；**`--listen` 与 `--test` 互斥二选一，同时给出时以 `--test` 为准**）
 **产出**: `{ICODE_OUT_DIR}/08_patch.md`（追加式，每次调用追加一个 `Patch N` 段）
 **会话**: 主会话
 
@@ -8,21 +10,23 @@
 
 | 级别 | 检查项 | 触发后行为 |
 |---|---|---|
-| **L1·致命** | 无最新工单目录（`.icode_output/.icode_output_N/` 不存在或 metadata 缺失） | 报错退出，提示先 `/icode init` / `/icode start` 创建工单 |
-| **L1·致命** | 最新工单处于入口态（`init_in_progress` / `log_done`，无 `01_plan.md`） | 报错退出，提示先 `/icode plan` / `/icode start` 进入主流程（patch 只作用于已有主流程产物的工单） |
-| **L2·关键** | 阶段4 复检发现新引入问题且无法当场修复 | 警告 + 记入 metadata（`patch_history` 末条 `status="issues"`）+ 流程继续（user 可再跑 `/icode patch` 处理） |
+| **L1·致命** | 无最新工单目录（`.ai/icode/icode_N/` 不存在或 metadata 缺失） | 报错退出，提示先 `$icodex init` / `$icodex run` 创建工单 |
+| **L1·致命** | 最新工单处于入口态（`init_in_progress` / `log_done`，无 `01_plan.md`） | 报错退出，提示先 `$icodex plan` / `$icodex run` 进入主流程（patch 只作用于已有主流程产物的工单） |
+| **L2·关键** | 阶段4 复检发现新引入问题且无法当场修复 | 警告 + 记入 metadata（`patch_history` 末条 `status="issues"`）+ 流程继续（user 可再跑 `$icodex patch` 处理） |
 
 ## 定位
 
+**Codex 强制覆盖**：先读 metadata `artifact_map` 解析已有 `plan/final_plan/implementation/deepcheck/audit/patches`，任何必需映射为空或目标不存在都停止。新一次显式 patch 必须先运行 `python3 ~/.codex/skills/icodex/tools/icode_state.py reserve-patch --run-dir "${ICODE_OUT_DIR}"` 获取唯一编号；完成并验证 `08_patch.md` 草稿后用 `publish-artifact --key patches` 发布。不得自行 `patch_count + 1`，不得用固定文件名绕开映射。
+
 **patch 是主流程（步骤 1~6）之外的追加修改步骤**，解决两个场景：
 
-1. **主流程完成后继续改**：步骤 6（`status=completed`）交付后，你测试发现问题 / 有新需求 → `/icode patch` 在既有工单上打补丁，**不新建工单、不重跑主流程**
-2. **主流程中途追加改**：步骤 1~5 任一状态（如 `code_done` / `deepcheck_done`）发现问题想立刻修 → `/icode patch` 直接追加修改（提示"有未完成主流程步骤"，**不阻断**）
+1. **主流程完成后继续改**：步骤 6（`status=completed`）交付后，你测试发现问题 / 有新需求 → `$icodex patch` 在既有工单上打补丁，**不新建工单、不重跑主流程**
+2. **主流程中途追加改**：步骤 1~5 任一状态（如 `code_done` / `deepcheck_done`）发现问题想立刻修 → `$icodex patch` 直接追加修改（提示"有未完成主流程步骤"，**不阻断**）
 
 **不使用 patch 的场景**（走既有机制）：
-- 步骤 2/5 中断态（`review_in_progress` / `deepcheck_in_progress`）→ 重跑 `/icode review` / `/icode deepcheck` 续跑（断点续跑机制）
-- 步骤 4 编译失败（`code_compile_failed=true`）→ 重跑 `/icode code` 整体续跑
-- 全新的、与当前工单无关的需求 → `/icode init` / `/icode start` 新建工单
+- 步骤 2/5 中断态（`review_in_progress` / `deepcheck_in_progress`）→ 重跑 `$icodex review` / `$icodex deepcheck` 续跑（断点续跑机制）
+- 步骤 4 编译失败（`code_compile_failed=true`）→ 重跑 `$icodex code` 整体续跑
+- 全新的、与当前工单无关的需求 → `$icodex init` / `$icodex run` 新建工单
 
 **对状态机的影响**：patch **不改变** `status` 和 `completed_steps`（completed 保持 completed，中途状态保持原状态）。patch 是横向追加，不是纵向推进——靠 `patch_count` / `patch_history` 字段记录（见「强制操作」段），主流程推进逻辑（以 `completed_steps` 最大编号推进）完全不受影响。
 
@@ -30,15 +34,15 @@
 
 ## patch 会话语义（一次 patch 的范围）
 
-> **一次 patch = 用户两次显式调用 `/icode patch` 之间的所有工作**。期间用户的追问/补充/修正/新发现，**一律归入当前 Patch N 段**，不新增段、不增加 `patch_count`。只有用户**再次显式调用 `/icode patch`** 才开启新的一次（Patch N+1）。
+> **一次 patch = 用户两次显式调用 `$icodex patch` 之间的所有工作**。期间用户的追问/补充/修正/新发现，**一律归入当前 Patch N 段**，不新增段、不增加 `patch_count`。只有用户**再次显式调用 `$icodex patch`** 才开启新的一次（Patch N+1）。
 
-1. **追问归并规则**：用户在同一会话（或跨会话）追问、补充信息、修正理解、指出新发现，而未调用 `/icode patch` 命令时，AI 必须**归入最近一次 patch**：
+1. **追问归并规则**：用户在同一会话（或跨会话）追问、补充信息、修正理解、指出新发现，而未调用 `$icodex patch` 命令时，AI 必须**归入最近一次 patch**：
    - 更新 `08_patch.md` 当前 Patch N 段对应小节（补充需求 →「触发背景」追加；修改方案调整 →「增量计划」修订；新发现 →「增量计划/决策推理」追加）
    - patch 已输出完成标记后的追问：在 Patch N 段内**追加「追问补充」小节**（记录追问内容 + 处理结果），不另开段
    - `metadata.patch_history` **不新增条**——末条可被追问刷新（`summary` 若变化则更新 + `at` 刷新；`status` 保持原值）
    - 追问导致**代码修改或结论变化**时，同步刷新 `06_audit.md` 补丁记录段（追加"追问补充"行）+ 决策锚点 `patch_summary`；纯补充信息不改变结论 → 只更新 `08_patch.md`
-2. **新一次 patch 的唯一触发**：用户显式调用 `/icode patch`（带或不带新参数）→ 新开 `Patch N+1` 段，`patch_count` +1
-3. **判定依据（磁盘优先）**：`08_patch.md` 存在 = 有最近一次 patch；其最大 Patch 编号 = 当前 Patch N。**跨会话**：新会话中用户直接追问（未调用命令）→ 同样归入最近一次 patch；若追问内容明显是全新需求（与最近 patch 无关联），AI 提示用户"这像是新的一次 patch，建议加调 `/icode patch` 开启新段"（不阻断，仍按追问处理归入或由用户决定）
+2. **新一次 patch 的唯一触发**：用户显式调用 `$icodex patch`（带或不带新参数）→ 新开 `Patch N+1` 段，`patch_count` +1
+3. **判定依据（磁盘优先）**：`08_patch.md` 存在 = 有最近一次 patch；其最大 Patch 编号 = 当前 Patch N。**跨会话**：新会话中用户直接追问（未调用命令）→ 同样归入最近一次 patch；若追问内容明显是全新需求（与最近 patch 无关联），AI 提示用户"这像是新的一次 patch，建议加调 `$icodex patch` 开启新段"（不阻断，仍按追问处理归入或由用户决定）
 4. **禁止误开新段**：追问归并判定不得以"会话轮次"为准——同一次 patch 可能跨多个会话轮次（甚至跨会话），只要用户未显式调用命令，就仍是同一次
 
 ## 上下文控制铁律（解决"越问上下文越爆炸"）
@@ -50,7 +54,7 @@
    - `{ICODE_OUT_DIR}/.decision_anchors.json` —— 关键决策摘要（缺失则跳过，见 [decision_anchors.md](../references/decision_anchors.md)）
    - `git status` + `git diff --stat` —— 当前代码现状（已改了什么）
 2. **需要细节才定点读**：Read 产物（`00_init.md` / `03_plan_final.md` / `06_audit.md` 等）**只读与本次修改点相关的章节**（按锚点/标题定位），**绝不全文重读**（00_init/01_plan 全文动辄 300+ 行）
-3. **新会话等价性**：每次 `/icode patch` 后本文件 + 锚点 + metadata 已落盘，即使你新开会话 / 切换模型，重跑 `/icode patch` 也能无损继续——**产物是唯一权威上下文**
+3. **新会话等价性**：每次 `$icodex patch` 后本文件 + 锚点 + metadata 已落盘，即使你新开会话 / 切换模型，重跑 `$icodex patch` 也能无损继续——**产物是唯一权威上下文**
 4. **禁止把历史对话当依据**：判定现状只认磁盘（产物 + 代码 + git diff），不认"之前会话里我说过什么"；若发现磁盘现状与会话记忆矛盾，**以磁盘为准**并提示刷新
 
 ## 前置校验
@@ -60,23 +64,23 @@
 按 SKILL.md「检测最新目录」逻辑确定 `ICODE_OUT_DIR`（与 review/code/deepcheck/audit 相同）：
 
 ```bash
-LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_output_)\d+' | sort -n | tail -1)
-# 无 LAST → 报错退出，提示先 /icode init|start 创建工单
-# 有 LAST → ICODE_OUT_DIR=".icode_output/.icode_output_${LAST}"
+LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n | tail -1)
+# 无 LAST → 报错退出，提示先 $icodex init|run 创建工单
+# 有 LAST → ICODE_OUT_DIR=".ai/icode/icode_${LAST}"
 ```
 
 然后校验：
 
 1. `{ICODE_OUT_DIR}/.ico_metadata.json` 存在，否则报错退出（非 icode 工单目录）
 2. 读 `status` 字段：
-   - `init_in_progress` / `log_done`（入口态，无 `01_plan.md`）→ **报错退出**，提示先 `/icode plan` / `/icode start`
-   - `review_in_progress` / `deepcheck_in_progress` → **柔性提示**"当前有未完成的主流程步骤（步骤 2/5 中断态），建议先重跑 `/icode review` / `/icode deepcheck` 续跑"，**不阻断**，用户明确要 patch 则继续
+   - `init_in_progress` / `log_done`（入口态，无 `01_plan.md`）→ **报错退出**，提示先 `$icodex plan` / `$icodex run`
+   - `review_in_progress` / `deepcheck_in_progress` → **柔性提示**"当前有未完成的主流程步骤（步骤 2/5 中断态），建议先重跑 `$icodex review` / `$icodex deepcheck` 续跑"，**不阻断**，用户明确要 patch 则继续
    - 其余状态（`plan_done` 及以后 / `completed`）→ 直接进入执行流程
 3. 确定本次 `N`（**双源取大，防编号冲突**）：
    - 读 `metadata.patch_count`（缺失视为 0）
    - 读 `08_patch.md` 最大 Patch 段编号（`grep -oP '^## Patch \K\d+' {ICODE_OUT_DIR}/08_patch.md 2>/dev/null | sort -n | tail -1`——**须重定向 stderr**：文件不存在时 grep 会报错，重定向后无输出、`tail` 为空 → 视为 0）
    - `N = max(patch_count, 最大段编号) + 1`
-   - **未完成段处理**：先读 `metadata.patch_phase`（可选字段，枚举 `plan_done` / `implementing` / `listening` / `awaiting_user_action` / `finalized`，缺失视为 null）——存在且为 `listening` / `awaiting_user_action` **且本次调用为 `/icode patch --listen` 或 `/icode patch --test`**（续跑监听）→ 输出提示"检测到进行中的 Patch {最大编号}（patch_phase=<...>），本次**续跑**回到监听/触发等待，不新开段"；**续跑节奏以本次调用 flag 为准**（`--listen` 自动监听 / `--test` 空转确认节奏），不沿用上次 flag；为 `implementing` → 续跑回到对应实施阶段；**其余情况**（`plan_done` / `finalized` / 缺失，或调用意图与 phase 不匹配——如非 `--listen`/`--test` 的新请求）且最大段编号 > `patch_count`（存在未完成的 Patch 段，未落 patch_history 记录）→ 输出提示"检测到未完成的 Patch {最大编号}（未落 patch_history），本次开启 Patch {N}"，并在该未完成段末尾追加一行 `> **未完成**：被 Patch {N} 取代（未走强制操作，无 patch_history 记录）`——段编号永不冲突，未完成段有明确收尾标注
+   - **未完成段处理**：先读 `metadata.patch_phase`（可选字段，枚举 `plan_done` / `implementing` / `listening` / `awaiting_user_action` / `finalized`，缺失视为 null）——存在且为 `listening` / `awaiting_user_action` **且本次调用为 `$icodex patch --listen` 或 `$icodex patch --test`**（续跑监听）→ 输出提示"检测到进行中的 Patch {最大编号}（patch_phase=<...>），本次**续跑**回到监听/触发等待，不新开段"；**续跑节奏以本次调用 flag 为准**（`--listen` 自动监听 / `--test` 空转确认节奏），不沿用上次 flag；为 `implementing` → 续跑回到对应实施阶段；**其余情况**（`plan_done` / `finalized` / 缺失，或调用意图与 phase 不匹配——如非 `--listen`/`--test` 的新请求）且最大段编号 > `patch_count`（存在未完成的 Patch 段，未落 patch_history 记录）→ 输出提示"检测到未完成的 Patch {最大编号}（未落 patch_history），本次开启 Patch {N}"，并在该未完成段末尾追加一行 `> **未完成**：被 Patch {N} 取代（未走强制操作，无 patch_history 记录）`——段编号永不冲突，未完成段有明确收尾标注
 
 ## 执行流程（轻量四段式）
 
@@ -107,7 +111,7 @@ LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_o
 
 ### 阶段 2 — 增量计划（写 08_patch.md Patch N 段）
 
-> 不重跑 `/icode plan`，但**必须有计划**——对本次修改点写「增量计划」，约束修改范围与影响面。
+> 不重跑 `$icodex plan`，但**必须有计划**——对本次修改点写「增量计划」，约束修改范围与影响面。
 
 **分支判定（先做）**：确认本次 patch 是 **①代码修改型**（改代码）还是 **②分析验证型**（纯分析，无代码修改，如日志/现象根因分析、方案可行性验证）——分析验证型切到下方「分析验证分支」，代码修改型按本段继续。
 
@@ -122,7 +126,7 @@ LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_o
 > **部署后验证发现型（第三分支）**：当 patch 的来源是"**部署后实机日志分析发现的问题**"（而非"测试发现问题"或"新需求"）时，走本特殊分支，在「触发背景」写总结后按以下 4 步处理——治"部署后发现问题直接手动改代码、导致 icode 产物与实际实施脱节"：
 > 1. **根因分类**：标注是「首次激活路径既有 bug（定义见 [references/first_activation_path.md](../references/first_activation_path.md)）」/「状态机路径遗漏」/「运行时行为不可预见」/「其他」。
 > 2. **plan 回审**：根因若为"plan 阶段**无法预见**"的，标注「plan 盲区」而非「plan 缺陷」——**区分可预见 vs 不可预见**，避免把运行时不可预见的责任错误归到 plan 头上。
-> 3. **影响评估**：该问题是否影响已有 plan 的**核心方案方向**？是 → 建议 `/icode plan` 重审；否 → 按本 patch 流程增量修复。
+> 3. **影响评估**：该问题是否影响已有 plan 的**核心方案方向**？是 → 建议 `$icodex plan` 重审；否 → 按本 patch 流程增量修复。
 > 4. **产物同步**：patch 修复的代码照常纳入 `code_files`，`06_audit.md` 评分中标注"**部署后 patch 修正**"。
 
 在 `{ICODE_OUT_DIR}/08_patch.md` **追加** `## Patch {N}` 段。文件不存在则新建，**头部说明固定如下**（首次创建时写入，之后不再重复）：
@@ -130,7 +134,7 @@ LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_o
 ```markdown
 # 追加修改记录（08_patch.md）
 
-> 本文件记录主流程（步骤 1~6）之外的追加修改（`/icode patch` 调用）。
+> 本文件记录主流程（步骤 1~6）之外的追加修改（`$icodex patch` 调用）。
 > 每次调用追加一个 `Patch N` 段，不覆盖历史。跨会话/切换模型靠本文件
 > + `.decision_anchors.json` + `.ico_metadata.json` 重载上下文，不靠会话记忆。
 ```
@@ -203,11 +207,11 @@ LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_o
 
 1. **编译验证 + 测试验证**：与 [04_code.md](04_code.md)「强制操作」段同规则——编译最多 3 次；通过后探测并跑测试（`metadata.test_cmd` 存在则直接复用，缺失则按 04_code 探测规则）；退出码捕获防管道误判（重定向输出到临时文件再读，禁 `| tail` 后取 `$?`）。**分析验证型分支**：免编译/测试，改为「结论验证」（见阶段 2 分支判定）
 
-**1.5 实机部署验证（`/icode patch --listen` / `/icode patch --test` 触发）**：
-- **触发**：仅当 `/icode patch --listen` / `/icode patch --test` 调用时执行；无 flag → 跳过 1.5（保持可选，不阻断）
-- **读配置**：先按 [dir_and_metadata.md](../references/dir_and_metadata.md)「resolve_project_id」算法算出 `project_id`（git 仓库内 = `basename(git rev-parse --show-toplevel)`，**不得用 `ticket_id` 前缀或外层目录别名凑文件名**）→ 拼路径 `~/.claude/icode_data/device_config/<project_id>.json` 再 Read（**单文件多连接**，模板 [templates/device_config.json.template](../templates/device_config.json.template)）。**读后校验**：文件内 `project_id` 字段必须等于当前解析值，不一致 → 提示"配置文件内 project_id 与当前工程不符，改后重试"。文件不存在或 `deploy_enabled=false` → **不静默跳过**，先做**缺失诊断**：输出 `project_id = <实际解析值>` + `ls ~/.claude/icode_data/device_config/` 已有文件——若存在名称近似的配置文件 → 提示"疑似文件名与 project_id 不匹配：将配置改名为 `<project_id>.json`（或建软链）并同步文件内 `project_id` 字段后重试"；无任何文件 → 提示"⚠️ `--listen`/`--test` 显式要求实机验证，需在 `~/.claude/icode_data/device_config/<project_id>.json` 配置连接（或去掉 flag）"
+**1.5 实机部署验证（`$icodex patch --listen` / `$icodex patch --test` 触发）**：
+- **触发**：仅当 `$icodex patch --listen` / `$icodex patch --test` 调用时执行；无 flag → 跳过 1.5（保持可选，不阻断）
+- **读配置**：先按 [dir_and_metadata.md](../references/dir_and_metadata.md)「resolve_project_id」算法算出 `project_id`（git 仓库内 = `basename(git rev-parse --show-toplevel)`，**不得用 `ticket_id` 前缀或外层目录别名凑文件名**）→ 拼路径 `~/.codex/icode_data/device_config/<project_id>.json` 再 Read（**单文件多连接**，模板 [templates/device_config.json.template](../templates/device_config.json.template)）。**读后校验**：文件内 `project_id` 字段必须等于当前解析值，不一致 → 提示"配置文件内 project_id 与当前工程不符，改后重试"。文件不存在或 `deploy_enabled=false` → **不静默跳过**，先做**缺失诊断**：输出 `project_id = <实际解析值>` + `ls ~/.codex/icode_data/device_config/` 已有文件——若存在名称近似的配置文件 → 提示"疑似文件名与 project_id 不匹配：将配置改名为 `<project_id>.json`（或建软链）并同步文件内 `project_id` 字段后重试"；无任何文件 → 提示"⚠️ `--listen`/`--test` 显式要求实机验证，需在 `~/.codex/icode_data/device_config/<project_id>.json` 配置连接（或去掉 flag）"
 - **编译前置（部署前，条件判断）**：部署到实机前先按以下判据决定**是否编译 + 编译命令真源**（LIMIT 文档 / deploy 意图**不一定含编译指令**，须判断而非一律强制）：
-  - **判据①**：deploy 意图**显式引用编译规范**（如"参考 LIMIT 文档编译命令规范进行编译"）→ **必须先 Read `~/.claude/icode_data/limits/<project_id>.md` 命中「编译命令规范」类红线**，按红线给出的**准确命令**编译（多模块工程常要求基础库 + 相关模块同编，防单模块互覆盖产物）——**禁止用 `--help` / 试探性命令替代文档真源**（试探只给通用用法，不给工程专属约束；编译失败或命令不确定时回读红线，不自行发明命令）
+  - **判据①**：deploy 意图**显式引用编译规范**（如"参考 LIMIT 文档编译命令规范进行编译"）→ **必须先 Read `~/.codex/icode_data/limits/<project_id>.md` 命中「编译命令规范」类红线**，按红线给出的**准确命令**编译（多模块工程常要求基础库 + 相关模块同编，防单模块互覆盖产物）——**禁止用 `--help` / 试探性命令替代文档真源**（试探只给通用用法，不给工程专属约束；编译失败或命令不确定时回读红线，不自行发明命令）
   - **判据②**：deploy 意图**未引用编译**但本 patch 涉及代码修改 → 按顺序查真源：LIMIT 文档含「编译命令规范」红线（有则按红线）→ 工程根 `README.md`（有则按 README）→ [04_code.md](04_code.md)「强制操作」探测规则兜底；真源都不存在才允许试探，且须在产物标注"编译命令为试探得出，未经文档验证"
   - **判据③**：纯配置/脚本部署（不涉及代码编译）→ 显式声明"无需编译"后跳过（不声明跳过 = 违规）
 - **部署**：`connections[].deploy` 是**自然语言意图**（用户描述要做什么，如"把产物部署到 X 并重启 Y"，**不要求写 shell 命令**）——AI 结合 `connections` 的 host/port/user 组装实际 scp/ssh 命令执行，地址/密码只在连接字段填一次。**部署前先备份设备旧产物**（如 `cp <target> <target>.bak_r<N>`，与代码侧 rollback 对应）；**部署后确认进程加载新产物**（必要时重启进程/服务——新产物未加载 → 见「死胡同检测」①，勿误判为"修复没生效"）。**部署顺序硬约束**：**逐字引用** `connections[].deploy` 意图原文，再按原文步骤顺序一一映射为命令序列——**步骤即执行顺序，禁止凭印象重写 / 重排 / 合并 / 省略**（与阶段 2「触发背景保留用户原话」同理：原文权威，转述失真）；意图含「终止进程→替换文件」时**终止必须先于替换**（运行中覆盖 → `Text file busy`）；每步替换后**核对产物一致性**（本地 vs 设备 md5 对比，或 strings 验证关键字符串），一致才进下一步；出现 `Text file busy` / 状态矛盾 → **停下重读 deploy 意图核对，不猜不跳过**
@@ -221,7 +225,7 @@ LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_o
   3. **链路检查（每轮，实时进度提示）**：对增量按链序 `grep` 命中，**命中即输出一行进度提示**（`①→②→③→④` 当前推进到哪跳、缺哪跳，供用户实时观察）；沿链路 node **按序核对**——各 node 打印是否按预期顺序出现、链路上有无 error / fatal / 断言中断（`grep -n "error|fatal|assert"` 扫链路相关日志）；链路断在哪一跳实时可见，便于「未触发 vs 失败」快速区分
   4. **成功判定（三态；仅终止条件命中后执行一次）**：①**修复生效**——特征打印出现 + 链路关键点正常 + **全链路/相邻 node 无新增 error**（回归信号，防"修 A 引入 B"假成功）→ 判定「修复生效 / 链路通」，记录 file:line 证据，**显式告知用户**"✅ 修复生效 / 链路通"；②**未触发**——特征缺失 + 无链路活动 + 外部线索（连接状态 / 请求源 / 用户是否已执行触发动作）表明**触发条件未发生**（含 `--listen` 空转超时用户未操作、`--test` 空转确认后用户仍未操作）→ **不进入闭环**，显式标注「未触发」，告知用户需执行触发动作，等待后再监听（写 `patch_phase=awaiting_user_action`）；③**修复失败**——特征缺失 + 链路有活动 / 有 error 可定位 → 进入「闭环」。**未触发 vs 失败的判据 = 触发条件是否已发生**（有外部请求进来过？连接是否建立？），而非"有没有特征"；无法确认触发是否发生 → 归「未触发」，先问用户，勿进闭环。日志只证明"代码执行到打印点"，不 100% 证明逻辑全对——`--listen`/`--test` 定位是快速看修复是否生效、链路是否断，**最终验收仍以用户观察实机行为为准**（防把"链路走通"当"功能验收"）
 - **闭环（半自动：每轮修复前停下等用户确认，用户可插入意见，≤3 轮）**：判定失败时——**证据明确**（error 能定位到具体修改点 / 链路明确断点 / 特征缺失但可定位）→ **进入增量修复循环**：先自动**分析 + 定位 + 拟定修复方案**，复用阶段 2「落盘门 + 三链预扫」把本轮疑点 + 建议改哪些文件 Write `08_patch.md`——但**执行修改前停下**，把「本轮疑点 / 建议修改 / 计划」**报告用户，等用户确认或插入意见**（用户可能补充信息 / 纠正方向 / 调整方案）；用户确认后 → 执行修复 → **重新执行步骤 1「编译验证 + 测试验证」**（编译型工程必做——编译/测试失败必须如实记录 `patch_history.status="issues"` 并报告，不得带病部署；纯配置/脚本改动可显式声明"无需编译"后跳过，不声明跳过 = 违规）→ 通过后**重新部署** → **再监听** → **再判定** → 若仍需修复则**再次停下报告**；**证据模糊**（无法定位具体修改点）→ **立即停止，不猜**，把已收集证据（哪些日志 / 缺什么特征 / 哪处异常）报告用户交还决策。循环**最多 3 轮**，超限停止并汇总报告
-- **死胡同检测（防在错误方向上空转）**：若**连续 2 轮失败点相同**（同一特征始终缺失 / 同一 error 重现）→ 判定为**方向或部署层问题**而非"改没改够"，**跳出增量修复**，先做三层深查：① **部署核查**——deploy 是否真的生效（exit code / 产物 mtime 是否更新 / 目标进程是否重启加载新产物；"改对了但没生效"最常见原因是部署层失败）② **方向复盘**——重新审视 bug 根因判断（链路是否理解错 / node 映射是否错 / 修复方向是否偏）③ **特征校验**——grep 特征是否真由本次代码产生（tag 拼写 / 是否有旧进程在写）。深查修正方向后**重置 3 轮计数**再走闭环；深查无果（方向无法确认）→ 停止，报告用户建议 `/icode plan` 重审
+- **死胡同检测（防在错误方向上空转）**：若**连续 2 轮失败点相同**（同一特征始终缺失 / 同一 error 重现）→ 判定为**方向或部署层问题**而非"改没改够"，**跳出增量修复**，先做三层深查：① **部署核查**——deploy 是否真的生效（exit code / 产物 mtime 是否更新 / 目标进程是否重启加载新产物；"改对了但没生效"最常见原因是部署层失败）② **方向复盘**——重新审视 bug 根因判断（链路是否理解错 / node 映射是否错 / 修复方向是否偏）③ **特征校验**——grep 特征是否真由本次代码产生（tag 拼写 / 是否有旧进程在写）。深查修正方向后**重置 3 轮计数**再走闭环；深查无果（方向无法确认）→ 停止，报告用户建议 `$icodex plan` 重审
 - **回滚点 + 工作隔离（无人值守安全，不用 git commit）**：每轮自动修复**只改监听证据明确指向的文件**，禁止扩到无关模块；每轮**修复前**把将被修改的文件**复制备份**到 `08_patch.md` 所在工单产物目录（`rollback/r<N>/<file>`），超限/失败时**按备份还原**；已改内容（改动文件清单 + 关键改动点）写进 Patch N 段「实施」小节留 receipts——回滚点用文件备份实现，全程不触发 git commit
 - **主工单验收闭环（旁路修复后强制回主验收，防主目标被搁置）**：`--listen`/`--test` 中若本次 Patch 修的是**旁路问题**（非主工单原始目标，如主目标之外顺带发现/被外部事件带出的问题），修复后**必须回到主工单验收清单逐项核验并记录**——主验收清单 = `00_init.md` §7 / §5「4 维度验证清单」+ metadata `requirement`（原始需求）逐条；主验收**未全部通过前，本 Patch 不得标 `done`、工单不得标 `completed`**。`patch_count`/`patch_history` 记录旁路 patch，但**主验证单独追踪**：在 Patch N 段追加「主验收核验」小节，逐项给 通过/未通过 证据；未通过项 → 进闭环修复（不抹掉主验收清单，修完回到本小节更新状态）。**收尾强制**：强制操作第 2 条写 `06_audit.md` 补丁记录段时，主验收未闭环 → 同段追加告警「⚠️ 主工单验收未闭环：<未通过项>」，供 audit 维度 7「原始需求收敛」复检拦截（[06_audit.md](06_audit.md) 已强制逐条核对原始需求是否满足）。
 
@@ -236,7 +240,7 @@ LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_o
    | **链路完整性：根因追溯是否端到端无盲区** | 若分析数据链路：**按工程实际形态**列出每一跳（消息流 / 函数调用链 / 状态机转移 / 文件流 等，如"源节点 → 传输 → 处理 → 业务 → 消费点"），标注每跳已查/未查；**最后一跳必须追到最终业务消费点（业务逻辑收口 / 输出 / 消费方），不得停在中间节点就下结论**。若非数据链路场景填"不涉及"。 | pass / issue |
 
    **分析验证型分支**：表格改为「结论验证」——分析结论是否被证据支撑（证据 file:line）/ 是否经反向质疑（质疑点与回应）/ **链路完整性（根因追溯是否端到端无盲区：数据链路场景须追到最终业务消费点，不得停在中间节点）** / 结论可信度
-3. 复检不通过（新引入问题且当场无法修复）→ 标 `patch_history` 末条 `status="issues"` + L2 警告，流程继续（不阻断；你可再跑 `/icode patch` 处理）
+3. 复检不通过（新引入问题且当场无法修复）→ 标 `patch_history` 末条 `status="issues"` + L2 警告，流程继续（不阻断；你可再跑 `$icodex patch` 处理）
 4. 复检通过 → `patch_history` 末条 `status="done"`
 
 ## 强制操作（完成后必须执行）
@@ -280,7 +284,7 @@ LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_o
 - **禁止反向验证只有"编译通过"**（固定表格逐项给 file:line 证据，见阶段 4）
 - **禁止分析验证型 patch 不声明豁免理由**（豁免必须显式写"分析验证型，无代码修改"，见阶段 2 分支判定）
 - **禁止数据链路分析停在中间节点就下结论**（阶段1 必画链路图 + 阶段4 链路完整性检查项双向约束，见阶段 1 / 阶段 4）
-- **禁止追问误开新 Patch 段**（用户未显式调用 `/icode patch` 时，追问/补充/修正一律归入当前 Patch N，见「patch 会话语义」段；误开新段 = 记录碎片化 + patch_count 虚增）
+- **禁止追问误开新 Patch 段**（用户未显式调用 `$icodex patch` 时，追问/补充/修正一律归入当前 Patch N，见「patch 会话语义」段；误开新段 = 记录碎片化 + patch_count 虚增）
 - **禁止跳过强制思考自检行**（阶段 2/4 各一次 `强制思考: ...` 确认行，无确认行 = 未思考）
 - **禁止全文重读产物**（定点读 + 锚点是省 token 的正确姿势，全文重读 = 上下文爆炸之源）
 - **禁止把会话记忆当现状依据**（只认磁盘：产物 + 代码 + git diff）
@@ -291,8 +295,8 @@ LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_o
 
 ## 可重复执行
 
-`/icode patch` **天然多轮可重复**：每次**显式调用**追加新的 `Patch N` 段（N 自增），`patch_count` / `patch_history` 累计。连续多轮补丁（改完测试又发现问题）不必新建工单——每轮补丁都独立记录，回读 `08_patch.md` + `06_audit.md` 补丁记录即得完整演进链。
+`$icodex patch` **天然多轮可重复**：每次**显式调用**追加新的 `Patch N` 段（N 自增），`patch_count` / `patch_history` 累计。连续多轮补丁（改完测试又发现问题）不必新建工单——每轮补丁都独立记录，回读 `08_patch.md` + `06_audit.md` 补丁记录即得完整演进链。
 
 **与「patch 会话语义」的配合**：一次显式调用后的所有追问归入同一 Patch N 段（N 不增）；只有再次显式调用才开新段。区分原则：**段 = 显式调用次数**，**轮次 = 会话追问次数**（轮次记在段内，不体现在段编号上）。
 
-**交付报告联动**：若该工单已生成过交付报告（`07_readme.md` 产物），本次 patch 涉及功能/修复范围变化时，提示用户"补丁后建议重新 `/icode readme` 刷新交付报告 + 跨领域简报"（不自动执行，用户决定）。
+**交付报告联动**：若该工单已生成过交付报告（`07_readme.md` 产物），本次 patch 涉及功能/修复范围变化时，提示用户"补丁后建议重新 `$icodex readme` 刷新交付报告 + 跨领域简报"（不自动执行，用户决定）。

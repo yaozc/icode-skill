@@ -1,35 +1,39 @@
-# /icode status - 工单状态查询 + verdict 标注
+# $icodex status - 工单状态查询 + verdict 标注
+
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
 
 **命令**:
-- `/icode status`：只读查当前工单状态
-- `/icode status --verdict <ticket_id> <verified|disproved|superseded> "<reason>" [--correct "<正确方向>"] [--source <machine_test|review|user|auto_signal>] [--superseded-by <ticket_id>] [--premise-dep <module>:<commit>[:<path>]]...`：手动标注工单方向结论（双写 metadata + 全局索引）
-- `/icode status --scan-verdict`：批量扫描 unknown 完成态工单的证伪信号，提示标注
-- `/icode status --validate [N]`：机器校验工单产物集完整性（产物缺件 / status 词表外 / code_files 空），只读 + 输出问题清单
+- `$icodex status`：只读查当前工单状态
+- `$icodex status --verdict <ticket_id> <verified|disproved|superseded> "<reason>" [--correct "<正确方向>"] [--source <machine_test|review|user|auto_signal>] [--superseded-by <ticket_id>] [--premise-dep <module>:<commit>[:<path>]]...`：手动标注工单方向结论（双写 metadata + 全局索引）
+- `$icodex status --scan-verdict`：批量扫描 unknown 完成态工单的证伪信号，提示标注
+- `$icodex status --validate [N]`：机器校验工单产物集完整性（产物缺件 / status 词表外 / code_files 空），只读 + 输出问题清单
 
-**产出**: 默认无（只读）；`--verdict` 写 `{ICODE_OUT_DIR}/.ico_metadata.json` + `~/.claude/icode_data/index.json`（不写工程内源码文件）；`--scan-verdict` / `--validate` 只读 + 输出提示/问题清单
+**产出**: 默认无（只读）；`--verdict` 写 `{ICODE_OUT_DIR}/.ico_metadata.json` + `~/.codex/icode_data/index.json`（不写工程内源码文件）；`--scan-verdict` / `--validate` 只读 + 输出提示/问题清单
 **会话**: 主会话
 
 ## 定位
 
 会话中断后恢复时，用户不知道当前在哪个步骤。此命令默认纯读 metadata 输出摘要帮助快速定位；`--verdict` 给历史工单标方向结论（防误导新需求，详见 SKILL.md「verdict 字段族」+「注入形式·按 verdict 分流」）；`--scan-verdict` 批量识别可能被证伪但未标注的旧工单（治本，比一个个手动标高效）。
 
-## 模式一：默认只读查询（`/icode status`）
+**Codex 强制覆盖**：默认查询和 `list` 都从 `~/.codex/skills/icodex/tools/icode_state.py merged-index` 取得合并视图。`--validate` 直接调用 `~/.codex/skills/icodex/tools/icode_state.py validate`，不得使用本文件后部的固定文件清单替代 `artifact_map` 校验。若 `--verdict` 命中 `source=claude` 或 `legacy:*` 展示 ID，先执行 legacy migration，再只修改迁移后的 metadata 与 Codex index；禁止向 legacy 源写 verdict。索引与 metadata 更新分别持有 `.index.lock` 和 `.ico.lock`，固定先 index 后 run。
+
+## 模式一：默认只读查询（`$icodex status`）
 
 1. 执行目录管理中的「检测最新目录」逻辑，确定 `ICODE_OUT_DIR`
 2. 读取 `.ico_metadata.json`
 3. 输出状态摘要：
 
 ```
-最新工单: .icode_output_N (ticket_id)
+最新工单: .ai/icode/icode_N (ticket_id)
 需求: {requirement}
 状态: {status}（{status中文说明}）
 模式: {mode 字段读取方式：直接读 metadata.mode 字段，缺失或空值视为 "full"（默认）；fast 模式下显示「fast（精简：review 1轮无对抗 + deepcheck 仅 Reverse）」}
 方向结论: {verdict 字段读取方式：直接读 metadata.verdict 字段，缺失视为 "unknown"；显示 verdict + verdict_reason 摘要（若有）}
 schema: {template_version 字段读取方式：直接读 metadata.template_version 字段，缺失视为 "未知"；显示 schema 版本 + migration_log 长度，如 "v1.1 (3 migrations, 最近 2026-07-25 12:34)" 或 "v0（待迁移）" 或 "未知（field 缺失）"}
 已完成: {completed_steps 链路，如 log -> 1 -> 2 -> 3 -> 4}
-下一步: {根据续跑判定规则推断，如 "/icode deepcheck (步骤5复检)"}
+下一步: {根据续跑判定规则推断，如 "$icodex deepcheck (步骤5复检)"}
 代码文件: {code_files 列表，无则"未编码"}
-索引工单: {全局索引 tickets 数} 条（stale: {stale=true 条数} 条 / disproved: {verdict=disproved 条数} 条）（用 `json.load` 全量解析 `~/.claude/icode_data/index.json` 的 `tickets` 数组取长度并统计 stale=true / verdict=disproved 数，禁止按行截断--「前 50 行」仅适用于 project_docs 章节）
+索引工单: {合并索引 tickets 数} 条（stale: {stale=true 条数} 条 / disproved: {verdict=disproved 条数} 条）（解析 `merged-index` 的完整 `tickets` 数组，禁止按行截断）
 ```
 
 **`status` -> 中文说明映射**（与 SKILL.md `status` 字段枚举表一致）：
@@ -45,14 +49,14 @@ schema: {template_version 字段读取方式：直接读 metadata.template_versi
 | `deepcheck_in_progress` / `deepcheck_done` | 步骤5 复检中 / 完成 |
 | `completed` | 步骤6 终审完成（终态） |
 
-4. 若无 `.icode_output_N` 目录，输出提示："未找到工单目录，请先运行 /icode start/init/log"
+4. 若无 `.ai/icode/icode_N` 目录，输出提示："未找到工单目录，请先运行 $icodex run/init/log"
 
-## 模式二：verdict 手动标注（`/icode status --verdict ...`）
+## 模式二：verdict 手动标注（`$icodex status --verdict ...`）
 
 **用途**：给历史工单标方向结论，让历史检索注入按 verdict 分流（disproved 反转避坑、superseded 注替代指针），防止已被证伪/取代的工单误导新需求。**典型场景**：某工单核心方案实机证伪已回退，标 `disproved` + 正确方向，后续新需求命中时反转注入避坑而非正面借鉴。
 
 **参数**：
-- `<ticket_id>`：必填，目标工单 id（如 `myproject-5-a3f2`）。可用 `/icode status` 查当前工单，或在 `~/.claude/icode_data/index.json` 按 ticket_id 查任意历史工单
+- `<ticket_id>`：必填，目标工单 id（如 `myproject-5-a3f2`）。可用 `$icodex status` 查当前工单，或在 `~/.codex/icode_data/index.json` 按 ticket_id 查任意历史工单
 - `<verified|disproved|superseded>`：必填，verdict 值
 - `"<reason>"`：必填，`verdict_reason`（≤150 token）。`disproved` 时填证伪原因（如"某接口实机发现语义是重置而非冻结，方案从根上不可行"）
 - `--correct "<正确方向>"`：可选，`correct_direction`（≤150 token）。`disproved`/`superseded` 时建议填（反转注入避坑的核心载体），如"改用上报抑制机制替代暂停数据流"
@@ -61,7 +65,7 @@ schema: {template_version 字段读取方式：直接读 metadata.template_versi
 - `--premise-dep <module>:<commit>[:<path>]`：可选，可多次。`disproved`/`superseded` 时填证伪前提依赖的外部模块（支持硬复活）。`module`=模块名、`commit`=证伪当时的 commit SHA（`git rev-parse HEAD` 只读）、`path`=该模块代码路径（`git -C` 定位用，可省略）。填后 `--scan-verdict` 能检测该模块 commit 变化，变了置 `verdict_review_needed=true` 降级注入（防漏过后来又可行的方向）
 
 **执行流程**：
-1. **定位工单**：按 `<ticket_id>` 在 `~/.claude/icode_data/index.json` 查找条目（`json.load` 全量解析，找不到则报错退出）；由条目的 `project_path` + `out_dir` 定位工单目录的 `.ico_metadata.json`
+1. **定位工单**：按 `<ticket_id>` 在 `~/.codex/icode_data/index.json` 查找条目（`json.load` 全量解析，找不到则报错退出）；由条目的 `project_path` + `out_dir` 定位工单目录的 `.ico_metadata.json`
 2. **校验产物存在**：`test -d {project_path}/{out_dir}` 失败则报错（工单产物已删，无法标注）
 3. **双写 verdict 字段**（metadata + index 同步，原子写回）：
    - 读 metadata `.ico_metadata.json` + index 对应条目
@@ -77,12 +81,12 @@ schema: {template_version 字段读取方式：直接读 metadata.template_versi
 - **禁止标 disproved/superseded 不标 correct_direction**：`correct_direction` 缺失则降级注入 ADR+⛔警告，价值打折，应尽量补全（`--correct`）
 - **禁止编造 verdict**：verdict 须基于实证（实机验证/审查结论/用户确认），不得猜测；`verdict_source` 须如实标
 
-## 模式三：批量识别证伪信号（`/icode status --scan-verdict`）
+## 模式三：批量识别证伪信号（`$icodex status --scan-verdict`）
 
 **用途**：扫描所有 `verdict=unknown` 的完成态工单（`status=completed`）的 `00_init.md` 末轮对话摘要 + `06_audit.md`，识别含证伪信号的，提示用户标注。**同时扫 `disproved`/`superseded` 工单的 `verdict_premise_deps`**，检测证伪前提依赖的模块 commit 是否变化，变了置 `verdict_review_needed=true`（硬复活检测，防漏过后来又可行的方向）。解决"旧工单没标 verdict 但可能有坑"+"已标 disproved 但依赖更新可能又可行"的批量治理。**只读 + 提示，不自动写 verdict**（NLP 判方向不可靠，必须用户确认后用 `--verdict` 标注；但 `verdict_review_needed` 是客观 commit 比对，可自动写）。
 
 **执行流程**：
-1. Read `~/.claude/icode_data/index.json`，`json.load` 全量解析 `tickets` 数组
+1. Read `~/.codex/icode_data/index.json`，`json.load` 全量解析 `tickets` 数组
 2. **筛选两类对象**（均要求 `status="completed"` 且 `stale=false`；未完成态/stale 跳过）：
    - **A·unknown 候选**：`verdict` 缺失或为 `"unknown"`（找证伪信号，提示标 disproved）
    - **B·disproved/superseded 候选**：`verdict` 为 `"disproved"`/`"superseded"` 且 `verdict_premise_deps` 非空（检测证伪前提依赖变化，硬复活）
@@ -103,7 +107,7 @@ schema: {template_version 字段读取方式：直接读 metadata.template_versi
 ⚠️ A·疑似证伪（unknown 完成态，建议标 disproved）：
   1. {ticket_id}（{requirement_summary 摘要}）
      信号：末轮「{匹配的信号词 + 上下文片段}」
-     建议命令：/icode status --verdict {ticket_id} disproved "{证伪原因}" --correct "{正确方向}" --premise-dep {module}:{commit}:{path}
+     建议命令：$icodex status --verdict {ticket_id} disproved "{证伪原因}" --correct "{正确方向}" --premise-dep {module}:{commit}:{path}
   2. ...
 
 🔁 B·证伪前提待重新评估（disproved/superseded，依赖已变化，已置 verdict_review_needed=true）：
@@ -111,8 +115,8 @@ schema: {template_version 字段读取方式：直接读 metadata.template_versi
      证伪依赖：{module}@{旧commit}（当前 {新commit}，已变化）
      后续命中将降级走 unknown 对抗质疑（不硬避坑）
      建议：重新评估证伪前提是否仍成立
-       - 仍成立：/icode status --verdict {ticket_id} disproved "..." --premise-dep {module}:{新commit}:{path}  # 刷新依赖 commit
-       - 已失效：/icode status --verdict {ticket_id} unknown  # 复活为 unknown（方向可重新考虑）
+       - 仍成立：$icodex status --verdict {ticket_id} disproved "..." --premise-dep {module}:{新commit}:{path}  # 刷新依赖 commit
+       - 已失效：$icodex status --verdict {ticket_id} unknown  # 复活为 unknown（方向可重新考虑）
   2. ...
 
 ✅ A·无证伪信号（unknown 保持/标 verified）：{K 个}
@@ -129,19 +133,19 @@ schema: {template_version 字段读取方式：直接读 metadata.template_versi
 - **禁止跳过 06_audit.md**：有些证伪写在终审结论而非 00_init 末轮，两处都要扫
 - **禁止只扫当前工程**：`--scan-verdict` 扫全局索引所有 unknown 完成态工单（跨工程批量治理）
 
-## 模式四：产物集完整性校验（`/icode status --validate [N]`）
+## 模式四：产物集完整性校验（`$icodex status --validate [N]`）
 
-**用途**：机器校验工单产物的"机制合规"（防"内容正确、机制不合规"——产物缺件 / 文件名自造 / `status` 词表外 / metadata 关键字段缺失）。`--validate` 默认校验最新工单，可选参数 `N` 指定 `.icode_output_N`。产出：只读 + 问题清单，不自动改文件。
+**用途**：机器校验工单产物的"机制合规"（防"内容正确、机制不合规"——产物缺件 / 文件名自造 / `status` 词表外 / metadata 关键字段缺失）。`--validate` 默认校验最新工单，可选参数 `N` 指定 `.ai/icode/icode_N`。产出：只读 + 问题清单，不自动改文件。
 
 **执行流程**：
 
-1. 确定工单目录：`--validate` → 用「检测最新目录」逻辑；`--validate N` → 指定 `.icode_output/.icode_output_N`
+1. 确定工单目录：`--validate` → 用「检测最新目录」逻辑；`--validate N` → 指定 `.ai/icode/icode_N`
 2. 运行机器校验（Bash 一行命令，输出逐项结果，任何一项不通过记入问题清单）：
 
 ```bash
 python3 -c "
 import json,sys,os,glob
-d='.icode_output/.icode_output_'+('N' if len(sys.argv)<2 else sys.argv[1])
+d='.ai/icode/icode_'+('N' if len(sys.argv)<2 else sys.argv[1])
 req=['00_init.md','01_plan.md','02_review.md','03_plan_final.md','04_code_review_fix.md','05_deepcheck.md','06_audit.md']
 p=[f for f in req if os.path.exists(os.path.join(d,f))]
 missing=[f for f in ['01_plan.md','02_review.md','03_plan_final.md','04_code_review_fix.md','05_deepcheck.md','06_audit.md'] if not os.path.exists(os.path.join(d,f))]

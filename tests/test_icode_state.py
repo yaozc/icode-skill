@@ -10,6 +10,8 @@ from tools.icode_state import (
     load_merged_index,
     merged_source_digest,
     publish_artifact,
+    update_metadata,
+    upsert_index_entry,
     validate_metadata,
 )
 
@@ -136,6 +138,13 @@ class MetadataValidationTests(unittest.TestCase):
         self.assertEqual(published.read_text(encoding="utf-8"), "approved plan\n")
         self.assertEqual(updated["artifact_map"]["plan"], "PLAN.md")
 
+    def test_update_metadata_rejects_invalid_transition(self) -> None:
+        metadata = load_fixture("concise_in_progress.json")
+        materialize_mapped_files(self.run_dir, metadata)
+        (self.run_dir / ".ico_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "current_phase"):
+            update_metadata(self.run_dir, {"current_phase": "audit"})
+
 
 class MergedViewTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -192,6 +201,25 @@ class MergedViewTests(unittest.TestCase):
         before = merged_source_digest(self.codex_root, self.claude_root)
         (self.codex_root / "project_docs" / "demo" / "overview.md").write_text("changed", encoding="utf-8")
         self.assertNotEqual(before, merged_source_digest(self.codex_root, self.claude_root))
+
+    def test_index_upsert_preserves_other_entries(self) -> None:
+        self.write_index(self.codex_root, [{"ticket_id": "demo-1", "status": "plan_done"}])
+        upsert_index_entry(self.codex_root, {"ticket_id": "demo-2", "status": "completed"})
+        tickets = json.loads((self.codex_root / "index.json").read_text(encoding="utf-8"))["tickets"]
+        self.assertEqual({ticket["ticket_id"] for ticket in tickets}, {"demo-1", "demo-2"})
+
+    def test_overlay_rejects_immutable_fields(self) -> None:
+        with self.assertRaisesRegex(ValueError, "immutable fields"):
+            upsert_index_entry(
+                self.codex_root,
+                {
+                    "ticket_id": "legacy:demo-1:abc",
+                    "legacy_overlay": True,
+                    "legacy_ticket_id": "demo-1",
+                    "legacy_source": "/old/run",
+                    "status": "completed",
+                },
+            )
 
 
 if __name__ == "__main__":

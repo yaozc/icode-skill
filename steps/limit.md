@@ -1,21 +1,25 @@
 # 步骤 limit — 项目约束红线（独立步骤，不参与 1~6 流程推进）
 
-**命令**: `/icode limit [自然语言]`
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex limit [自然语言]`
 **产物**:
-- 主存：`~/.claude/icode_data/limits/<project_id>.md`（全局，跨 checkout 共享）
-- 覆盖：`<project_root>/.icode_output/limit.local/<project_id>.md`（单 checkout，自动 gitignore）
+- 主存：`~/.codex/icode_data/limits/<project_id>.md`（全局，跨 checkout 共享）
+- 覆盖：`<project_root>/.ai/icode/limit.local/<project_id>.md`（单 checkout，自动 gitignore）
 **会话**: 主会话
-**定位**: **项目约束红线生成与维护，独立步骤**。不创建 `.icode_output_N/`、不写 `.ico_metadata.json`、不更新工单 `completed_steps`/`status`。产物供 `/icode plan`/`start`/`fast` 启动时**作为硬基线引用**（plan §3 架构设计/§4 ADR/§6 异常处理须呼应 limit 条目）；**亦供 `/icode log` 根因分析时作为对照清单**（log 步骤4 limit 红线检查点读取，逐条对照根因假设是否违反约定红线）。
+**定位**: **项目约束红线生成与维护，独立步骤**。不创建 `.ai/icode/icode_N/`、不写 `.ico_metadata.json`、不更新工单 `completed_steps`/`status`。产物供 `$icodex plan`/`run`/`fast` 启动时**作为硬基线引用**（plan §3 架构设计/§4 ADR/§6 异常处理须呼应 limit 条目）；**亦供 `$icodex log` 根因分析时作为对照清单**（log 步骤4 limit 红线检查点读取，逐条对照根因假设是否违反约定红线）。
+
+读取约束时使用 `~/.codex/skills/icodex/tools/icode_state.py merged-files --kind limits`，Codex 同 key 优先；追加或覆盖只写 Codex 主存与当前 checkout local 文件，绝不修改 Claude legacy 限制文件。
 
 > **核心设计哲学**：
 > - **约定 vs 事实分离** —— limit 是"代码应该这样写"的约定（团队私有，不上传），doc 是"代码长这样"的事实快照（独立于仓库全局可索引）。两者职责严格分离。
 > - **全局共享 + 单 checkout 覆盖** —— 主存全局共享（同一 project_id 所有 clone 共享），local 覆盖单 checkout 私有（自动 gitignore）。local 完全覆盖 main（同字段 local 优先）。
-> - **追加式演进** —— 每次 `/icode limit <...>` 增量追加新约束条目，保留历史。不覆盖、不 diff。
+> - **追加式演进** —— 每次 `$icodex limit <...>` 增量追加新约束条目，保留历史。不覆盖、不 diff。
 > - **不阻断流程** —— plan 时检测不到 limit → 柔性提示建议生成，不阻断。
 
-## 与 `/icode doc` 的差异
+## 与 `$icodex doc` 的差异
 
-| 维度 | `/icode doc` | `/icode limit` |
+| 维度 | `$icodex doc` | `$icodex limit` |
 |---|---|---|
 | 内容性质 | 事实快照（代码长什么样） | 约定红线（应该怎么做） |
 | 触发方式 | 无描述→全局扫描/有描述→针对操作 | **同** doc 模式 |
@@ -28,11 +32,11 @@
 
 ## 前置校验
 
-1. cwd 必须在 git 仓库或 `repo` 管理的项目内（**与 `/icode doc` 一致**）：
+1. cwd 必须在 git 仓库或 `repo` 管理的项目内（**与 `$icodex doc` 一致**）：
    - `git rev-parse --show-toplevel` 成功 → git-root 模式
    - 否则从 cwd 向上逐级 `test -d $d/.repo`，首个命中 → repo-root 模式
-   - 都失败 → 报错"请在 git 仓库或 `repo` 管理的项目内运行 /icode limit"
-2. 全局目录 `~/.claude/icode_data/limits/`（首次自动创建）
+   - 都失败 → 报错"请在 git 仓库或 `repo` 管理的项目内运行 $icodex limit"
+2. 全局目录 `~/.codex/icode_data/limits/`（首次自动创建）
 
 ## project_id 解析
 
@@ -53,29 +57,29 @@ if [ -z "$GIT_ROOT" ]; then
     echo "❌ 错误：cwd 不在 git 仓库或 repo 管理的项目内"
     echo ""
     echo "💡 解决方案："
-    echo "   /icode limit 必须在 git 仓库或 repo 管理的项目根目录下运行"
+    echo "   $icodex limit 必须在 git 仓库或 repo 管理的项目根目录下运行"
     echo "   1. 检查当前目录：pwd（确认你在工程根目录）"
     echo "   2. 如果不在 git 仓库：cd 到 git 仓库根目录"
     echo "   3. 如果不在 repo 管理项目：使用 Google repo 工具管理（或 cd 到 .repo/ 所在目录）"
-    echo "   4. 如果工程根不在 cwd：cd <工程根> 后再跑 /icode limit"
+    echo "   4. 如果工程根不在 cwd：cd <工程根> 后再跑 $icodex limit"
     exit 1
   fi
 fi
 PROJECT_ID=$(basename "$GIT_ROOT")
 
 # 主存路径（全局）
-MAIN_FILE="$HOME/.claude/icode_data/limits/$PROJECT_ID.md"
+MAIN_FILE="$HOME/.codex/icode_data/limits/$PROJECT_ID.md"
 # 覆盖路径（单 checkout）
-LOCAL_DIR="$GIT_ROOT/.icode_output/limit.local"
+LOCAL_DIR="$GIT_ROOT/.ai/icode/limit.local"
 LOCAL_FILE="$LOCAL_DIR/$PROJECT_ID.md"
 ```
 
-**冲突检测**：与 `/icode doc` 不同，limit 主存不做工程名冲突短 hash 后缀（理由：limit 是团队私有约定，工程名冲突概率极低；如真冲突用户手动重命名文件即可，遵循 KISS）。**同一工程多 checkout 共享同一份 main（这是设计意图）**。
+**冲突检测**：与 `$icodex doc` 不同，limit 主存不做工程名冲突短 hash 后缀（理由：limit 是团队私有约定，工程名冲突概率极低；如真冲突用户手动重命名文件即可，遵循 KISS）。**同一工程多 checkout 共享同一份 main（这是设计意图）**。
 
-## 意图识别（对齐 `/icode doc` 模式）
+## 意图识别（对齐 `$icodex doc` 模式）
 
-- **无描述** (`/icode limit`) → 合并显示本工程当前约束（main + local 整文件覆盖视图），不做任何写入
-- **有描述** (`/icode limit <自然语言>`) → 针对操作（生成/追加）：
+- **无描述** (`$icodex limit`) → 合并显示本工程当前约束（main + local 整文件覆盖视图），不做任何写入
+- **有描述** (`$icodex limit <自然语言>`) → 针对操作（生成/追加）：
   - AI 解析自然语言，提取 1~N 条新约束条目（每条格式见「条目格式」段）
   - 追加到主存 main（不覆盖 local，local 是单 checkout 覆盖专用，不接受命令行追加）
   - **追加式演进**（不覆盖、不 diff、不询问"是否覆盖"）
@@ -88,7 +92,7 @@ LOCAL_FILE="$LOCAL_DIR/$PROJECT_ID.md"
 
 **问题**：追加式演进易累积语义重复的红线（同域同约束多次新增），既膨胀文件又稀释执行注意力（见「约束索引表」段）。
 
-**预检动作**（每次 `/icode limit <新约束>` 追加前**必做**，不可跳过）：
+**预检动作**（每次 `$icodex limit <新约束>` 追加前**必做**，不可跳过）：
 1. **关键词 grep**：提取新约束核心词（约束域 / 对象 / 动作，如 `git`、`分支`、`日志`、`状态机`），`grep -nE "<关键词>" main 文件`，列出命中红线
 2. **语义比对**：对命中条目与新约束判定关系：
    - **完全重复**（域 + 对象 + 动作均同）→ **不追加**，提示"红线 N 已存在相同约束：<标题>"，询问是否增强表述
@@ -110,7 +114,7 @@ LOCAL_FILE="$LOCAL_DIR/$PROJECT_ID.md"
 - 主存 main 存在 → 读其所有条目
 - 覆盖 local 存在 → **整文件覆盖**（local 文件内容直接当作完整 limit 视图）；未匹配的 main 条目保留语义不实现，统一由用户维护 local 时人工合并
 - local 不存在 → 仅显示 main
-- main 不存在 → 提示"⚠️ 本工程尚无 limit 约束，建议运行 `/icode limit <约束描述>` 生成"
+- main 不存在 → 提示"⚠️ 本工程尚无 limit 约束，建议运行 `$icodex limit <约束描述>` 生成"
 
 > **整文件覆盖语义**：为避免"按编号/标题合并"复杂度，**本实现采用整文件覆盖**——local 存在时把 local 文件整体当作 limit 视图；local 不存在时显示 main。**理由**：limit 条目通常不多（典型 5~20 条），复杂合并规则维护成本高于收益。**约定**：用户编辑 local 时自行把想保留的 main 条目复制进去。如未来需要精细合并可迭代。
 
@@ -124,7 +128,7 @@ LOCAL_FILE="$LOCAL_DIR/$PROJECT_ID.md"
 ### 4. 追加 / 显示
 
 **有描述 → 追加**：
-1. mkdir -p `~/.claude/icode_data/limits/`（首次）
+1. mkdir -p `~/.codex/icode_data/limits/`（首次）
 2. 读 main 文件（如存在）→ 解析最后一条红线编号 N_last
 3. AI 提取新条目（1~N 条），编号从 N_last + 1 开始
 4. 追加到 main 末尾（用 Edit 工具或 Write 完整重写，原子写 `.tmp` + `mv`）
@@ -142,7 +146,7 @@ LOCAL_FILE="$LOCAL_DIR/$PROJECT_ID.md"
 - plan §6 异常处理必须呼应 limit 异常处理相关条目
 - plan 步骤 metadata 写入 `limit_refs` 数组（可选，记录本计划引用的红线编号）
 
-**柔性提示**：plan 步骤入口检测 main + local 都不存在 → 输出"💡 本工程尚无 limit 约束（建议运行 `/icode limit <约束描述>` 生成），不阻断流程"。
+**柔性提示**：plan 步骤入口检测 main + local 都不存在 → 输出"💡 本工程尚无 limit 约束（建议运行 `$icodex limit <约束描述>` 生成），不阻断流程"。
 
 ## 约束索引表（防膨胀遗忘）
 
@@ -190,7 +194,7 @@ LOCAL_FILE="$LOCAL_DIR/$PROJECT_ID.md"
 
 **半自动原则**：自动检测"对象存在性"（客观），人工判定"语义适用性"（主观）。**禁止 AI 擅自归档**——对象不存在 ≠ 红线失效（可能只是重构 / 迁移，约束仍有效）。
 
-**检测动作**（`/icode limit` 无描述显示模式时顺带执行，也可用户主动触发）：
+**检测动作**（`$icodex limit` 无描述显示模式时顺带执行，也可用户主动触发）：
 1. **提取对象**：对每条红线，提取其引用的具体对象（文件路径 / 目录 / 函数名 / 分支名 / 命令入口），如 `<路径>/xxx`、`./scripts/xxx.sh`、`xxx_node`、`xxx` 分支
 2. **存在性检查**：用 `test -d <路径>` / `test -f <路径>` / `grep -n <函数名>` 检查对象是否仍存在（路径类直接 test；函数 / 分支类 grep 当前工程源码）
 3. **列失效候选**：对象不存在的红线标 `⚠️ 失效候选`，汇总列出（含"引用对象 + 判定依据"），**不自动归档**
@@ -226,14 +230,14 @@ LOCAL_FILE="$LOCAL_DIR/$PROJECT_ID.md"
 
 - **不得**为生成而生成——用户描述模糊时主动询问，禁止 AI 自行编造约束内容
 - **不得**覆盖式重写——追加式演进是核心约定，违反即不合规
-- **不得**写工程内 main 文件——main 永远在全局 `~/.claude/icode_data/limits/`，local 永远在 `.icode_output/limit.local/`
-- **不得**触发任何工单步骤（不写 `.ico_metadata.json`，不创建 `.icode_output_N/`，不更新 status）
+- **不得**写工程内 main 文件——main 永远在全局 `~/.codex/icode_data/limits/`，local 永远在 `.ai/icode/limit.local/`
+- **不得**触发任何工单步骤（不写 `.ico_metadata.json`，不创建 `.ai/icode/icode_N/`，不更新 status）
 - **不得**在产物里写 icode 工作流元数据（如 `// ticket: xxx`），产物是给团队读的约定
 
 ## 工程污染防护
 
-- **main 在全局** `~/.claude/icode_data/limits/`，不污染工程根
-- **local 在 `.icode_output/limit.local/`**，默认被 `.gitignore` 覆盖（SKILL.md 建议），不污染 git
+- **main 在全局** `~/.codex/icode_data/limits/`，不污染工程根
+- **local 在 `.ai/icode/limit.local/`**，默认被 `.gitignore` 覆盖（SKILL.md 建议），不污染 git
 - **不上传任何约定内容到工程仓库**——limit 是团队私有，跟 doc（事实快照可共享）职责严格分离
 - **产物路径不动** —— 不在工程根创建新配置文件
 
@@ -246,8 +250,8 @@ LOCAL_FILE="$LOCAL_DIR/$PROJECT_ID.md"
 
 ## 衔接与可重复
 
-- **plan 消费**：`/icode plan`/`start`/`fast` 启动时自动检测 main + local，柔性提示或读取作为硬基线
-- **可重复**：多次 `/icode limit <...>` 持续追加，编号自动递增
+- **plan 消费**：`$icodex plan`/`run`/`fast` 启动时自动检测 main + local，柔性提示或读取作为硬基线
+- **可重复**：多次 `$icodex limit <...>` 持续追加，编号自动递增
 - **手动编辑**：用户可直接编辑 main/local 文件（约定文件，非 AI 独占），AI 追加时按编号续接
 
 ## MCP 推荐（强证据二元化）

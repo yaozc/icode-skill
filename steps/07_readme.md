@@ -1,6 +1,8 @@
 # 步骤 7 — 交付报告生成（可选，手动触发）
 
-**命令**: `/icode readme`
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex readme`
 **产出**: 每次调用**一次性生成两份**：
 
 1. `{ICODE_OUT_DIR}/{工程简名}_{需求关键词}.md` —— **交付报告**（面向开发/了解工程的人，自包含技术总结）
@@ -12,6 +14,8 @@
 ## 前置校验
 
 检查 `{ICODE_OUT_DIR}/.ico_metadata.json` 的 `status == "completed"`（步骤6已完成）。若未完成则报错提示先执行步骤6。
+
+随后按 `artifact_map` 读取实际存在的 `requirement/root_cause/plan/final_plan/implementation/deepcheck/audit/patches`，不得假设 staged 编号文件存在；这使 concise full mode 与 staged mode 共用本步骤。两份报告分别写临时草稿并用 `publish-artifact --key delivery_report`、`publish-artifact --key delivery_brief` 发布，最后记录 `delivery_report_generated=true` 并运行 `validate`。任一发布失败时不设置对应映射、不宣称生成完成。
 
 **产物时效校验（防 README 基于过时产物）**：读 metadata 的 `created_at`（工单创建时间，近似步骤6 完成的下界）+ `code_files` 列表，用 `find {code_files} -newer {ICODE_OUT_DIR}/.ico_metadata.json` 检测是否有源码文件 mtime 晚于 metadata 创建时间。若有 → 输出警告「⚠️ 检测到步骤6 完成后代码仍有变更（N 个文件 mtime 晚于终审时间），README 的"已知限制/方案"可能基于过时产物，建议重跑步骤5/6 或确认变更不影响交付」；不阻塞生成（README 的"使用说明"段含实时运行输出兜底，面向人可判断）。**该校验同时覆盖跨领域简报**（简报的"核心代码/时间点"同样基于产物，过时产物会传导到两份）。
 
@@ -282,9 +286,9 @@ eval("2147483648") rc=3 (expect 3 OVERFLOW)
 
 ## 可重复执行
 
-用户可多次 `/icode readme` 覆盖更新（每次重新提取最新产物内容，**两份同步刷新**）。
+用户可多次 `$icodex readme` 覆盖更新（每次重新提取最新产物内容，**两份同步刷新**）。
 
-**patch 联动**：工单经过 `/icode patch` 追加修改后，若功能/修复范围有变化，提示用户"补丁后建议重新 `/icode readme` 刷新交付报告 + 跨领域简报"（不自动执行，用户决定）。重新生成时须把 `08_patch.md` 的补丁演进（最新 Patch N）纳入「代码变更 / 验证方法」章节（简报的"时间点/修复效果"随之更新）。
+**patch 联动**：工单经过 `$icodex patch` 追加修改后，若功能/修复范围有变化，提示用户"补丁后建议重新 `$icodex readme` 刷新交付报告 + 跨领域简报"（不自动执行，用户决定）。重新生成时须把 `08_patch.md` 的补丁演进（最新 Patch N）纳入「代码变更 / 验证方法」章节（简报的"时间点/修复效果"随之更新）。
 
 ## MCP 推荐（强证据二元化）
 | MCP | 推荐级别 | 用途 |

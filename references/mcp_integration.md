@@ -1,8 +1,8 @@
 # MCP 工具集成与降级路径
 
-> icode 工作流可调用 6 个 MCP（`/icode install` 一键安装）。**用户可能不装全部**，每个 MCP 都是**可选 + 降级**的。
+> icode 工作流可调用 6 个 MCP（`$icodex install` 一键安装）。**用户可能不装全部**，每个 MCP 都是**可选 + 降级**的。
 >
-> 安装入口：`/icode install`（详见 [steps/install.md](../steps/install.md)）
+> 安装入口：`$icodex install`（详见 [steps/install.md](../steps/install.md)）
 >
 > 步骤 × MCP 推荐矩阵：[mcp_per_step.md](mcp_per_step.md)
 >
@@ -12,7 +12,7 @@
 
 按 [thinking_core.md](thinking_core.md) 的"强证据"逻辑（**任一即视为"已配置可用"**）：
 
-- **证据 A（强证据）**：`~/.claude.json` 的 `mcpServers.<name>` 段存在
+- **证据 A（强证据）**：`Codex MCP 配置` 的 `mcpServers.<name>` 段存在
 - **证据 B（强证据）**：工具可在当前会话**直接调用**——工具列表直接可见（完整 schema，按语义识别：标准 `mcp__<name>__<tool>` 或代理前缀 `__<proxy>_<tool>` 形态）或 ToolSearch 可取 schema（不可见时按 [thinking_core.md](thinking_core.md) 第 0 判据）
 
 **强证据不存在 → 走降级路径**。**本文档路径：可装可降级，不阻塞流程。**
@@ -30,7 +30,7 @@
 
 ### ② vision-bridge（**推荐装，需配三件套**）
 
-- **强证据**：`~/.claude.json` 的 `mcpServers.vision-bridge` 段存在 + `config.json` 三件套（base_url/api_key/model）已填
+- **强证据**：`Codex MCP 配置` 的 `mcpServers.vision-bridge` 段存在 + `config.json` 三件套（base_url/api_key/model）已填
 - **强证据满足**：`mcp__vision-bridge__analyze_media(media_path, prompt)` 返回文本，**优先用 MCP 工具**
 - **降级**（没装 / 装了没填三件套）：AI 不替用户判断原生能力
   - 原生支不支持图片/视频 **视具体 session 模型而定**（Opus/Sonnet 一般支持，Haiku 可能部分支持）
@@ -42,7 +42,7 @@
 ### ③ memory（推荐）
 
 - **强证据**：`mcp__memory__create_entities` / `mcp__memory__search_nodes` / `mcp__memory__read_graph`
-- **降级**：本对话内手动维护笔记（`## 记忆` 段落），或写到 `~/.claude/icode_data/memory.md`
+- **降级**：本对话内手动维护笔记（`## 记忆` 段落），或写到 `~/.codex/icode_data/memory.md`
 - **触发场景**：跨工单偏好（"用户偏好 NoSQL"）、项目特性（"用 gRPC v3"）
 - **token 性价比**：中（需要工程化使用才收益大）
 
@@ -63,10 +63,10 @@
 
 ### ⑥ cheap-research（**可选 · 降本场景**）
 
-- **强证据**：`~/.claude.json` 的 `mcpServers.cheap-research` 段存在 + `config.json` 三件套（base_url/api_key/model）已填
+- **强证据**：`Codex MCP 配置` 的 `mcpServers.cheap-research` 段存在 + `config.json` 三件套（base_url/api_key/model）已填
 - **强证据满足**：`mcp__cheap-research__summarize(text)` / `__retrieve_similar(query, candidates)` / `__fill_template(template, data)` / `__extract(text, schema)` / `__audit_facts(repo_path)` 等 14 工具返回结构化 dict，**子代理优先用 MCP 工具**
 - **降级**（没装 / 装了没填三件套）：主会话 / 子代理走 `Agent(model="haiku")` 兜底（方案 A），不阻塞主流程
-- **触发场景**：长上下文压缩（log / doc / init / deepcheck / review）、历史工单检索（init / plan / start / fast / log）、模板填充（readme / audit / list）、结构化提取（doc 99_code_facts_audit）、TB 评论预提取（log 阶段2，评论 ≥ 8 条时）、差异摘要（audit 计划vs代码）、远程 README 拉取（doc 模块文档参考输入）—— 23 个入选子任务（单闸门：价值 ≥ 3 ★ + 低风险）
+- **触发场景**：长上下文压缩（log / doc / init / deepcheck / review）、历史工单检索（init / plan / run / fast / log）、模板填充（readme / audit / list）、结构化提取（doc 99_code_facts_audit）、TB 评论预提取（log 阶段2，评论 ≥ 8 条时）、差异摘要（audit 计划vs代码）、远程 README 拉取（doc 模块文档参考输入）—— 23 个入选子任务（单闸门：价值 ≥ 3 ★ + 低风险）
 - **不接管决策**：所有高风险子任务（3 质疑者对抗 / 架构决策 / 终审裁决 / 修复方案 / 用户对话）一律不交给 cheap-research
 - **触发场景详见**：[mcp_per_step.md](mcp_per_step.md) 强证据场景表 + 14 工具入参/出参 schema（见 [mcp/cheap-research/server.py](../mcp/cheap-research/server.py)）
 - **当前状态**：14 工具 + 43 个自检用例全过，dev_repo 完成；**未同步到已安装目录**（等用户指令）
@@ -112,7 +112,7 @@
 ## AI 执行时的工作流
 
 1. **本步骤开始前**：判定本步骤推荐的 MCP（见 [mcp_per_step.md](mcp_per_step.md)）是否可用
-   - 查 `~/.claude.json` 的 `mcpServers`：用 `Read` 工具
+   - 查 `Codex MCP 配置` 的 `mcpServers`：用 `Read` 工具
    - 查当前会话工具列表：工具**直接可见**（按语义识别，含代理前缀形态）即视为可用；不可见再 ToolSearch 取 schema（见 [thinking_core.md](thinking_core.md) 第 0 判据）
 2. **如有强证据**：优先用 MCP 工具（省事且返回更结构化）
 3. **无强证据**：走降级路径（Bash / Read / Write / WebFetch 等原生工具）
@@ -130,4 +130,4 @@
 | 长期项目 | 上述 + memory（跨工单积累） |
 | **降本场景** | 上述 + **cheap-research**（仅 23 个低风险子任务；3 质疑者对抗 / 架构决策 / 终审裁决 / 修复方案一律不走） |
 
-完整安装：`/icode install`（一键扫描 `mcp/` 目录里所有 `install.sh`）
+完整安装：`$icodex install`（一键扫描 `mcp/` 目录里所有 `install.sh`）

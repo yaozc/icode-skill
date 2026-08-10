@@ -1,10 +1,12 @@
 # 命令 fast — 精简全流程（plan → review(1轮无对抗) → merge → code → deepcheck(Reverse 单阶段) → audit）
 
-**命令**: `/icode fast <需求>`
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex fast <需求>`
 **目标**: 保留全流程 6 步结构，每步只跑最关键的最小动作，链路耗时约为全流程的 65%
 **会话**: 主会话
 
-## 与全流程（`/icode start`）的差异
+## 与全流程（`$icodex run`）的差异
 
 | 维度 | full（默认） | fast |
 |---|---|---|
@@ -24,18 +26,18 @@
 - 改动边界清晰、不涉及架构变更或新协议引入
 - 紧急修复、对交付速度敏感
 
-**不适用场景**（建议回退到 `/icode start` 全流程）：跨模块重构、新架构引入、安全敏感模块改动、跨协议/跨仓集成、需要对抗验证防确认偏误的场景。
+**不适用场景**（建议回退到 `$icodex run` 全流程）：跨模块重构、新架构引入、安全敏感模块改动、跨协议/跨仓集成、需要对抗验证防确认偏误的场景。
 
 ## 执行流程
 
-### 1. 目录决策（与 `/icode start` 复用规则一致）
+### 1. 目录决策（与 `$icodex run` 复用规则一致）
 
 ```bash
-mkdir -p .icode_output
-LAST=$(ls -d .icode_output/.icode_output_* 2>/dev/null | grep -oP '(?<=\.icode_output_)\d+' | sort -n | tail -1)
+mkdir -p .ai/icode
+LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n | tail -1)
 REUSE=0
 if [ -n "$LAST" ]; then
-  CAND=".icode_output/.icode_output_${LAST}"
+  CAND=".ai/icode/icode_${LAST}"
   if [ -f "$CAND/.ico_metadata.json" ] && [ -f "$CAND/00_init.md" ] && [ ! -f "$CAND/01_plan.md" ]; then
     STATUS=$(grep -oP '"status"\s*:\s*"\K[^"]+' "$CAND/.ico_metadata.json")
     case "$STATUS" in
@@ -53,7 +55,7 @@ fi
 > **段零只读当前分支子目录是反交叉污染设计，不要误读为"被覆盖"**：详见 [steps/doc.md](doc.md) 顶部「⚠️ 多分支设计·反偷懒强约束」段（`dir_and_metadata.md:496`「DOC_DIR 分支过滤」），跨分支不交叉读是为防止跨分支借鉴失真；用户反馈"看不到其他分支文档"时**默认不是 bug**，应先 `ls project_docs/<id>/` 看是否有多分支子目录再判。
 ### 2. 创建 metadata
 
-`/icode fast` 新建目录时，`.ico_metadata.json` 写入：
+`$icodex fast` 新建目录时，`.ico_metadata.json` 写入：
 
 ```json
 {
@@ -83,11 +85,11 @@ fi
 启动时打印（**不阻塞**）：
 
 ```
-⚠️ /icode fast 模式：
+⚠️ $icodex fast 模式：
    - 步骤2 review 固定 1 轮无对抗验证
    - 步骤5 deepcheck 只跑 Reverse 阶段（跳过 Fixed/Free）
    - 依赖 plan+1 轮 review+Reverse 单阶段+audit 四道关卡
-   - 复杂需求（跨模块/新架构/安全敏感）建议改用 /icode start 全流程
+   - 复杂需求（跨模块/新架构/安全敏感）建议改用 $icodex run 全流程
 ```
 
 ### 4. 串联执行
@@ -106,8 +108,8 @@ fi
 **步骤2/5 的 fast 模式行为**（由各自步骤文件读 `metadata.mode` 字段判定）：
 
 - **步骤2 review**：检测到 `mode=="fast"` 时，按**是否带参 N**区分两种场景（详见 [steps/02_review.md](02_review.md) 顶部「fast 模式行为」段）：
-  - **场景一·自动串联**（`/icode fast` 调起、未带参 N，`FAST_LOCKED=true`）：`max_rounds` 强制 1、跳过步骤 2.5.5 对抗（issue 直接标 `confirmed`，**降级为单视角审查**）、循环控制 `total_rounds >= 1` 直接终止。输出 `▶ 步骤2 fast 模式：1 轮审查，无对抗验证`
-  - **场景二·单步升级**（fast 工单上显式跑 `/icode review N`，`FAST_LOCKED=false`）：**N 优先级最高**——按 N 轮跑 + 恢复对抗验证 + 走正常 (a)(b)(c) 循环控制，与 full 模式一致（这是 fast→full 升级机制，用户显式表达升级意图）
+  - **场景一·自动串联**（`$icodex fast` 调起、未带参 N，`FAST_LOCKED=true`）：`max_rounds` 强制 1、跳过步骤 2.5.5 对抗（issue 直接标 `confirmed`，**降级为单视角审查**）、循环控制 `total_rounds >= 1` 直接终止。输出 `▶ 步骤2 fast 模式：1 轮审查，无对抗验证`
+  - **场景二·单步升级**（fast 工单上显式跑 `$icodex review N`，`FAST_LOCKED=false`）：**N 优先级最高**——按 N 轮跑 + 恢复对抗验证 + 走正常 (a)(b)(c) 循环控制，与 full 模式一致（这是 fast→full 升级机制，用户显式表达升级意图）
 
 - **步骤4 code（含末尾 1.5 "Code Review Fix"）**：fast 模式下也执行 1.5 复检（**4 维度对所有工单都触发**，不分模式）——同事提示词的工程化复检机制不因 fast 而省略。差异：fast 模式下复检节奏紧凑，但仍产出 `04_code_review_fix.md` 并落盘 `code_review_fix_with_issues` 字段。详见 [steps/04_code.md](04_code.md)「1.5 子段」
 
@@ -125,15 +127,15 @@ fi
 
 ## 与 full 模式的切换
 
-- **fast → full 升级**：**允许**。用户能在 fast 工单上单独跑 `/icode review N` 或 `/icode deepcheck` 补全剩余步骤。**单步命令仍读 `mode` 字段，但用户用参数 N 显式表达升级意图时，参数优先级最高**（详见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)「步骤2/5 读 mode 字段的契约」段）。已走完 fast 的工单再跑 `/icode review 5` 会被识别为 `status=completed` 重新审查（按步骤 2.3 规则），不破坏数据。
-- **full → fast 降级**：**不允许**（单步命令不强制按 fast 模式执行；用户若想走 fast 应改用 `/icode fast` 重启链路）。
+- **fast → full 升级**：**允许**。用户能在 fast 工单上单独跑 `$icodex review N` 或 `$icodex deepcheck` 补全剩余步骤。**单步命令仍读 `mode` 字段，但用户用参数 N 显式表达升级意图时，参数优先级最高**（详见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)「步骤2/5 读 mode 字段的契约」段）。已走完 fast 的工单再跑 `$icodex review 5` 会被识别为 `status=completed` 重新审查（按步骤 2.3 规则），不破坏数据。
+- **full → fast 降级**：**不允许**（单步命令不强制按 fast 模式执行；用户若想走 fast 应改用 `$icodex fast` 重启链路）。
 - **同一工单跨模式混跑**：未限制，`completed_steps` 与 `status` 反映实际走过的步骤。
 
 ## 与其他命令的关系
 
-- `/icode help`：输出时包含 fast 命令说明
-- `/icode status`：识别 `mode` 字段，输出「工单模式：fast/full」
-- `/icode readme`：步骤7 不区分模式，统一生成交付报告 + 跨领域简报（两份）
+- `$icodex help`：输出时包含 fast 命令说明
+- `$icodex status`：识别 `mode` 字段，输出「工单模式：fast/full」
+- `$icodex readme`：步骤7 不区分模式，统一生成交付报告 + 跨领域简报（两份）
 
 ## 反偷懒约束
 

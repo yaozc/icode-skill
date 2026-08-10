@@ -423,6 +423,65 @@ def reserve_patch_number(run_dir: Path) -> int:
         return number
 
 
+def update_metadata(run_dir: Path, updates: Mapping[str, Any]) -> Dict[str, Any]:
+    """Apply a shallow metadata transition under the run lock and validate it."""
+
+    run_dir = Path(run_dir)
+    metadata_path = run_dir / ".ico_metadata.json"
+    forbidden = {"artifact_map", "patch_count", "patch_history"}.intersection(updates)
+    if forbidden:
+        raise ValueError("dedicated commands must update: " + ", ".join(sorted(forbidden)))
+    with PortableFileLock(run_dir / ".ico.lock"):
+        metadata = _read_json(metadata_path)
+        metadata.update(dict(updates))
+        errors = validate_metadata(metadata, run_dir)
+        if errors:
+            raise ValueError("metadata validation failed: " + "; ".join(errors))
+        _atomic_write_json(metadata_path, metadata)
+        return metadata
+
+
+def upsert_index_entry(codex_root: Path, entry: Mapping[str, Any]) -> Dict[str, Any]:
+    """Insert or replace one Codex index record without losing concurrent writes."""
+
+    ticket_id = entry.get("ticket_id")
+    if not isinstance(ticket_id, str) or not ticket_id:
+        raise ValueError("index entry requires a non-empty ticket_id")
+    if entry.get("legacy_overlay") is True:
+        required = {"legacy_source", "legacy_ticket_id"}
+        if not required.issubset(entry):
+            raise ValueError("legacy overlay requires legacy_source and legacy_ticket_id")
+        allowed = {
+            "ticket_id",
+            "legacy_overlay",
+            "legacy_source",
+            "legacy_ticket_id",
+            "migration_id",
+            *MUTABLE_OVERLAY_FIELDS,
+        }
+        unexpected = sorted(set(entry) - allowed)
+        if unexpected:
+            raise ValueError("legacy overlay contains immutable fields: " + ", ".join(unexpected))
+
+    codex_root = Path(codex_root)
+    codex_root.mkdir(parents=True, exist_ok=True)
+    with PortableFileLock(codex_root / ".index.lock"):
+        index = _load_index(codex_root)
+        tickets = [dict(item) for item in index.get("tickets", []) if isinstance(item, dict)]
+        replacement = dict(entry)
+        for position, existing in enumerate(tickets):
+            if existing.get("ticket_id") == ticket_id:
+                tickets[position] = replacement
+                break
+        else:
+            tickets.append(replacement)
+        updated = dict(index)
+        updated["tickets"] = tickets
+        updated["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _atomic_write_json(codex_root / "index.json", updated)
+        return updated
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -779,6 +838,12 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
     publish_parser.add_argument("--name", required=True)
     reserve_parser = subparsers.add_parser("reserve-patch", help="reserve a patch number")
     reserve_parser.add_argument("--run-dir", required=True, type=Path)
+    update_parser = subparsers.add_parser("update-metadata", help="apply a validated metadata transition")
+    update_parser.add_argument("--run-dir", required=True, type=Path)
+    update_parser.add_argument("--patch-json", required=True, type=Path)
+    upsert_parser = subparsers.add_parser("upsert-index", help="atomically upsert one Codex index entry")
+    upsert_parser.add_argument("--codex-root", required=True, type=Path)
+    upsert_parser.add_argument("--entry-json", required=True, type=Path)
     merged_index_parser = subparsers.add_parser("merged-index", help="print the merged ticket index")
     merged_index_parser.add_argument("--codex-root", required=True, type=Path)
     merged_index_parser.add_argument("--claude-root", required=True, type=Path)
@@ -802,6 +867,12 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
     if args.command == "reserve-patch":
         print(reserve_patch_number(args.run_dir))
+        return 0
+    if args.command == "update-metadata":
+        print(json.dumps(update_metadata(args.run_dir, _read_json(args.patch_json)), ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "upsert-index":
+        print(json.dumps(upsert_index_entry(args.codex_root, _read_json(args.entry_json)), ensure_ascii=False, indent=2))
         return 0
     if args.command == "merged-index":
         print(json.dumps(load_merged_index(args.codex_root, args.claude_root), ensure_ascii=False, indent=2))

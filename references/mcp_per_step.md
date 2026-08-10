@@ -6,7 +6,7 @@
 
 | 级别 | 符号 | 语义 | 触发条件 | 未调用的合规处理 |
 |------|------|------|---------|-----------------|
-| **必须调** | 🟢 | 强证据场景满足就**必须调用**（先实际调用一次，失败/空才能降级） | 强证据场景满足（见下表）+ MCP 在 `~/.claude.json` 注册 且 工具可调用（列表直接可见 或 ToolSearch 可取 schema） | **降级声明**：在思考块「MCP 调用」段写明降级原因（MCP 不可用 / 调用返回空）|
+| **必须调** | 🟢 | 强证据场景满足就**必须调用**（先实际调用一次，失败/空才能降级） | 强证据场景满足（见下表）+ MCP 在 `Codex MCP 配置` 注册 且 工具可调用（列表直接可见 或 ToolSearch 可取 schema） | **降级声明**：在思考块「MCP 调用」段写明降级原因（MCP 不可用 / 调用返回空）|
 | **不必调** | ⚪ | 强证据场景不满足，**无需评估、无需声明** | 强证据场景不满足 | 无需说明 |
 
 ## 强证据场景判定
@@ -17,15 +17,15 @@
 |-----|---------------------------|--------|
 | **sequential-thinking** | 所有步骤（强制思考前置，已嵌入 thinking_core） | 无 |
 | **context7** | init/plan/code 步骤 **且** 需求或代码涉及第三方库（package.json/Cargo.toml/go.mod/requirements.txt/pom.xml/build.gradle 等声明依赖，且需求触及该库 API） | 其余步骤 / 不涉及第三方库 |
-| **vision-bridge** | 任意步骤 **且** (a) 用户主动提供图片/截图/视频（会话中含媒体附件/路径，直接调） **或** (b) TB 缺陷源拉取的附件含视频/图片（`{ICODE_OUT_DIR}/tb_source/<ID>/` 下，**vision-bridge 可用则主动调**：视频先用 ffmpeg 本地提取关键帧再传图片帧给 vision-bridge 省钱——见 [steps/log.md](../steps/log.md)「附件分析（含本地路径 + TB 源）与 ffmpeg 抽帧」段） **或** (c) `/icode log` 本地日志目录含视频/图片文件（`find <log_dir> -type f \( -name '*.mp4' -o -name '*.mov' -o -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' \)`，**vision-bridge 可用则主动调**，行为同 (b) 的 ffmpeg 抽帧流程） | vision-bridge 未安装 / `~/.claude/skills/icode/mcp/vision-bridge/config.json` 三件套未配齐 → 仅提示不主动调（防纯文字模型报错）；ffmpeg 不可用时降级为直接传视频（需用户确认，可能耗 API 额度） |
+| **vision-bridge** | 任意步骤 **且** (a) 用户主动提供图片/截图/视频（会话中含媒体附件/路径，直接调） **或** (b) TB 缺陷源拉取的附件含视频/图片（`{ICODE_OUT_DIR}/tb_source/<ID>/` 下，**vision-bridge 可用则主动调**：视频先用 ffmpeg 本地提取关键帧再传图片帧给 vision-bridge 省钱——见 [steps/log.md](../steps/log.md)「附件分析（含本地路径 + TB 源）与 ffmpeg 抽帧」段） **或** (c) `$icodex log` 本地日志目录含视频/图片文件（`find <log_dir> -type f \( -name '*.mp4' -o -name '*.mov' -o -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' \)`，**vision-bridge 可用则主动调**，行为同 (b) 的 ffmpeg 抽帧流程） | vision-bridge 未安装 / `~/.codex/skills/icodex/mcp/vision-bridge/config.json` 三件套未配齐 → 仅提示不主动调（防纯文字模型报错）；ffmpeg 不可用时降级为直接传视频（需用户确认，可能耗 API 额度） |
 | **playwright** | deepcheck/audit 步骤 **且** 前端工程（含 .html/.jsx/.tsx/.vue 或 package.json 含 react/vue） | CLI/后端/嵌入式工程 |
-| **memory** | init/plan 步骤 **且** 本工程历史工单数 ≥ 1（`~/.claude/icode_data/index.json` 中本 project_path 工单数 ≥ 1） | 新工程首个工单 / demo |
+| **memory** | init/plan 步骤 **且** 本工程历史工单数 ≥ 1（`~/.codex/icode_data/index.json` 中本 project_path 工单数 ≥ 1） | 新工程首个工单 / demo |
 | **cheap-research** | init/log/doc/plan/review/code/deepcheck/audit/readme/patch 步骤 **且** 走单闸门入选的 23 个子任务（长上下文压缩 / 历史检索 / 模板填充 / 结构化提取 / TB 评论预提取 / 代码事实审计 / 模式扫描 / 符号追溯 / 差异摘要 / 文件名生成 / 模板选择 / schema 迁移 / 模块识别 / project_id 解析 / 远程拉取） | **不接管决策**：3 质疑者对抗 / 架构决策 / 终审裁决 / 修复方案 / 用户对话一律不走；推理敏感度中等的"灰区"也不走（零灰区原则）；merge/install/list 无入选子任务 |
 
 **判定执行**：
 
 - context7 的"第三方库"探测：步骤 1 plan 开始时 `ls` 顶层 + grep 依赖文件，结果写入 `01_plan.md` §1.5；log 步骤开始时同样探测，结果写入 `log_analysis.md §2.0`
-- memory 的工单数探测：Read `~/.claude/icode_data/index.json` 按本工程 project_path 计数
+- memory 的工单数探测：Read `~/.codex/icode_data/index.json` 按本工程 project_path 计数
 - vision-bridge/playwright 的工程类型/媒体探测：按会话上下文 + 工程文件判定
 
 ## 通用前置（所有步骤必用）

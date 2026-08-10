@@ -1,9 +1,12 @@
 # 步骤 log — 日志根因分析（可选前置入口）
 
-**命令**: `/icode log [零散信息...]`
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex log [零散信息...]`
 **产出**: `{ICODE_OUT_DIR}/log_analysis.md` + `{ICODE_OUT_DIR}/00_init.md`（修复需求初稿，衔接步骤1）
 **会话**: 主会话
-**定位**: **与 init/start/fast/plan 并列的入口命令，非流程步骤编号**。把"一坨设备/服务日志 + 模糊症状"转化为"有证据、经对抗验证、可信"的根因报告，并自动转成修复需求衔接步骤1。**领域无关**——适用于任何能产生日志的系统（机器人/服务端/嵌入式/Web 等均不限）。完成后用户敲 `/icode plan`（仅步骤1）/ `/icode start`（全流程）/ `/icode fast`（精简全流程）（无参）复用同目录进入修复流程，详见 SKILL.md「调用命令」段的目录复用规则说明。
+**Codex 发布键**: `log_analysis.md` 使用 `root_cause`，生成的 `00_init.md` 使用 `requirement`。两份都经 `publish-artifact` 成功后才写 `status=log_done` 并运行 `validate`。
+**定位**: **与 init/run/fast/plan 并列的入口命令，非流程步骤编号**。把"一坨设备/服务日志 + 模糊症状"转化为"有证据、经对抗验证、可信"的根因报告，并自动转成修复需求衔接步骤1。**领域无关**——适用于任何能产生日志的系统（机器人/服务端/嵌入式/Web 等均不限）。完成后用户敲 `$icodex plan`（仅步骤1）/ `$icodex run`（全流程）/ `$icodex fast`（精简全流程）（无参）复用同目录进入修复流程，详见 SKILL.md「调用命令」段的目录复用规则说明。
 
 ## 设计借鉴（方法论，非绑定具体技能）
 
@@ -27,18 +30,18 @@
 ## 执行步骤
 
 1. **确定 ICODE_OUT_DIR**（同 TB 单优先复用，否则强制新建）：
-   - **同 TB 单复用检测（仅当零散输入含 TB 引用时）**：解析 `lib+num+pid+domain`（domain 取 https://<域名>/，pid 取 /project/<pid>/ 那段；供 tb_pull --domain --pid）-> Read `~/.claude/icode_data/index.json`，扫各 ticket 的 `tb_source` 字段，匹配同 `lib+num+pid` 的旧工单
+   - **同 TB 单复用检测（仅当零散输入含 TB 引用时）**：解析 `lib+num+pid+domain`（domain 取 https://<域名>/，pid 取 /project/<pid>/ 那段；供 tb_pull --domain --pid）-> Read `~/.codex/icode_data/index.json`，扫各 ticket 的 `tb_source` 字段，匹配同 `lib+num+pid` 的旧工单
      - **匹配到旧工单**：比对旧工单的 `project_path` 与当前工程根（cwd）
-       - **同工程**（`project_path` == 当前工程）：询问用户"检测到 TB 单 `<ID>` 的旧工单 `.icode_output_M`（上次根因：`<摘要>`），TB 上可能有新评论/附件。① 复用旧目录继续(重拉最新数据+增量对抗) / ② 新建独立分析"；选① -> ICODE_OUT_DIR = 旧目录（`{project_path}/{out_dir}`），走下方「同 TB 单复用流程」；选② -> 强制新建
-       - **跨工程副本**（`project_path` != 当前工程）：提示"检测到 TB 单 `<ID>` 的旧工单在**另一工程副本** `{project_path}`（上次根因：`<摘要>`），当前工程是 `{cwd}`，两份源码拷贝后可能已分叉。① 跨工程复用旧目录续旧分析(⚠️风险：源码可能对不上、旧根因可能失效) / ② 当前工程新建独立分析(读旧工单 `log_analysis.md` 根因/证据作参考，须用当前源码验证) / ③ 去 `{project_path}` 目录继续"；选① -> 走「同 TB 单复用流程」(ICODE_OUT_DIR 用旧工程目录，⚠️标注跨工程源码分叉风险)；选② -> 强制新建 + 读旧工单 `log_analysis.md` 根因结论+决定性证据作参考注入会话(标注跨工程、源码可能分叉、须当前源码验证)；选③ -> 提示用户切到 `{project_path}` 再跑 `/icode log`，本次中止
+       - **同工程**（`project_path` == 当前工程）：询问用户"检测到 TB 单 `<ID>` 的旧工单 `.ai/icode_M`（上次根因：`<摘要>`），TB 上可能有新评论/附件。① 复用旧目录继续(重拉最新数据+增量对抗) / ② 新建独立分析"；选① -> ICODE_OUT_DIR = 旧目录（`{project_path}/{out_dir}`），走下方「同 TB 单复用流程」；选② -> 强制新建
+       - **跨工程副本**（`project_path` != 当前工程）：提示"检测到 TB 单 `<ID>` 的旧工单在**另一工程副本** `{project_path}`（上次根因：`<摘要>`），当前工程是 `{cwd}`，两份源码拷贝后可能已分叉。① 跨工程复用旧目录续旧分析(⚠️风险：源码可能对不上、旧根因可能失效) / ② 当前工程新建独立分析(读旧工单 `log_analysis.md` 根因/证据作参考，须用当前源码验证) / ③ 去 `{project_path}` 目录继续"；选① -> 走「同 TB 单复用流程」(ICODE_OUT_DIR 用旧工程目录，⚠️标注跨工程源码分叉风险)；选② -> 强制新建 + 读旧工单 `log_analysis.md` 根因结论+决定性证据作参考注入会话(标注跨工程、源码可能分叉、须当前源码验证)；选③ -> 提示用户切到 `{project_path}` 再跑 `$icodex log`，本次中止
      - **无匹配 / 无 TB 引用**：走下方「创建新目录」（强制新建），行为与改前 100% 一致
    - **创建新目录**（强制新建，不做其他复用判定）：执行目录管理中的「创建新目录」逻辑，确定 `ICODE_OUT_DIR`
 2. **历史检索复用**（强制思考之前，全局索引存在时必须执行，详见 SKILL.md「历史检索复用」段）：
-   - Read `~/.claude/icode_data/index.json`（不存在则跳过检索）
-   - **两段式检索**：段一从本次症状/关键词提炼关键词集，与各 ticket `keywords` 做 Jaccard 粗筛取 ≤10 候选（零 token，可复活预扫后排除剩余 stale）；段二只把候选 `keywords + requirement_points` 喂主代理精读打分选 top-N 命中（N 由梯度决定，明确无关则 0 条）。`/icode log` 每次强制新建目录，本次工单尚未入索引，故无需排除当前 ticket_id
-   - **`/icode log` 注入分支**：命中工单经段二精读+过时校验后，**按 `verdict` 分流注入**（字段缺失视为 `unknown`，详见 SKILL.md「注入形式·按 verdict 分流」）：
+   - Read `~/.codex/icode_data/index.json`（不存在则跳过检索）
+   - **两段式检索**：段一从本次症状/关键词提炼关键词集，与各 ticket `keywords` 做 Jaccard 粗筛取 ≤10 候选（零 token，可复活预扫后排除剩余 stale）；段二只把候选 `keywords + requirement_points` 喂主代理精读打分选 top-N 命中（N 由梯度决定，明确无关则 0 条）。`$icodex log` 每次强制新建目录，本次工单尚未入索引，故无需排除当前 ticket_id
+   - **`$icodex log` 注入分支**：命中工单经段二精读+过时校验后，**按 `verdict` 分流注入**（字段缺失视为 `unknown`，详见 SKILL.md「注入形式·按 verdict 分流」）：
      - `verified`/`unknown`（含旧工单）：定点读其 `log_analysis.md` 的「根因结论 + 决定性证据」章节（**不读全文**，≤800 token/条）；**`unknown` 额外扩读 `00_init.md` 末轮对话摘要**（≤0.3K）+ 思考块「历史参考」走对抗质疑三问 + ⚠️未验证警告（[../references/thinking_detail.md](../references/thinking_detail.md)「历史参考小节」）——旧工单防误导主防线
-     - `disproved`（`verdict_review_needed=false`）：**不读根因结论**（避免错误根因方向被借鉴），改读 `verdict_reason`（作可验证断言）+ `correct_direction` 作避坑参考（≤0.7K/条）；**强制 Grep/Read 验证证伪前提是否仍成立**（详见 [../references/thinking_detail.md](../references/thinking_detail.md)「历史参考小节」）；`correct_direction` 缺失则降级读根因 + ⛔ 警告，提示 `/icode status --verdict` 补标
+     - `disproved`（`verdict_review_needed=false`）：**不读根因结论**（避免错误根因方向被借鉴），改读 `verdict_reason`（作可验证断言）+ `correct_direction` 作避坑参考（≤0.7K/条）；**强制 Grep/Read 验证证伪前提是否仍成立**（详见 [../references/thinking_detail.md](../references/thinking_detail.md)「历史参考小节」）；`correct_direction` 缺失则降级读根因 + ⛔ 警告，提示 `$icodex status --verdict` 补标
      - `disproved`/`superseded`（`verdict_review_needed=true`，证伪前提依赖已变化）：**降级对抗质疑**--不硬反转，走 unknown A 层（扩读末轮+三问）+ 证伪前提+依赖变化提示（详见 SKILL.md「注入形式·按 verdict 分流」），让新需求重新评估前提是否仍成立
      - `superseded`：读 `superseded_by` 指针 + `correct_direction` + 替代工单根因摘要（≤0.8K/条）
      - 作为本次分析的启发——参考其根因方向与踩坑。**只进会话上下文，绝不写进 `log_analysis.md`**（唯一例外：实质借鉴可在该根因条目末尾加一句 `(参考相似工单 {ticket_id} 的同类根因)`）
@@ -64,7 +67,7 @@
    - **文档为空 但 姐妹工程非空**：基线检查必须对姐妹工程候选做 git grep；段零无文档在 §2.1 显式标注
    - **本检查点不可跳过**：即使段零和姐妹工程均为空，也必须走完盘点 + 显式标注流程（写入 `log_analysis.md §2.1` 末尾一行），不得静默跳过
    - **limit 红线检查点（防"忽略项目级约定违反"）**：在进入基线检查之前，**必须**盘点本工程的 limit 红线（与段零文档/姐妹工程检查点并列），不得静默跳过：
-     - **路径解析**（同 [steps/limit.md](limit.md) + [01_plan.md](01_plan.md) 前置逻辑）：`PROJECT_ID = basename(git rev-parse --show-toplevel)`；主存 `~/.claude/icode_data/limits/<project_id>.md`，覆盖 `<project_root>/.icode_output/limit.local/<project_id>.md`
+     - **路径解析**（同 [steps/limit.md](limit.md) + [01_plan.md](01_plan.md) 前置逻辑）：`PROJECT_ID = basename(git rev-parse --show-toplevel)`；主存 `~/.codex/icode_data/limits/<project_id>.md`，覆盖 `<project_root>/.ai/icode/limit.local/<project_id>.md`
      - **读取合并**（local 完全覆盖 main，同 limit 步骤合并规则）：main 存在 -> 读其所有条目；local 存在 -> 整文件覆盖 main（local 文件内容直接当作完整 limit 视图）；都不存在 -> 标注"本工程无 limit 红线"（柔性提示，不阻断）
      - **存在时的应用**：把 limit 红线条目作为**根因假设的对照清单**注入强制思考块--在 §2.1 基线检查阶段逐条对照"症状是否违反了某条 limit 红线？"；在阶段3 对抗分析时把 limit 红线清单喂给质疑者（与段零文档清单并列），让质疑者也能检查"根因假设是否与 limit 红线矛盾"
      - **与段零的差异**：段零读的是 project_docs（事实快照，"代码长什么样"），limit 读的是约束红线（"代码应该怎么写"）--职责严格分离（详见 [steps/limit.md](limit.md)「核心设计哲学」），互补不重复
@@ -78,10 +81,10 @@
        2.5. **自动发现姐妹工程（步骤② 段零 3.6 无关联工程 且 用户无清单时，**`**P0 不可跳过**`**）**：步骤② 的段零 3.6 返回空（关联工程字段缺失/未配置，静默跳过）且用户未提供姐妹工程清单时，**不得直接退到步骤③"只看当前工程"**。必须先执行以下自动发现（任一步有命中即停止，不必全跑）：
          - **a. 同级目录扫描**：`ls -d ../*/ 2>/dev/null` 枚举父目录下同级目录，对每个目录 `test -d <d>/.git && echo <d>` 判定是否为 git 仓库，收集候选工程路径列表
          - **b. manifest 扫描**（当前工程为 repo-root 模式且有 `.repo/manifest.xml` 时）：`grep '<project' .repo/manifest.xml` 提取其他 `<project>` 的 `path` 属性，拼绝对路径作为候选
-         - **c. project_docs 枚举**：`ls ~/.claude/icode_data/project_docs/ 2>/dev/null` 列出所有已知工程（同名不同分支取一个），每个工程根路径从 `00_overview.md` 元信息块 `project_path` 字段取（`test -d` 校验有效才纳入候选）
+         - **c. project_docs 枚举**：`ls ~/.codex/icode_data/project_docs/ 2>/dev/null` 列出所有已知工程（同名不同分支取一个），每个工程根路径从 `00_overview.md` 元信息块 `project_path` 字段取（`test -d` 校验有效才纳入候选）
          - **d. 独特字符串跨目录 git grep**：对 a/b/c 收集的去重候选路径列表，逐个 `git -C <候选路径> grep -rn <步骤① 提取的独特字符串> 2>/dev/null`，命中者纳入候选代码库
          - **自动发现结果处置**：命中 -> 作为候选代码库进入步骤③ 验证；全部空（a/b/c/d 均无命中）-> **显式标注"自动发现未找到姐妹工程"**（写入 `log_analysis.md §2.0`），此为自觉降级、非静默跳过
-       3. **步骤②+②.5 均无候选代码库时**：退到当前 cwd 工程 + `git submodule foreach` / `find . -name "*.md" | xargs grep` / 项目 metadata（如 `~/.claude/icode_data/projects.json`）找候选代码库；**此时必须显式标注"未发现姐妹工程/关联工程，仅分析当前工程代码库（路径 Z）"**（写入 `log_analysis.md §2.0`），不得假装查过而实际未查
+       3. **步骤②+②.5 均无候选代码库时**：退到当前 cwd 工程 + `git submodule foreach` / `find . -name "*.md" | xargs grep` / 项目 metadata（如 `~/.codex/icode_data/projects.json`）找候选代码库；**此时必须显式标注"未发现姐妹工程/关联工程，仅分析当前工程代码库（路径 Z）"**（写入 `log_analysis.md §2.0`），不得假装查过而实际未查
      - **判定结果填入** §2.0：「设备型号 X → 实际代码库 Y（路径 Z）」，作为 §2.1 表格的前置
    - **git diff/status/log**：看相关代码改过没（含 submodule/subrepo）。若代码已被改过（AI/同事/其他分支 merge），问题可能在改动里
    - **代码库归属后深查指引（防"只 grep 当前仓漏 thirdparty"）**：归属判定后**强制扩展 grep 检索到以下位置**（关联反偷懒第 24 条姐妹工程检索）：
@@ -231,7 +234,7 @@
    > - **不是实施，只设计**：§7 是设计态证据，不写代码；步骤1 plan 读入并固化到 `03_plan_final.md` 的「修复方案设计」段，由 04_code 末尾 "Code Review Fix" 复检核对实施是否与设计一致
 
 > - **修复方案三档分级（反偷懒第 26 条）**：§7 修复设计 + `00_init.md` §3 新增需求点 + §0 一句话定性都按 A/B/C 三档呈现：A 档（根因修复，H/P/V 链，必做）/ B 档（兜底防御，每条标注"A 修复后是否触发"，可选增强）/ C 档（后续工单，进 §9 范围外）。§0 修复方向只写 A 档最小修复。A 档跨工程标注"跨工程：属 <X>，本工程不改，已转工单"。最小修复=只做 A 档（范围最小，A 管必改不管改多少）。详见 anti_laziness 第 26 条
-   - **转修复需求**：把根因 + 建议修复方向提炼成 `00_init.md`（**log 修复需求版**，结构 = 症状/根因/新增需求点/链路图，详见下方「`00_init.md` 结构」；需求=修复该根因），其中**第 4 节链路图：before = 阶段 1 状态链路图所示的「带 bug 当前链路」（标注故障点 file:line）、after = 修复后链路（在修复点标 `[+]`/`[~]`/`[-]`）、改动点清单对齐第 3 节新增需求点**，供 `/icode plan` / `/icode start` / `/icode fast`（均无参）复用进入步骤1
+   - **转修复需求**：把根因 + 建议修复方向提炼成 `00_init.md`（**log 修复需求版**，结构 = 症状/根因/新增需求点/链路图，详见下方「`00_init.md` 结构」；需求=修复该根因），其中**第 4 节链路图：before = 阶段 1 状态链路图所示的「带 bug 当前链路」（标注故障点 file:line）、after = 修复后链路（在修复点标 `[+]`/`[~]`/`[-]`）、改动点清单对齐第 3 节新增需求点**，供 `$icodex plan` / `$icodex run` / `$icodex fast`（均无参）复用进入步骤1
    - **根因多候选未实机区分 → 诊断先行（P0）**：若根因存在多个候选且**无日志铁证**区分（同一现象可由候选 A 或候选 B 触发），**不得**直接按主候选转需求定修法——把「加诊断日志以区分候选」作为 `00_init.md` 的**显式 P0 待办**（列入 §3 新增需求点 A 档首条），并在 §2 根因假设标注「候选未区分：A / B / …」，供 plan 阶段先证明是哪个候选再定修法（配合 [01_plan.md](01_plan.md)「根因候选区分前置」）。诊断日志应指向**能一票区分候选的观测点**（各候选在哪个日志/哪个分支产生不同行为），不得加"两边都打"的无区分日志。
 
 > **`00_init.md` 结构**（log 阶段产出 vs init 阶段产出的差异）：
@@ -273,7 +276,7 @@
 
 ### 8.6 自动 memory 沉淀建议
 
-`log_analysis.md` 产出的跨工单元知识（如"设备型号 X → 实际代码库 Y"、"状态机迁移链（如充能完成→手动任务）"）应在报告完成后自动建议提炼为 codebase memory。**复用 codebase memory 系统格式**（frontmatter + `[[link]]` 交叉引用，见 `~/.claude/projects/<project>/memory/MEMORY.md`）。
+`log_analysis.md` 产出的跨工单元知识（如"设备型号 X → 实际代码库 Y"、"状态机迁移链（如充能完成→手动任务）"）应在报告完成后自动建议提炼为 codebase memory。**复用 codebase memory 系统格式**（frontmatter + `[[link]]` 交叉引用，见 `~/.codex/icode_data/memory/<project>/MEMORY.md`）。
 
 - **提炼信号**（≥1 条命中即触发建议）：
   - 代码库归属判定（OP-2）：设备型号 ≠ 代码库的映射关系 → memory type `reference`
@@ -295,7 +298,7 @@
 
 - **执行方式**：
   1. log 报告完成后 AI 主动在对话末尾列出 1-3 条建议 memory 条目（含 slug + summary + type）
-  2. 用户确认后写入 `~/.claude/projects/<project>/memory/<slug>.md` + 追索引行到 `MEMORY.md`
+  2. 用户确认后写入 `~/.codex/icode_data/memory/<project>/<slug>.md` + 追索引行到 `MEMORY.md`
   3. **不做自动写入**——memory 是持久化元知识，需人工确认（防噪音记忆污染索引）
 - **集成 claudeception**：若环境支持 claudeception skill，建议在内存沉淀后由 claudeception 二次提炼跨界知识为独立 skill
 
@@ -319,27 +322,27 @@
 
    > `tb_source`（可选）：从 TB 拉取时填 `{lib,num,pid,label,url,meta_path}`（metadata 完整版，含本地路径），纯本地日志分析时为 `null`。**写入全局索引时只存摘要 `{lib,num,pid,label}`**（供同 TB 单检索复用，不含 url/meta_path）。
 
-10. **写入全局索引**（步骤9之后）：Read `~/.claude/icode_data/index.json`（不存在则创建），追加一条记录：
+10. **写入全局索引**（步骤9之后）：Read `~/.codex/icode_data/index.json`（不存在则创建），追加一条记录：
     - `ticket_id` = `{工程名}-{N}`（冲突时加 `project_path` 短 hash 后缀，规则同 init）
-    - `project_path` = 当前工程根绝对路径；`out_dir` = `.icode_output/.icode_output_{N}`
+    - `project_path` = 当前工程根绝对路径；`out_dir` = `.ai/icode/icode_{N}`
     - `requirement_summary` / `requirement_points` / `keywords` 取自步骤9 metadata
     - `has_00_init` = true（log 已产出 `00_init.md`），`has_plan` = false，`status` = `log_done`，`created_at` = 当前时间，`last_used_at` = 当前时间（首次写入=created_at），`hit_count` = 0，`stale` = false，`stale_reason` = null，`stale_checked_commit` = null，`created_commit` = `git rev-parse HEAD`（只读，非 git 仓库为 null），`created_branch` = `git rev-parse --abbrev-ref HEAD`
     - `tb_source` = 步骤9 metadata 的 `tb_source`（无 TB 源时 null）
     - 写回 index.json，置 metadata `indexed = true`、`ticket_id`；**写后执行唯一性验证**（见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)「全局索引写入·写后唯一性验证」）
-11. 提示用户：根因已定，可敲 `/icode plan` / `/icode start` / `/icode fast`（均无参）复用本目录的 `00_init.md` 进入修复流程；其中 fast 适合小改动（单文件/少量文件、边界清晰、无架构变更）；若对根因有异议，继续对话即可重跑对抗分析
+11. 提示用户：根因已定，可敲 `$icodex plan` / `$icodex run` / `$icodex fast`（均无参）复用本目录的 `00_init.md` 进入修复流程；其中 fast 适合小改动（单文件/少量文件、边界清晰、无架构变更）；若对根因有异议，继续对话即可重跑对抗分析
 
 ## TB 缺陷源拉取（可选前置，仅当零散输入含 TB 引用）
 
 **触发条件**：零散输入里出现 `tb.example.com/.../project/<pid>/...` 这类 TB 项目 URL，或 `<LIB>-<NUM>` 形式（如 `DEMO-26`）。**无 TB 引用时本段整段跳过，log 步骤走纯本地日志路径，行为与改前 100% 一致**（纯本地日志分析，不调任何脚本/网络）。
 
-**目标 UX**：`/icode log 分析 https://tb.example.com/project/<pid> DEMO-26 问题` -> AI 解析 -> 拉取 -> 进既有对抗根因分析流程 -> 出报告，**全程不回写 TB**。
+**目标 UX**：`$icodex log 分析 https://tb.example.com/project/<pid> DEMO-26 问题` -> AI 解析 -> 拉取 -> 进既有对抗根因分析流程 -> 出报告，**全程不回写 TB**。
 
 执行（在阶段0 内，目录已建之后、强制思考之前）：
 
 1. **解析三要素**：从零散输入抽 `<LIB>-<NUM>`（缺陷编号）、URL 里的 `pid`（项目 id）、项目名/label。项目解析优先级 `URL pid > config label 匹配 > config lib 前缀`
-2. **调 tb_pull**：`python3 ~/.claude/skills/icode/tools/tb/scripts/tb_pull.py --domain <域名> --pid <pid> defect <LIB>-<NUM> --out {ICODE_OUT_DIR}/tb_source`。**domain+pid 从 URL 抽**（pid 取 /project/<pid>/ 那段；支持不配 config；`--pid` 权威，支持未在 config 登记的项目）
+2. **调 tb_pull**：`python3 ~/.codex/skills/icodex/tools/tb/scripts/tb_pull.py --domain <域名> --pid <pid> defect <LIB>-<NUM> --out {ICODE_OUT_DIR}/tb_source`。**domain+pid 从 URL 抽**（pid 取 /project/<pid>/ 那段；支持不配 config；`--pid` 权威，支持未在 config 登记的项目）
 3. **落盘与三要素绑定**：附件 + `<ID>_meta.json` 落到 `{ICODE_OUT_DIR}/tb_source/<ID>/`；置 日志目录=`{ICODE_OUT_DIR}/tb_source/<ID>/`、问题描述=缺陷 title+note、时间点=从拉取日志内容推断
-4. **鉴权失败（401）**：提示用户跑 `python3 ~/.claude/skills/icode/tools/tb/scripts/tb_cookie.py`（或手动把浏览器 cookie 粘进 `~/.claude/skills/icode/tools/tb/scripts/.tb_cookie`），**不阻塞**--若用户只想本地分析可放弃 TB 源、退回纯本地日志路径继续
+4. **鉴权失败（401）**：提示用户跑 `python3 ~/.codex/skills/icodex/tools/tb/scripts/tb_cookie.py`（或手动把浏览器 cookie 粘进 `~/.codex/skills/icodex/tools/tb/scripts/.tb_cookie`），**不阻塞**--若用户只想本地分析可放弃 TB 源、退回纯本地日志路径继续
 5. **溯源**：把 TB 源信息（`lib`/`num`/`pid`/`label`/`url`/`meta_path`）记入步骤9 metadata 的 `tb_source` 字段；在 `keywords` 里带上缺陷编号（如 `DEMO-26`），便于后续历史检索按缺陷号命中相似工单
 
 > 拉取产物（`{ICODE_OUT_DIR}/tb_source/<ID>/` 下的日志附件 + `<ID>_meta.json` 里的真实评论/描述）即作为阶段2「日志侦察 + 现场还原」的输入，走既有对抗根因分析流程，与本步骤下游各阶段无缝衔接。`<ID>_meta.json` 的评论文本在 `comments[].content.comment`（**非 `comments[]` 直接为字符串**，每条评论是对象），`note` 为缺陷描述，均可作为症状补充证据（评论里常含复现步骤/现象描述/关键时间点/日志原文片段，须逐条研读不漏、回捞进现场时间线，详见步骤6「TB 评论研读」）。
@@ -361,7 +364,7 @@
    ⚠️ 本报告基于 TB 评论截至 <时间戳> 的数据；治本根因可能在后续评论中补充，
    建议在 <建议时间> 后重拉 TB 增量分析
    ```
-4. 若用户选 B，中止本次出报告，提示"待工程团队回复后重跑 `/icode log` 复用旧目录增量分析"
+4. 若用户选 B，中止本次出报告，提示"待工程团队回复后重跑 `$icodex log` 复用旧目录增量分析"
 
 > **为什么必须等回复**：对于需工程团队深度分析的缺陷单，过早出报告等于把自己锁在没有完整信息的盒子里（实战教训：v1 报告因未等 TB 新评论，治本根因留空缺，后续被增量补全部分推翻）。
 
@@ -382,9 +385,9 @@
    - **本地路径模式**：`ls` 日志目录及子目录下视频/图片文件（`find <log_dir> -type f \( -name '*.mp4' -o -name '*.mov' -o -name '*.avi' -o -name '*.png' -o -name '*.jpg' -o -name '*.jpeg' \)`），用户直接给视频/图片文件路径时直接分析该文件
    - **无条件记录附件清单**(文件名+大小+类型)到 `log_analysis.md §1`「附件清单」小节（可空章节，无视频/图片时该小节不存在）
 2. **判定 vision-bridge 可用性**：
-   - Read `~/.claude.json` 的 `mcpServers.vision-bridge` 段存在
+   - Read `Codex MCP 配置` 的 `mcpServers.vision-bridge` 段存在
    - 工具可在当前会话直接调用（工具列表直接可见 `mcp__vision-bridge__analyze_media` 或代理前缀形态，或 ToolSearch 可取 schema）
-   - Read `~/.claude/skills/icode/mcp/vision-bridge/config.json` 三件套(`base_url`/`api_key`/`model`)已填
+   - Read `~/.codex/skills/icodex/mcp/vision-bridge/config.json` 三件套(`base_url`/`api_key`/`model`)已填
    - **三项全满足 → vision-bridge 可用，走「分析流程」**
    - **任一缺失 → vision-bridge 不可用**，降级为「附件清单已记录，vision-bridge 不可用(<具体缺失项>)」，**不主动调、不视为违规**
 
@@ -427,9 +430,9 @@
 
 当步骤1 检测到同 `lib+num+pid` 的旧工单、且用户选择"复用旧目录继续"时：
 
-1. **复用旧目录**：`ICODE_OUT_DIR` = 旧工单目录（如 `.icode_output/.icode_output_3`），不新建；读其 `.ico_metadata.json` 的 `ticket_id`，**步骤2 历史检索须排除此旧 ticket_id 防自参考**（与新建场景步骤2「本次工单尚未入索引故无需排除」不同）
+1. **复用旧目录**：`ICODE_OUT_DIR` = 旧工单目录（如 `.ai/icode/icode_3`），不新建；读其 `.ico_metadata.json` 的 `ticket_id`，**步骤2 历史检索须排除此旧 ticket_id 防自参考**（与新建场景步骤2「本次工单尚未入索引故无需排除」不同）
 2. **切回分析态**：metadata `status` 从 `log_done` 切回 `log_in_progress`；`completed_steps` 仍含 `"log"`
-3. **重拉最新数据**：调 `python3 ~/.claude/skills/icode/tools/tb/scripts/tb_pull.py --domain <域名> --pid <pid> defect <LIB>-<NUM> --out {ICODE_OUT_DIR}/tb_source`。tb_pull 自动把旧 `<ID>_meta.json` 备份为 `<ID>_meta.prev.json`（不丢旧数据），再写最新全量 meta
+3. **重拉最新数据**：调 `python3 ~/.codex/skills/icodex/tools/tb/scripts/tb_pull.py --domain <域名> --pid <pid> defect <LIB>-<NUM> --out {ICODE_OUT_DIR}/tb_source`。tb_pull 自动把旧 `<ID>_meta.json` 备份为 `<ID>_meta.prev.json`（不丢旧数据），再写最新全量 meta
 4. **识别新增**：读 `<ID>_meta.prev.json`（旧）与 `<ID>_meta.json`（新）对比，按 `created`（评论时间戳）+ `content.comment` 为键找出**新评论**（旧 `comments[]` 没有的，**新评论同样须逐条研读、回捞时间点/日志原文进现场时间线**，不得只看条数增量）；和**新附件**（旧 files 没有的、或同名新拉取的 `_1` 后缀文件）
 5. **增量对抗**：读旧 `log_analysis.md` 的「核心结论 + 对抗分析记录」-> 把新增评论/附件作**新证据** -> 重跑对抗（复用 icode 步骤2 对抗模式）。新证据可能：① 确认旧根因（追加佐证）/ ② 补充旧根因遗漏环节 / ③ **推翻旧根因**（标注「本次增量推翻旧结论」+推翻理由+新结论，旧结论不删但标已推翻）
 6. **追加增量段**：在 `log_analysis.md` 追加「## 增量分析（<日期>，TB 单更新）」段：新增评论/附件清单 + 新对抗结论（确认/补充/推翻）+ 最终根因
@@ -444,7 +447,7 @@
 - **C 根因出来后**（log_done 后用户质疑"不是这个"）：✅ 支持，切回 `log_in_progress`，**只重跑被质疑的根因分支**（不重跑整个对抗，省 token）
 
 **判定"是否还在 log 上下文"的依据**：
-- 最新 `.icode_output/.icode_output_N/` 目录的 status 为 `log_in_progress` 或 `log_done`
+- 最新 `.ai/icode/icode_N/` 目录的 status 为 `log_in_progress` 或 `log_done`
 - 当前用户消息是对该目录根因报告的质疑/补充/澄清
 - 否则按正常对话处理
 
@@ -458,11 +461,11 @@
 - **每条根因结论必须能回指日志片段**——做不到回指的只进「待验证假设」
 - **禁止照抄历史工单根因**——历史参考只作启发，当前症状与历史必有差异
 - **禁止漏读/浅读 TB 评论**：TB 缺陷源的 `comments[]` 必须逐条遍历读 `content.comment`（评论文本嵌套在 `content.comment`，非数组直接为字符串），评论里的时间点/日志原文片段必须回捞进现场时间线；附件型评论（`content.comment` 为空但 `content.files[]` 非空）不得跳过；研读完成后立即核对已分析条数 == meta.json `comments[]` 长度，漏条视为不合规
-- **禁止向 TB 发任何写操作**（TB 缺陷源仅 GET 拉取）——严禁 POST 评论、回写结论、上传附件到 TB；分析结论只落本地 `log_analysis.md` + `00_init.md` 供人工审。`~/.claude/skills/icode/tools/tb/scripts/tb_pull.py` 本身只读无 POST，**AI 也不得自行用 Bash/requests 等任何工具向 TB 发写请求**（GET 拉取除外），违反视为越界操作
+- **禁止向 TB 发任何写操作**（TB 缺陷源仅 GET 拉取）——严禁 POST 评论、回写结论、上传附件到 TB；分析结论只落本地 `log_analysis.md` + `00_init.md` 供人工审。`~/.codex/skills/icodex/tools/tb/scripts/tb_pull.py` 本身只读无 POST，**AI 也不得自行用 Bash/requests 等任何工具向 TB 发写请求**（GET 拉取除外），违反视为越界操作
 
 ## 与步骤1的衔接
 
-`/icode plan` / `/icode start` / `/icode fast`（均无参）启动时，如果检测到最新目录 status 为 `log_done`（或 `init_in_progress`，详见 SKILL.md 复用规则）且无 `01_plan.md`：
+`$icodex plan` / `$icodex run` / `$icodex fast`（均无参）启动时，如果检测到最新目录 status 为 `log_done`（或 `init_in_progress`，详见 SKILL.md 复用规则）且无 `01_plan.md`：
 1. 复用该目录（不创建新目录）
 2. 将 `00_init.md`（log 已生成修复需求）作为步骤1的主要需求输入
 3. `log_analysis.md` 作为背景参考（步骤1可读其根因+建议修复方向）

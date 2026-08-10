@@ -1,14 +1,17 @@
 # 步骤 0 — 需求初稿对话（可选前置步骤）
 
-**命令**: `/icode init [<粗略需求>]`
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex init [<粗略需求>]`
 **产出**: `{ICODE_OUT_DIR}/00_init.md`
 **会话**: 主会话
-**与后续步骤的关系**: **独立步骤，不自动串联到步骤1**。完成后用户须显式运行 `/icode start`（全流程）/ `/icode fast`（精简全流程）/ `/icode plan`（仅步骤1）才进入步骤1。复用规则详见 SKILL.md「调用命令」段的目录复用规则说明。
+**Codex 发布键**: 首轮及每轮修订先写校验草稿，再用 `publish-artifact --key requirement --name 00_init.md` 发布；随后更新状态并执行 `validate`。不得直接覆盖已映射文件后跳过 metadata 发布。
+**与后续步骤的关系**: **独立步骤，不自动串联到步骤1**。完成后用户须显式运行 `$icodex run`（全流程）/ `$icodex fast`（精简全流程）/ `$icodex plan`（仅步骤1）才进入步骤1。复用规则详见 SKILL.md「调用命令」段的目录复用规则说明。
 
 ## 关键约定（必读）
 
-- **`/icode init` 即"新开一次需求初稿讨论"**：每次调用 `/icode init` 都**创建一个全新的 `.icode_output/.icode_output_N/` 目录**，**不复用**之前任何 `init_in_progress` 状态的目录、**不续聊**之前的讨论。如果用户想继续上一次讨论，就直接对话，**不要再敲 `/icode init`**。
-- **后续讨论由 AI 自主识别并增量更新**：`/icode init` 之后，用户在同一会话里继续提问/补充需求，AI 必须自主判断"这是对当前 `00_init.md` 的补充"，并按"后续每轮对话"流程处理（先 Read，再讨论，最后 Write 更新文档）。无需用户每轮都敲命令。
+- **`$icodex init` 即"新开一次需求初稿讨论"**：每次调用 `$icodex init` 都**创建一个全新的 `.ai/icode/icode_N/` 目录**，**不复用**之前任何 `init_in_progress` 状态的目录、**不续聊**之前的讨论。如果用户想继续上一次讨论，就直接对话，**不要再敲 `$icodex init`**。
+- **后续讨论由 AI 自主识别并增量更新**：`$icodex init` 之后，用户在同一会话里继续提问/补充需求，AI 必须自主判断"这是对当前 `00_init.md` 的补充"，并按"后续每轮对话"流程处理（先 Read，再讨论，最后 Write 更新文档）。无需用户每轮都敲命令。
 - **每轮都更新文档**：每轮对话结束前都必须 Write 一次 `00_init.md`，文档始终保持完整结构、内容到当前为止最新。
 
 ## 设计目标
@@ -17,20 +20,20 @@
 
 ## 执行步骤
 
-### 首次调用（即每次 `/icode init`）
+### 首次调用（即每次 `$icodex init`）
 
 1. **执行目录管理中的「创建新目录」逻辑**（**强制新建，不做任何复用判定**），确定 `ICODE_OUT_DIR`
 2. **历史检索复用**（强制思考之前，全局索引存在时必须执行，详见 SKILL.md「历史检索复用」段）：
-   - Read `~/.claude/icode_data/index.json`（不存在则跳过检索）
-   - **两段式检索**：段一从本次粗略需求提炼关键词集，与各 ticket `keywords` 做 Jaccard 粗筛取 ≤10 候选（零 token，可复活预扫后排除剩余 stale）；段二只把候选 `keywords + requirement_points` 喂主代理精读打分选 top-N 命中（N 由梯度决定，明确无关则 0 条）。`/icode init` 每次强制新建目录，本次工单尚未入索引，故无需排除当前 ticket_id
-   - **`/icode init` 注入分支**：命中工单只读其 `requirement_points`（需求要点清单，≤500 token/条），作为后续讨论的启发——提示用户"上次相似需求曾关注过这些点，本次是否也需要考虑"。**只进会话上下文，绝不写进 `00_init.md`**。
+   - Read `~/.codex/icode_data/index.json`（不存在则跳过检索）
+   - **两段式检索**：段一从本次粗略需求提炼关键词集，与各 ticket `keywords` 做 Jaccard 粗筛取 ≤10 候选（零 token，可复活预扫后排除剩余 stale）；段二只把候选 `keywords + requirement_points` 喂主代理精读打分选 top-N 命中（N 由梯度决定，明确无关则 0 条）。`$icodex init` 每次强制新建目录，本次工单尚未入索引，故无需排除当前 ticket_id
+   - **`$icodex init` 注入分支**：命中工单只读其 `requirement_points`（需求要点清单，≤500 token/条），作为后续讨论的启发——提示用户"上次相似需求曾关注过这些点，本次是否也需要考虑"。**只进会话上下文，绝不写进 `00_init.md`**。
    - **段零·工程文档检索**（与历史检索并行，候选合并排序；本入口检索时机：建目录后）：完整流程以 [references/dir_and_metadata.md](../references/dir_and_metadata.md)「段零·工程文档检索」+「module_docs 工程模块库」段为准（含步骤 1-5 + 3.5 反查父项目 + 3.6 关联工程检索 + 3.6 源码路径定位 [project_path+manifest+兜底]），**执行前必须 Read 该段全文（含顶部「段零步骤速查」导航），不得凭本行摘要执行**；stale 降级 / commit 校验 / 注入防重复等细节同该段
    - **注入防重复**（两源共用 `_inject_cache.json`）：无缓存则创建空 `{"ticket_id":"<本工单>","injections":[]}`（ticket_id 读 metadata，暂无填空串）；注入前按 `(source, ref_id, slice)` 查缓存去重，已注入的跳过。历史源 slice=`requirement_points`；段零 slice=`section:<file>`。详见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)「注入缓存机制」段
    - **段零只读当前分支子目录是反交叉污染设计，不要误读为"被覆盖"**：详见 [steps/doc.md](doc.md) 顶部「⚠️ 多分支设计·反偷懒强约束」段（`dir_and_metadata.md:496`「DOC_DIR 分支过滤」），跨分支不交叉读是为防止跨分支借鉴失真；用户反馈"看不到其他分支文档"时**默认不是 bug**，应先 `ls project_docs/<id>/` 看是否有多分支子目录再判
    - 零命中不注入，不强凑参考
 3. 处理输入参数（**两种都支持**，本步骤只**构思内容框架**，实际 Write 在步骤6；深度读代码在步骤4）：
-   - **有参数**（`/icode init <粗略需求>`）：将参数作为初始需求，结合步骤2历史参考（若有），**构思**第一版 `00_init.md` 各章节内容框架（此时不深入读代码，代码细节留给步骤4）
-   - **无参数**（`/icode init`）：**构思**空模板版 `00_init.md`（各章节内容写"待补"），然后主动询问用户"这次想做什么？"开启对话
+   - **有参数**（`$icodex init <粗略需求>`）：将参数作为初始需求，结合步骤2历史参考（若有），**构思**第一版 `00_init.md` 各章节内容框架（此时不深入读代码，代码细节留给步骤4）
+   - **无参数**（`$icodex init`）：**构思**空模板版 `00_init.md`（各章节内容写"待补"），然后主动询问用户"这次想做什么？"开启对话
 4. **了解现有工程**：阅读项目中相关代码，识别现状、可复用模块、相关接口（**先于思考**，为步骤5的"现状盘点/影响面分析"提供代码依据）。**必须同步执行「现有功能覆盖度检查」**（防重复实现机制，完整规则见 [references/necessity_check.md](../references/necessity_check.md)）：对 §3 每个新增需求点，全工程检索关键词 → Read 命中处上下文（≥20 行，消费点必须追行为链）→ 三类判定（已覆盖/部分/未覆盖）——**结论写入 §2 的「2.X 现有功能覆盖度检查」子段 + §5 预筛表「是否已覆盖」列**。本检查在 §2 现状盘点之后、§3 新增需求点之前执行
 5. **强制思考前置**（不可跳过，缺证据视为不合规；按 [references/thinking_core.md](../references/thinking_core.md)「强制思考前置·统一契约」段执行）：本步骤子项（至少5步）= 需求分解 → 现状盘点（基于步骤4读码结果） → 影响面分析（基于步骤4读码结果） → 待决策项识别 → 待决策倾向自审（逐条回溯现状盘点/影响面证据，主动找反证；无反证保留、有反证修正并记反证依据）。**若步骤2有历史参考，在此处「历史参考」小节记录命中工单 id 与要点，作为思考输入**
 6. 使用 Write 工具写入 `{ICODE_OUT_DIR}/00_init.md`（模板见下文）。**第 6 节链路图初稿**（一图流总览）：before 画步骤 4 读码所得现状链路（关键节点标 file:line），after 画构思的改动后链路并标 `[+]`/`[~]`/`[-]`，改动点清单对齐第 3 节新增需求点；无参数/信息不足时画已知部分 + `?` 待补，**不得整节留空或仅写"待补"**
@@ -53,14 +56,14 @@
    }
    ```
 
-8. **写入全局索引**（步骤7之后立即执行）：Read `~/.claude/icode_data/index.json`（不存在则创建 `{"version":"1","updated_at":"当前时间","tickets":[]}`），追加一条新记录：
-   - `ticket_id` = `{工程名}-{N}`（工程名取 `project_path` 的 basename；N 为当前 `.icode_output_N` 的 N）。**工程名冲突处理**：若索引中已存在相同 `{工程名}-{N}` 但 `project_path` 不同的条目，ticket_id 追加 `project_path` 的短 hash 后缀（如 `myproject-1-a3f2`）以保唯一
+8. **写入全局索引**（步骤7之后立即执行）：Read `~/.codex/icode_data/index.json`（不存在则创建 `{"version":"1","updated_at":"当前时间","tickets":[]}`），追加一条新记录：
+   - `ticket_id` = `{工程名}-{N}`（工程名取 `project_path` 的 basename；N 为当前 `.ai/icode/icode_N` 的 N）。**工程名冲突处理**：若索引中已存在相同 `{工程名}-{N}` 但 `project_path` 不同的条目，ticket_id 追加 `project_path` 的短 hash 后缀（如 `myproject-1-a3f2`）以保唯一
    - `project_path` = 当前工程根绝对路径
-   - `out_dir` = `.icode_output/.icode_output_{N}`
+   - `out_dir` = `.ai/icode/icode_{N}`
    - `requirement_summary` / `keywords` / `workload_estimate` / `workload_reason` 取自步骤7 metadata；`requirement_points` 暂为空数组
    - `has_00_init` = true，`has_plan` = false，`status` = `init_in_progress`，`created_at` = 当前时间，`last_used_at` = 当前时间（首次写入=created_at），`hit_count` = 0，`stale` = false，`stale_reason` = null，`stale_checked_commit` = null，`created_commit` = `git rev-parse HEAD`（只读，非 git 仓库为 null），`created_branch` = `git rev-parse --abbrev-ref HEAD`
    - 写回 index.json，同时置 metadata `indexed = true`、`ticket_id = {生成的 ticket_id}`（持久化 ticket_id，供后续步骤检索时排除当前工单，避免反推）；**写后执行唯一性验证**（见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)「全局索引写入·写后唯一性验证」，防工程名冲突未加 hash 后缀）
-9. **工作量评估 + 入口建议**（自动给用户判断，省"我也不知道该 start 还是 fast"的纠结）：
+9. **工作量评估 + 入口建议**（自动给用户判断，省"我也不知道该 run 还是 fast"的纠结）：
 
    - **4 维度信号**：
      1. 需求点数：`requirement_points` 数组长度
@@ -79,9 +82,9 @@
 
    - **算法**：4 维度分别评 small/medium/large，**取 max**（最严原则，宁可高估不低估），写入 `metadata.workload_estimate` + `metadata.workload_reason`（≤80 token 理由）
    - **入口建议**（按评估等级自动给）：
-     - `small` → 推荐 `/icode fast`（1 轮无对抗，省 35% 时间，适合单文件/小改）
-     - `medium` → 推荐 `/icode start`（3 轮对抗保险）
-     - `large` → **必须** `/icode start`（多轮对抗 + 完整 deepcheck，跨模块/重构场景）
+     - `small` → 推荐 `$icodex fast`（1 轮无对抗，省 35% 时间，适合单文件/小改）
+     - `medium` → 推荐 `$icodex run`（3 轮对抗保险）
+     - `large` → **必须** `$icodex run`（多轮对抗 + 完整 deepcheck，跨模块/重构场景）
    - **输出建议块**（替换原"提示用户"语，格式固定）：
 
      ```
@@ -89,9 +92,9 @@
      📊 工作量评估：{level}
      理由：需求点 N / 涉及 M 文件 / 跨 K 模块 / 命中 H 大改词
      
-     💡 建议入口：/icode {start|fast}
-     - /icode start：完整 3 轮对抗 + 完整 deepcheck（{适用情况}）
-     - /icode fast：1 轮无对抗 + 单阶段 deepcheck（{适用情况}）—— {当前是否推荐}
+     💡 建议入口：$icodex {run|fast}
+     - $icodex run：完整 3 轮对抗 + 完整 deepcheck（{适用情况}）
+     - $icodex fast：1 轮无对抗 + 单阶段 deepcheck（{适用情况}）—— {当前是否推荐}
      ```
 
    - **持续更新**：每轮对话结束前重评（需求点/文件数/大改词可能变化），刷新 metadata + 索引（仅刷 `workload_estimate`+`workload_reason`，不刷 `requirement_points` 防索引膨胀）
@@ -99,12 +102,12 @@
 
 ### 后续每轮对话（同一会话内，由 AI 自主识别，无需用户敲命令）
 
-`/icode init` 创建目录后，用户在**同一会话内**继续对话补充/修改需求时，AI 必须**自主识别**这是在迭代当前需求初稿，并按以下流程处理：
+`$icodex init` 创建目录后，用户在**同一会话内**继续对话补充/修改需求时，AI 必须**自主识别**这是在迭代当前需求初稿，并按以下流程处理：
 
 1. **先 Read 现有 `00_init.md`**，理解当前文档状态
 2. 跟用户讨论（回答疑问、提出反问、澄清歧义）
 3. **本轮对话结束前，必须用 Write 工具更新 `00_init.md`**，把本轮新信息合并进对应章节，保持文档结构完整。**若本轮涉及现状（第 2 节）/改动方案/新增需求点（第 3 节）/影响面（第 4 节）任一变化，必须同步刷新第 6 节链路图**：before 按现状补充、after 反映最新改动方案（标 `[+]`/`[~]`/`[-]`）、改动点清单与第 3 节需求点保持一致（三者一致：图上标注 = 改动点清单 = 第 3 节需求点）--链路图是「截至当前最终改什么」的总览锚点，多轮结论须收敛于此图而非淹没在正文文字里。**若本轮新增或修改了第5节待决策项，或本轮改了第2/4节（现状/影响面）导致第5节某倾向的证据基础变化**，须对受影响的倾向补跑「待决策倾向自审」（回溯第2/4节证据点找反证、证据须 Read/Grep 实证），结果回写第5节（已查无反证+证据点 / 已修正+反证 / 无代码证据-留步骤1 ADR），**并更新一行反证搜索简记（grep/Read 了哪些候选反证点、结论；保留最新、历史见 git diff），使后续可验证非空泛"已查无反证"**
-4. **刷新全局索引条目**：从 `00_init.md`「3.新增需求点」提炼 `requirement_points`（≤8 条，每条 ≤30 token），结合本轮讨论刷新 `requirement_summary`。**注**：`requirement_points` 仅在步骤0首轮和步骤1完成时刷新，每轮对话不重复刷（防止索引条目膨胀），并**按 metadata 的 `ticket_id` 定位** `~/.claude/icode_data/index.json` 中本工单条目，更新其 `requirement_summary` / `requirement_points` / `workload_estimate` / `workload_reason`（**`workload_*` 每轮都重评**——`requirement_points` 不每轮刷防索引膨胀，但工作量评估依赖 00_init.md 实时第 3 节内容，每轮可能变化）。**用户无感，不写进 `00_init.md`**。
+4. **刷新全局索引条目**：从 `00_init.md`「3.新增需求点」提炼 `requirement_points`（≤8 条，每条 ≤30 token），结合本轮讨论刷新 `requirement_summary`。**注**：`requirement_points` 仅在步骤0首轮和步骤1完成时刷新，每轮对话不重复刷（防止索引条目膨胀），并**按 metadata 的 `ticket_id` 定位** `~/.codex/icode_data/index.json` 中本工单条目，更新其 `requirement_summary` / `requirement_points` / `workload_estimate` / `workload_reason`（**`workload_*` 每轮都重评**——`requirement_points` 不每轮刷防索引膨胀，但工作量评估依赖 00_init.md 实时第 3 节内容，每轮可能变化）。**用户无感，不写进 `00_init.md`**。
 5. 不需要等待用户说"结束"才落档，**每轮都增量更新**
 
 6. **理解核对清单（本次新增·每轮触发）**：AI 主动列出对当前需求的理解点（5~10 条），用户逐条确认/修正。
@@ -138,7 +141,7 @@
 
 **判定"是否还在迭代当前 init"的依据**：
 
-- 最新 `.icode_output/.icode_output_N/` 目录的 `status` 为 `init_in_progress`
+- 最新 `.ai/icode/icode_N/` 目录的 `status` 为 `init_in_progress`
 - 当前用户消息是对该目录中 `00_init.md` 内容的补充/修改/澄清，而非另一个独立任务
 
 不属于上述场景时（例如用户开始让你写代码、查别的 bug），就按正常对话处理，不要触发文档更新。
@@ -150,7 +153,7 @@
 ````markdown
 # 需求初稿：{标题，基于讨论内容自动生成}
 
-> 本文档由 `/icode init` 生成，随对话增量更新。运行 `/icode start` 或 `/icode plan` 可基于本文档进入步骤1。
+> 本文档由 `$icodex init` 生成，随对话增量更新。运行 `$icodex run` 或 `$icodex plan` 可基于本文档进入步骤1。
 
 ## 1. 背景与目标
 
@@ -279,7 +282,7 @@
 
 ## 对话摘要（可选）
 
-{按时间顺序简记每轮关键结论；可选，便于回顾本次讨论的演进。**末轮特别要求**（v2 新增）：若本次讨论中出现方案证伪/回退/方向变更（如实机发现原方案不可行、改用替代方案），末轮必须明确记录"原方案 X 不可行/已回退，改用方案 Y"（若证伪依赖外部模块/库，记录模块名 + 当时 commit，便于后续 `/icode status --verdict --premise-dep` 标注启用硬复活）--该末轮结论是历史检索 `unknown` 工单注入时扩读的关键（捞最终方向，详见 [../references/thinking_detail.md](../references/thinking_detail.md)「历史参考小节」），也是 `/icode status --scan-verdict` 批量识别证伪信号的扫描点；末轮缺失或未写清证伪，会导致错误方向工单继续被当正面启发注入误导新需求}
+{按时间顺序简记每轮关键结论；可选，便于回顾本次讨论的演进。**末轮特别要求**（v2 新增）：若本次讨论中出现方案证伪/回退/方向变更（如实机发现原方案不可行、改用替代方案），末轮必须明确记录"原方案 X 不可行/已回退，改用方案 Y"（若证伪依赖外部模块/库，记录模块名 + 当时 commit，便于后续 `$icodex status --verdict --premise-dep` 标注启用硬复活）--该末轮结论是历史检索 `unknown` 工单注入时扩读的关键（捞最终方向，详见 [../references/thinking_detail.md](../references/thinking_detail.md)「历史参考小节」），也是 `$icodex status --scan-verdict` 批量识别证伪信号的扫描点；末轮缺失或未写清证伪，会导致错误方向工单继续被当正面启发注入误导新需求}
 
 - 轮次1：...
 - 轮次2：...
@@ -340,7 +343,7 @@
 ## 强制规则
 
 - **每轮都更新**：任何一轮对话结束前都必须 Write 一次 `00_init.md`，即使本轮只是细微调整，也要落档
-- **不自动串联**：即使讨论已经非常充分，也不主动跳到步骤1。等用户显式运行 `/icode start` / `/icode plan`
+- **不自动串联**：即使讨论已经非常充分，也不主动跳到步骤1。等用户显式运行 `$icodex run` / `$icodex plan`
 - **保持模板结构**：无论信息多少，7 个章节都要存在（§1-§5 背景/现状/需求点/影响面/待决策 + §6 链路图 + **§7 4 维度验证清单**），不足处写"待补"。**§7 对 init 工单必填**——同事提示词 4 维度在功能开发同样适用，缺 §7 = 设计遗漏 = 04_code 复检必失败
 - **链路图每轮同步**：第 6 节链路图是「最终改什么」的一图流总览，每轮涉及现状/改动方案/需求点/影响面变化时必须同步刷新，**before/after 必须是具体 ASCII 链路**（节点 + 箭头 + file:line 或模块名锚点），不得整节留空或仅写"待补"（信息不足时画已知部分 + `?` 标未定节点）
 - **链路图一致**：图上每个 `[+]`/`[~]`/`[-]` 标注在改动点清单有对应行、反之亦然；改动点清单「关联需求点」必须回指第 3 节某需求点（一个需求点可对应多个改动点），不得矛盾或遗漏；after 图改动点必须能回指 file:line/模块
@@ -348,7 +351,7 @@
 
 ## 与步骤1的衔接
 
-`/icode start` / `/icode plan` 启动时，如果检测到**当前最新目录只有 `00_init.md`（仅含 `.ico_metadata.json` + `00_init.md`，无 `01_plan.md` 等其他步骤产物）**，则：
+`$icodex run` / `$icodex plan` 启动时，如果检测到**当前最新目录只有 `00_init.md`（仅含 `.ico_metadata.json` + `00_init.md`，无 `01_plan.md` 等其他步骤产物）**，则：
 
 1. **复用**该目录（不创建新的 N+1 目录）
 2. 将 `00_init.md` 内容作为步骤1的需求输入（优先级高于命令行参数；命令行参数若有，仅作为补充上下文）
@@ -374,9 +377,9 @@
 
 - **触发条件**：用户**实际传图**（系统消息含媒体附件 / 用户消息含本地图片路径 / 用户消息引用了前序消息中的图片）。**仅文字描述"截图/设计图"无实际附件 → 不触发**。
 - **可用性判定**（三项全满足才调，任一缺失即降级）：
-  1. Read `~/.claude.json` 的 `mcpServers.vision-bridge` 段存在
+  1. Read `Codex MCP 配置` 的 `mcpServers.vision-bridge` 段存在
   2. 工具可在当前会话直接调用（工具列表直接可见 `mcp__vision-bridge__analyze_media` 或代理前缀形态，或 ToolSearch 可取 schema）
-  3. Read `~/.claude/skills/icode/mcp/vision-bridge/config.json` 三件套（`base_url` / `api_key` / `model`）已填
+  3. Read `~/.codex/skills/icodex/mcp/vision-bridge/config.json` 三件套（`base_url` / `api_key` / `model`）已填
 - **可用** → ToolSearch 取 schema → 调 `mcp__vision-bridge__analyze_media` 识别图片，结果写入 §2 现状盘点或 §3 需求点（按内容归属）
 - **不可用** → 仅在思考块写 `vision-bridge 不可用(<具体缺失项>)，用户图片未分析`，**不视为违规、不阻塞流程**
 - **不触发**（最常见）：用户仅文字描述"截图/设计图"无实际附件 → 🟢* → ⚪，不评估不声明

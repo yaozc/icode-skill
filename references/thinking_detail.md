@@ -2,7 +2,7 @@
 
 > 本文件是 icode 强制思考前置的**细节规则**，按需 Read：
 > - **各步骤思考子项**：仅在思考时缺参考时 Read（各 step 文件本已声明本步骤子项）
-> - **历史参考小节**：仅 init/plan/log/start 检索命中时 Read
+> - **历史参考小节**：仅 init/plan/log/run 检索命中时 Read
 >
 > 核心规则（每步必读）见 [thinking_core.md](thinking_core.md)。
 
@@ -19,9 +19,9 @@
 - **步骤8 patch**（至少4步）：现状重审要点 → 修改点清单 → 影响面预判 → 复检策略（阶段4 复检子项至少3步：列修改点 → 预判破坏面 → 定复检断言）
 - **入口 log**（至少4步）：症状分解 → 基线预判 → 链路假设 → 验证策略
 
-## 历史参考小节（仅 init/plan/log/start 历史检索命中时 Read）
+## 历史参考小节（仅 init/plan/log/run 历史检索命中时 Read）
 
-若该步骤启动时历史检索命中（init/plan/log/start），在强制思考文字块里加一节「历史参考」，**按命中工单的 `verdict` 分流标注 + 注入要点**，作为思考输入。详见 SKILL.md「历史检索复用」节（注入形式·按 verdict 分流）。
+若该步骤启动时历史检索命中（init/plan/log/run），在强制思考文字块里加一节「历史参考」，**按命中工单的 `verdict` 分流标注 + 注入要点**，作为思考输入。详见 SKILL.md「历史检索复用」节（注入形式·按 verdict 分流）。
 
 **按 verdict 分流标注**（字段缺失视为 `unknown`，向后兼容旧工单）：
 
@@ -33,7 +33,7 @@
      - ① 该工单核心方案前提**是否仍成立**？（Read/Grep 实证命中工单工程的当前代码，不盲信历史 ADR）
      - ② 该工单结论**是否被后续实机/审查推翻过**？（查末轮摘要/`06_audit.md` 有无"回退/不可行/推翻/已回退"信号）
      - ③ 该 ADR 是**借鉴**还是**避坑**？（默认怀疑，不默认信任；有推翻信号则转避坑）
-- `disproved`（`verdict_review_needed=false`）：标 ⛔「避坑+证伪前提断言」，注 `verdict_reason`（作可验证断言）+`correct_direction`（**不注 ADR**）；**强制验证证伪前提是否仍成立**（对抗质疑第①问的特化--disproved 有明确证伪前提如"某接口语义是重置"，须 Grep/Read 当前实现确认是否仍重置）：仍成立则确实避坑；已失效则方向或可重新考虑，提示 `/icode status --verdict` 标复活
+- `disproved`（`verdict_review_needed=false`）：标 ⛔「避坑+证伪前提断言」，注 `verdict_reason`（作可验证断言）+`correct_direction`（**不注 ADR**）；**强制验证证伪前提是否仍成立**（对抗质疑第①问的特化--disproved 有明确证伪前提如"某接口语义是重置"，须 Grep/Read 当前实现确认是否仍重置）：仍成立则确实避坑；已失效则方向或可重新考虑，提示 `$icodex status --verdict` 标复活
 - `disproved`/`superseded`（`verdict_review_needed=true`，证伪前提依赖已变化）：标 ⚠️「曾证伪但依赖已变化，原证伪可能失效」，**不硬避坑**，走 unknown A 层对抗质疑三问 + 注"曾证伪 + 证伪前提 + 依赖变化"提示，让新需求重新评估证伪前提是否仍成立；前提失效则该方向或可重新考虑
 - `superseded`：标 🔁「已被替代，参考新方案 {superseded_by}」
 

@@ -1,8 +1,11 @@
 # 步骤 1 — 拟定正式项目计划
 
-**命令**: `/icode plan <需求>` 或 `/icode start <需求>`
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex plan <需求>` 或兼容别名 `$icodex start <需求>`；也可由 `$icodex run <需求>` 编排调用
 **产出**: `{ICODE_OUT_DIR}/01_plan.md`
 **会话**: 主会话
+**Codex 发布键**: 使用 `publish-artifact --key plan --name 01_plan.md`；只有发布和 `validate` 成功才追加 step `1`。`plan/start` 随后停止，只有 `run` 继续步骤2。
 
 ## 本步骤 L1/L2 检查项声明
 
@@ -24,16 +27,16 @@
 
 ## 前置：limit 硬基线（柔性提示）
 
-**目的**：把 [`/icode limit`](../steps/limit.md) 维护的项目约束红线作为 plan 步骤的硬基线，确保 plan §3 架构设计 / §4 ADR / §6 异常处理与 limit 条目呼应（避免"计划正确但违反工程红线"的返工）。
+**目的**：把 [`$icodex limit`](../steps/limit.md) 维护的项目约束红线作为 plan 步骤的硬基线，确保 plan §3 架构设计 / §4 ADR / §6 异常处理与 limit 条目呼应（避免"计划正确但违反工程红线"的返工）。
 
 **柔性提示**（**不阻断 plan 流程**）：
 
-1. **路径解析**（同 `/icode limit` 步骤）：先解析 `PROJECT_ID` = `basename(git rev-parse --show-toplevel)`
+1. **路径解析**（同 `$icodex limit` 步骤）：先解析 `PROJECT_ID` = `basename(git rev-parse --show-toplevel)`
 2. **主存 + 覆盖检测**：
-   - 检查全局主存 `~/.claude/icode_data/limits/<project_id>.md`（如不存在则跳过）
-   - 检查覆盖 `<project_root>/.icode_output/limit.local/<project_id>.md`（如不存在则跳过）
+   - 检查全局主存 `~/.codex/icode_data/limits/<project_id>.md`（如不存在则跳过）
+   - 检查覆盖 `<project_root>/.ai/icode/limit.local/<project_id>.md`（如不存在则跳过）
 3. **存在性分支**：
-   - **都不存在** → 输出 `💡 本工程尚无 limit 约束（建议运行 /icode limit <约束描述> 生成），不阻断 plan 流程` —— **不报错、不强制**
+   - **都不存在** → 输出 `💡 本工程尚无 limit 约束（建议运行 $icodex limit <约束描述> 生成），不阻断 plan 流程` —— **不报错、不强制**
    - **存在** → Read 主存 + 覆盖（**local 完全覆盖 main**，同 limit 步骤合并逻辑），结果进 plan 步骤的强制思考前置块作硬基线
 4. **应用契约**：plan §3 架构设计 / §4 ADR / §6 异常处理须呼应相关 limit 条目（"本工程 limit 红线 N：X，本方案选择 Y 因为..."）；**计划文本一旦引用 limit 条目（出现「红线 N」/「红 N」）必须写入 metadata `limit_refs` 数组**（每条含 `redline_no` + `source` + `title` + `applied_in` 引用章节）；计划**完全未引用** limit 时才允许留空（见下方「强制操作」的「limit_refs 机器自检」）
 
@@ -50,7 +53,7 @@
 3. 否则执行迁移 **（原子，不破坏既有正文）**：
    a. 解析既有 `01_plan.md`，用 **`grep -F '工程结构快照（v1.1 自动迁移）'`** 检测是否已含（**必须用 `-F` 字面量模式，不能用 regex**，否则 marker 内的 `(` 与年份误判）；不存在则执行迁移
    b. 自动生成 §1.5 工程结构快照——来源两条（按以下优先顺序）：
-      - **优先**：若 `~/.claude/icode_data/project_docs/<project_id>/<branch_safe>/` 有章节，从 `00_overview.md` 的「核心模块清单」+「全栈图」段截取关键列表（≤80 行）
+      - **优先**：若 `~/.codex/icode_data/project_docs/<project_id>/<branch_safe>/` 有章节，从 `00_overview.md` 的「核心模块清单」+「全栈图」段截取关键列表（≤80 行）
       - **次选**：无知识库时，临时 grep（`ls -la` 顶层目录 + `grep -rn 'int main\|class \w` 找 entry 函数），输出 ≤30 行快照
       - **零退化**：两条都无（纯新工程、无任何源码）→ 输出 `[无工程结构快照-工程无可索引内容]`，不阻塞
    c. §1.5 段追加到 `01_plan.md` 末尾（在所有现有章节之后），原子写：先写 `.tmp` 再 `mv`
@@ -75,22 +78,22 @@
 
 1. **目录管理 + 需求来源决策**（必须严格按以下顺序；完整目录管理脚本见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)——**必须先 Read 该文件完整内容**（含 ticket_id 生成/索引写入/metadata 模板，不得凭概述执行））：
 
-   a. 检查最新 `.icode_output/.icode_output_N/` 目录是否满足"入口态复用条件"：有 `.ico_metadata.json` + `00_init.md`，且**无 `01_plan.md`**（status 为 `init_in_progress` 或 `log_done`，即 init/log 产出 00_init.md 但未进步骤1）。**注**：log 目录除 00_init.md 外还有 `log_analysis.md`，仍满足复用条件。
+   a. 检查最新 `.ai/icode/icode_N/` 目录是否满足"入口态复用条件"：有 `.ico_metadata.json` + `00_init.md`，且**无 `01_plan.md`**（status 为 `init_in_progress` 或 `log_done`，即 init/log 产出 00_init.md 但未进步骤1）。**注**：log 目录除 00_init.md 外还有 `log_analysis.md`，仍满足复用条件。
    b. **满足复用条件**：
       - 复用该目录（不创建新目录），`ICODE_OUT_DIR` 指向该目录
       - **Read 该目录下的 `00_init.md`**，将其内容作为本次步骤1的**主要需求输入**（init 产出的是需求初稿；log 产出的是根因转成的修复需求）
-      - 若目录含 `log_analysis.md`（即来自 `/icode log`），**Read 其「核心结论 + 修复设计 + 4 维度验证清单」章节作背景参考**——步骤1计划应基于该根因展开修复方案，**必须把 `log_analysis.md` §7 设计态的 4 维度验证清单固化到 `01_plan.md` 的「修复方案设计」段**（详见下方章节 4.5）；在 ADR/风险评估里呼应根因证据
+      - 若目录含 `log_analysis.md`（即来自 `$icodex log`），**Read 其「核心结论 + 修复设计 + 4 维度验证清单」章节作背景参考**——步骤1计划应基于该根因展开修复方案，**必须把 `log_analysis.md` §7 设计态的 4 维度验证清单固化到 `01_plan.md` 的「修复方案设计」段**（详见下方章节 4.5）；在 ADR/风险评估里呼应根因证据
       - **4 维度清单读取强制**：无论 init 工单（`00_init.md` §7）还是 log 工单（`00_init.md` §5 + `log_analysis.md` §7），步骤1必须 Read 并固化——**未固化 = 设计遗漏 = 04_code 末尾 "Code Review Fix" 复检必失败**
-      - 若 `/icode start` / `/icode plan` 命令行同时携带了需求字符串，仅作为**补充上下文**（次优先级），不覆盖 `00_init.md`
+      - 若 `$icodex run` / `$icodex plan` 命令行同时携带了需求字符串，仅作为**补充上下文**（次优先级），不覆盖 `00_init.md`
       - 在 `01_plan.md` 的"需求描述"章节中明确标注：本计划基于 `00_init.md` 展开（若来自 log，标注"基于根因报告 log_analysis.md 的修复需求"），并引用其关键章节
    c. **不满足复用条件**：执行常规「创建新目录」逻辑，确定 `ICODE_OUT_DIR`，需求输入采用命令行参数
 
 2. **历史检索复用**（目录管理之后、强制思考之前，全局索引存在时必须执行，详见 SKILL.md「历史检索复用」段）。**置于目录管理之后**：此时需求来源已确定（复用情况已读 `00_init.md`，常规新建情况用命令行参数），可用完整需求做相关性判断：
-   - Read `~/.claude/icode_data/index.json`（不存在则跳过检索）
-   - **两段式检索**：段一从本次需求提炼关键词集，与各 ticket `keywords` 做 Jaccard 粗筛取 ≤10 候选（零 token，可复活预扫后排除剩余 stale/当前 `ticket_id`）；段二只把候选 `keywords + requirement_points` 喂主代理精读打分选 top-N 命中（N 由梯度决定，明确无关则 0 条）。**排除当前 `ticket_id`**，不自我参考——当前 ticket_id 读「最新 `.icode_output_N` 目录的 `.ico_metadata.json`」的 `ticket_id` 字段；**常规新建目录首跑时目录刚创建、尚未入索引，无需排除**；复用步骤0目录时 metadata 已有 ticket_id，按值排除
-   - **`/icode plan`/`/icode start` 注入分支**：命中工单经段二精读+过时校验后，**按 `verdict` 分流注入**（字段缺失视为 `unknown`，详见 SKILL.md「注入形式·按 verdict 分流」）：
+   - Read `~/.codex/icode_data/index.json`（不存在则跳过检索）
+   - **两段式检索**：段一从本次需求提炼关键词集，与各 ticket `keywords` 做 Jaccard 粗筛取 ≤10 候选（零 token，可复活预扫后排除剩余 stale/当前 `ticket_id`）；段二只把候选 `keywords + requirement_points` 喂主代理精读打分选 top-N 命中（N 由梯度决定，明确无关则 0 条）。**排除当前 `ticket_id`**，不自我参考——当前 ticket_id 读「最新 `.ai/icode/icode_N` 目录的 `.ico_metadata.json`」的 `ticket_id` 字段；**常规新建目录首跑时目录刚创建、尚未入索引，无需排除**；复用步骤0目录时 metadata 已有 ticket_id，按值排除
+   - **`$icodex plan`/`$icodex run` 注入分支**：命中工单经段二精读+过时校验后，**按 `verdict` 分流注入**（字段缺失视为 `unknown`，详见 SKILL.md「注入形式·按 verdict 分流」）：
      - `verified`/`unknown`（含旧工单）：定点读其 `01_plan.md` 的 ADR 章节 + 风险评估章节（**不读全文**，≤1K token/条）；**`unknown` 额外扩读 `00_init.md` 末轮对话摘要**（≤0.3K，捞最终结论/证伪信号）+ 思考块「历史参考」走对抗质疑三问 + ⚠️未验证警告（[../references/thinking_detail.md](../references/thinking_detail.md)「历史参考小节」）--旧工单防误导主防线，不依赖标注
-     - `disproved`（`verdict_review_needed=false`）：**不读 ADR**（避免错误方向被借鉴），改读 `verdict_reason`（作可验证断言）+ `correct_direction` 作避坑参考（≤0.7K/条）；**强制 Grep/Read 验证证伪前提是否仍成立**（详见 [../references/thinking_detail.md](../references/thinking_detail.md)「历史参考小节」）；`correct_direction` 缺失则降级读 ADR + ⛔ 警告，提示用户 `/icode status --verdict` 补标
+     - `disproved`（`verdict_review_needed=false`）：**不读 ADR**（避免错误方向被借鉴），改读 `verdict_reason`（作可验证断言）+ `correct_direction` 作避坑参考（≤0.7K/条）；**强制 Grep/Read 验证证伪前提是否仍成立**（详见 [../references/thinking_detail.md](../references/thinking_detail.md)「历史参考小节」）；`correct_direction` 缺失则降级读 ADR + ⛔ 警告，提示用户 `$icodex status --verdict` 补标
      - `disproved`/`superseded`（`verdict_review_needed=true`，证伪前提依赖已变化）：**降级对抗质疑**--不硬反转，走 unknown A 层（扩读末轮+三问）+ 证伪前提+依赖变化提示（详见 SKILL.md「注入形式·按 verdict 分流」），让新需求重新评估前提是否仍成立
      - `superseded`：读 `superseded_by` 指针 + `correct_direction` + 替代工单 ADR 摘要（≤0.8K/条）
      - 作为本次计划的启发——参考其决策理由与踩坑。**只进会话上下文，不得在 `01_plan.md` 堆砌历史引用**（唯一例外：实质借鉴的 ADR 可在"理由"末尾加一句 `(参考相似工单 {ticket_id} 的同类决策)`）
@@ -111,9 +114,9 @@
 
 必须包含的章节（逐一输出，不得跳过）：
 1. **项目概述** — 目标、范围、约束条件，需说明与现有工程的关系
-1.5. **工程结构快照** — 来源：`~/.claude/icode_data/project_docs/<id>/<branch>/`（如存在）或临时 Grep（顶层目录 + entry 函数）。内容 ≤80 行：(a) 顶层目录结构 + 各目录一句话职责；(b) 已识别模块清单（按需，按代码特征自适应）；(c) 关键 entry 函数 / 类（≥ 3 个，file:line 锚点）；(d) 与本次需求直接相关的现有模块（按工程文档检索命中）；(e) 已知技术栈与构建工具。**如内容为 `[无工程结构快照-工程无可索引内容]`，照常写但不阻塞**——给后续步骤 4/5 "调用链预扫"作锚点基线（v1.0→v1.1 迁移会自动补这一节，见「## 前置：schema 迁移」）
+1.5. **工程结构快照** — 来源：`~/.codex/icode_data/project_docs/<id>/<branch>/`（如存在）或临时 Grep（顶层目录 + entry 函数）。内容 ≤80 行：(a) 顶层目录结构 + 各目录一句话职责；(b) 已识别模块清单（按需，按代码特征自适应）；(c) 关键 entry 函数 / 类（≥ 3 个，file:line 锚点）；(d) 与本次需求直接相关的现有模块（按工程文档检索命中）；(e) 已知技术栈与构建工具。**如内容为 `[无工程结构快照-工程无可索引内容]`，照常写但不阻塞**——给后续步骤 4/5 "调用链预扫"作锚点基线（v1.0→v1.1 迁移会自动补这一节，见「## 前置：schema 迁移」）
 2. **功能需求** — 所有功能点列表，含输入/输出/边界，标注哪些可复用现有模块
-3. **架构设计** — 模块划分、数据流、接口定义，需说明如何在现有架构中扩展。**必须包含跨文件关联分析**：哪些文件需要新建、哪些现有文件需要修改、修改的文件被谁依赖。**前置：现有功能覆盖度检查（防重复实现机制）**——§3 设计前，对每个功能点/新增 public 接口按 [references/necessity_check.md](../references/necessity_check.md) 全工程检索确认无等价实现：**复用 init 工单时复核** §2 的 2.X 结论（重跑关键词检索确认命中位置仍成立，不直接照搬）；**无 init（直接 `/icode plan`）时独立执行完整检查**。结论写进 §3 前置小节；发现「已覆盖」→ 功能点改复用/删除，不进入设计；「部分覆盖」→ 明确与现有实现的边界（新实现补哪一段、在哪个环节衔接）。**架构优雅三要求**：①**复用决策**——新增功能涉及的工具/辅助函数，必须 grep 工程既有代码，有等价的必须复用（计划写明复用哪个既有函数）；②**模式一致**——新增代码的组织方式（handler 注册模式 / 属性中心 / RAII / 错误码返回 / switch-case 等）必须与工程既有模式一致，ADR 里记录"为何用此模式 + 与既有 XX 模式对齐"；③**接口克制**——新增导出接口只暴露必要符号（YAGNI），计划 §3 接口定义里标注每个 public 符号的必要性
+3. **架构设计** — 模块划分、数据流、接口定义，需说明如何在现有架构中扩展。**必须包含跨文件关联分析**：哪些文件需要新建、哪些现有文件需要修改、修改的文件被谁依赖。**前置：现有功能覆盖度检查（防重复实现机制）**——§3 设计前，对每个功能点/新增 public 接口按 [references/necessity_check.md](../references/necessity_check.md) 全工程检索确认无等价实现：**复用 init 工单时复核** §2 的 2.X 结论（重跑关键词检索确认命中位置仍成立，不直接照搬）；**无 init（直接 `$icodex plan`）时独立执行完整检查**。结论写进 §3 前置小节；发现「已覆盖」→ 功能点改复用/删除，不进入设计；「部分覆盖」→ 明确与现有实现的边界（新实现补哪一段、在哪个环节衔接）。**架构优雅三要求**：①**复用决策**——新增功能涉及的工具/辅助函数，必须 grep 工程既有代码，有等价的必须复用（计划写明复用哪个既有函数）；②**模式一致**——新增代码的组织方式（handler 注册模式 / 属性中心 / RAII / 错误码返回 / switch-case 等）必须与工程既有模式一致，ADR 里记录"为何用此模式 + 与既有 XX 模式对齐"；③**接口克制**——新增导出接口只暴露必要符号（YAGNI），计划 §3 接口定义里标注每个 public 符号的必要性
 
 ### 接口误用预审（plan 阶段反推核心机制，治「下游易误用」盲区）
 
@@ -280,7 +283,7 @@
    - **不阻断 plan 流程**（不强制回 init 修订）—— 跟现有 icode 风格一致（柔性提示）
 
    **与 limit 协同**（关键价值）：
-   - **#6 项**直接调用 limit 步骤硬基线逻辑——Read `~/.claude/icode_data/limits/<project_id>.md` + 覆盖文件
+   - **#6 项**直接调用 limit 步骤硬基线逻辑——Read `~/.codex/icode_data/limits/<project_id>.md` + 覆盖文件
    - 与 plan §3/§4/§6 引用契约**双向验证**：§3/§4/§6 已显式引用红线，§10 #6 再核对"是否真的遵循"
    - 形成"plan 引用红线"+"checklist 核对红线"双保险
 
@@ -347,11 +350,11 @@
 }
 ```
 
-   - **两种情况都要刷新全局索引**（步骤5之后）：Read `~/.claude/icode_data/index.json`，按 `ticket_id` 更新本工单条目——`requirement_summary` 用刷新后的值、`has_plan` = true、`status` = `plan_done`，写回 index.json，置 metadata `indexed = true`；**写后执行唯一性验证**（见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)「全局索引写入·写后唯一性验证」）。
+   - **两种情况都要刷新全局索引**（步骤5之后）：Read `~/.codex/icode_data/index.json`，按 `ticket_id` 更新本工单条目——`requirement_summary` 用刷新后的值、`has_plan` = true、`status` = `plan_done`，写回 index.json，置 metadata `indexed = true`；**写后执行唯一性验证**（见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)「全局索引写入·写后唯一性验证」）。
    - **常规新建目录情况**（此前未入索引）：此时需**首次生成并写入**条目。`ticket_id` 按 `{工程名}-{N}` 规则生成（工程名冲突时加 `project_path` 短 hash 后缀，规则同步骤0），`has_00_init` = false，`has_plan` = true，`project_path`/`out_dir`/`created_at`/`requirement_summary`/`keywords` 取自本步骤 metadata；写入索引后**回填 metadata 的 `ticket_id` 字段**。
    - **复用步骤0目录情况**：metadata 已有 `ticket_id`，按该 id 更新对应条目（`has_plan` 置 true，刷新 `requirement_summary`），不新建条目。
 
-6. **检索留痕**（检索可审计，防"检索成为会话内不可验证行为"）：若全局索引 `~/.claude/icode_data/index.json` 存在，`{ICODE_OUT_DIR}/_inject_cache.json` **必须存在**（即使 `injections` 为空数组，缓存文件也应已创建，见「执行步骤」第 2 步「注入防重复」）或本工单**显式声明** `[检索跳过-原因]`（如"全局索引无候选"）；两者皆无 → 标注检索留痕缺失（重做场景复盘盲区）
+6. **检索留痕**（检索可审计，防"检索成为会话内不可验证行为"）：若全局索引 `~/.codex/icode_data/index.json` 存在，`{ICODE_OUT_DIR}/_inject_cache.json` **必须存在**（即使 `injections` 为空数组，缓存文件也应已创建，见「执行步骤」第 2 步「注入防重复」）或本工单**显式声明** `[检索跳过-原因]`（如"全局索引无候选"）；两者皆无 → 标注检索留痕缺失（重做场景复盘盲区）
 
 7. **limit_refs 机器自检（L1：计划引用 limit 未记录 = 不合规）**：运行下方命令，退出码非 0 则停下补写 `limit_refs` 后重跑：
 
@@ -369,7 +372,7 @@ sys.exit(1 if missing else 0)
 
 - 退出码 0 → 通过（引用已全部记录，或计划完全未引用）；非 0 → 补写 `limit_refs` 再重跑
 
-8. 如果是 `/icode start`（全流程模式）：
+8. 如果是 `$icodex run`（全流程模式）：
 
    - **立即继续执行步骤2**（不要等待用户确认）。**过渡提示不得写死轮数**——只输出 `▶ 步骤1 完成，进入步骤2 审查`，**不要**自行加"（3轮）""（默认3轮）"等轮数说明；轮数与延长机制由步骤2 启动时自行输出（见 [02_review.md](02_review.md)）
    - 如果会话断开后恢复，读取 `.ico_metadata.json` 的 `completed_steps`，从最后一个完成步骤的下一步继续。

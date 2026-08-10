@@ -1,8 +1,11 @@
 # 步骤 4 — 严格落地实施编码
 
-**命令**: `/icode code`
+> **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
+
+**命令**: `$icodex code`
 **产出**: 代码文件
 **会话**: 主会话
+**Codex 发布键**: 实现记录与 Code Review Fix 结果使用 `implementation` 和 `04_code_review_fix.md`；源码验证、发布与 `validate` 成功后才追加 step `4`。
 
 ## 本步骤 L1/L2 检查项声明
 
@@ -10,7 +13,7 @@
 
 | 级别 | 检查项 | 触发后行为 |
 |---|---|---|
-| **L1·致命** | 前置产物缺失（`03_plan_final.md` 不存在） | 报错退出，提示先跑 `/icode merge` |
+| **L1·致命** | 前置产物缺失（`03_plan_final.md` 不存在） | 报错退出，提示先跑 `$icodex merge` |
 | **L2·关键** | Code Review Fix 4 维度复检**全部失败**（4 个维度都标 ❌） | 警告 + 记入 metadata + 流程继续（不阻断；user 可事后回代码修复/重设计） |
 
 **L3·重要**（矩阵段定义）：编译失败（3 次仍失败）→ 设 `code_compile_failed=true`，步骤 5 入口警告，**流程继续**。测试失败（3 次仍失败）→ 设 `test_failures=true`，步骤 5 入口警告，**流程继续**（与编译失败同级 L3）。
@@ -19,11 +22,11 @@
 
 > **读决策锚点**（启动时）：若 `metadata.anchors_enabled != false`，Read `{ICODE_OUT_DIR}/.decision_anchors.json`（不存在则跳过），获取上游关键决策摘要（requirement_digest/key_decisions/design_4dims/deviations/open_risks）作本步骤上下文，不替代产物。详见 [references/decision_anchors.md](../references/decision_anchors.md)。
 
-检查 `{ICODE_OUT_DIR}/03_plan_final.md` 是否存在，不存在则报错并提示先执行 `/icode merge`。
+检查 `{ICODE_OUT_DIR}/03_plan_final.md` 是否存在，不存在则报错并提示先执行 `$icodex merge`。
 
 ## 前置：patch 配合
 
-> 工单可能已走过 `/icode patch` 追加修改（`{ICODE_OUT_DIR}/08_patch.md` 存在且有 Patch 段，或 `metadata.patch_count > 0`）。本步骤启动时 **Read `08_patch.md`**（不存在则跳过本段，走原流程），按以下规则配合：
+> 工单可能已走过 `$icodex patch` 追加修改（`{ICODE_OUT_DIR}/08_patch.md` 存在且有 Patch 段，或 `metadata.patch_count > 0`）。本步骤启动时 **Read `08_patch.md`**（不存在则跳过本段，走原流程），按以下规则配合：
 
 1. **在 patch 基础上实施**：本步骤的实施基准 = `03_plan_final.md` 计划 + `08_patch.md` 已落地的修改。Write 已由 patch 改过的文件时**保留 patch 修改**（只叠加本步骤的改动，不整文件覆盖回计划版）
 2. **patch 与计划设计冲突**：patch 改动的符号/行为与 `03_plan_final.md` 设计不一致时，**不得擅自把代码改回计划版**——记入 metadata `code_deviations`（`plan_said`=计划说法 / `actual_done`=patch 实际做法 / `reason`）+ 在步骤输出中提示用户"patch 修改与计划冲突，以 patch 为准已记录偏离"
@@ -108,7 +111,7 @@
 
 ## 强制操作（完成后必须执行）
 
-1. **编译验证 + 测试验证**：运行项目对应的编译命令（最多尝试 3 次），确保所有文件无错误、无警告；编译通过后自动探测并跑测试套件（借鉴 aider `auto_test` 机制，icode 增加自动探测）。**编译命令真源优先（条件判断，防用 `--help`/试探性 CLI 替代文档真源）**：按序查——①工程 LIMIT 文档（`~/.claude/icode_data/limits/<project_id>.md`）含「编译命令规范」红线（有则按红线准确命令，含基础库 + 多模块同编等工程专属约束）→ ②工程根 `README.md`（有则按 README）→ ③本步骤探测兜底；真源都不存在才允许试探，且须在产物标注"编译命令为试探得出，未经文档验证"。LIMIT/README 均无编译指令时按③探测（**不强制**读 LIMIT）
+1. **编译验证 + 测试验证**：运行项目对应的编译命令（最多尝试 3 次），确保所有文件无错误、无警告；编译通过后自动探测并跑测试套件（借鉴 aider `auto_test` 机制，icode 增加自动探测）。**编译命令真源优先（条件判断，防用 `--help`/试探性 CLI 替代文档真源）**：按序查——①工程 LIMIT 文档（`~/.codex/icode_data/limits/<project_id>.md`）含「编译命令规范」红线（有则按红线准确命令，含基础库 + 多模块同编等工程专属约束）→ ②工程根 `README.md`（有则按 README）→ ③本步骤探测兜底；真源都不存在才允许试探，且须在产物标注"编译命令为试探得出，未经文档验证"。LIMIT/README 均无编译指令时按③探测（**不强制**读 LIMIT）
    - **编译 3 次仍失败**：输出 `⚠️ 编译失败兜底` 警告，设 `code_in_progress` + `code_compile_failed = true`。代码文件仍写入磁盘，`code_files` 仍记录
    - 步骤 5 入口检测到 `code_compile_failed` 时输出警告，但仍继续
    - **测试命令探测**（编译通过后，自动识别工程测试命令，写入 `metadata.test_cmd`，用户可在 metadata 手动覆盖）：
@@ -131,7 +134,7 @@
      - **test_cmd=null** → 设 `metadata.test_outcome=skipped`，跳过测试验证，进入 Code Review Fix
    - **1.5 子段·Code Review Fix（4 维度复检，1 的强制子段）**：编译+测试验证后**必须执行**（**所有工单都触发**，不论 init/log 入口）。**作用**：核对实施是否与计划设计的 4 维度一致——同事提示词"修 bug 后做代码 review 修复，确保没有逻辑 bug 和副作用，确保没有竞态死锁问题，确保解决了日志反映的问题"的工程化复检机制
      - **强制思考前置**（不可跳过）：本步骤子项（至少3步）= 读计划设计的 4 维度基线 → 列实施对照点 → 预判复检偏差
-     - **对照基线读取**（**任一缺失则视为设计遗漏**，须先回到 `/icode plan` 补设计）：
+     - **对照基线读取**（**任一缺失则视为设计遗漏**，须先回到 `$icodex plan` 补设计）：
        - log 工单：必须 Read `03_plan_final.md`「4.5 修复方案设计 + 4 维度设计态固化」段（log 工单必填）+ `log_analysis.md` §7 + `00_init.md` §5
        - init 工单：必须 Read `03_plan_final.md`「4.5 修复方案设计 + 4 维度设计态固化」段（init 工单必填）+ `00_init.md` §7
      - **4 维度复检清单**（每维度独立勾对，每条须给 file:line 证据）：
@@ -142,7 +145,7 @@
      - **复检产出**：写入 `{ICODE_OUT_DIR}/04_code_review_fix.md`（4 维度勾对表 + 未通过维度清单）
      - **复检失败处理**（**轻/重度分流**，不强制阻断）：
        - **轻度失败**（设计与实施不一致，但设计本身正确）：标 `code_review_fix_with_issues=true` + 未通过清单 → 提示用户"实施偏离计划设计，回到代码修复 → 重跑本子段"
-       - **重度失败**（设计本身有问题，如维度 3 漏锁/维度 1 H/P 链断）：同上但额外提示"建议回到 `/icode plan` 重新设计——4 维度设计态本身有缺陷"
+       - **重度失败**（设计本身有问题，如维度 3 漏锁/维度 1 H/P 链断）：同上但额外提示"建议回到 `$icodex plan` 重新设计——4 维度设计态本身有缺陷"
        - 任一失败 → `status` 保持 `code_in_progress`，`completed_steps` **不**追加 `"4"`
      - **复检通过**：`code_review_fix_with_issues=false` + `status = code_done` + `completed_steps` 追加 `"4"`
 2. **更新元信息**：
