@@ -1,0 +1,24 @@
+{
+  "artifact_layout": "concise",
+  "workflow_kind": "codex_full",
+  "status": "full_in_progress",
+  "current_phase": "implement",
+  "completed_steps": [],
+  "completed_phases": ["diagnose", "plan"],
+  "artifact_map": {
+    "requirement": null,
+    "root_cause": "RCA.md",
+    "plan": "PLAN.md",
+    "plan_review": null,
+    "final_plan": "PLAN.md",
+    "implementation": null,
+    "deepcheck": null,
+    "audit": null,
+    "patches": null,
+    "delivery_report": null,
+    "delivery_brief": null
+  },
+  "patch_count": 0,
+  "patch_history": [],
+  "code_files": []
+}
