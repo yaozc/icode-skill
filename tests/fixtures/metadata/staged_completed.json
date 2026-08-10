@@ -1,0 +1,24 @@
+{
+  "artifact_layout": "staged",
+  "workflow_kind": "staged_full",
+  "status": "completed",
+  "current_phase": null,
+  "completed_steps": ["1", "2", "3", "4", "5", "6"],
+  "completed_phases": [],
+  "artifact_map": {
+    "requirement": null,
+    "root_cause": null,
+    "plan": "01_plan.md",
+    "plan_review": "02_review.md",
+    "final_plan": "03_plan_final.md",
+    "implementation": "04_code_review_fix.md",
+    "deepcheck": "05_deepcheck.md",
+    "audit": "06_audit.md",
+    "patches": null,
+    "delivery_report": null,
+    "delivery_brief": null
+  },
+  "patch_count": 0,
+  "patch_history": [],
+  "code_files": ["src/example.py"]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "ICODEX"
+  short_description: "Root-cause workflow with self audit"
+  default_prompt: "Use $icodex to diagnose this regression before changing code."
