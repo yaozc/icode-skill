@@ -16,7 +16,7 @@
 
 ## 定位
 
-**Codex 强制覆盖**：先读 metadata `artifact_map` 解析已有 `plan/final_plan/implementation/deepcheck/audit/patches`，任何必需映射为空或目标不存在都停止。新一次显式 patch 必须先运行 `python3 ~/.codex/skills/icodex/tools/icode_state.py reserve-patch --run-dir "${ICODE_OUT_DIR}"` 获取唯一编号；完成并验证 `08_patch.md` 草稿后用 `publish-artifact --key patches` 发布。不得自行 `patch_count + 1`，不得用固定文件名绕开映射。
+**Codex 强制覆盖**：先读 metadata `artifact_map` 解析已有 `plan/final_plan/implementation/deepcheck/audit/patches`，任何必需映射为空或目标不存在都停止。新一次显式 patch 必须先运行 `python3 ~/.codex/skills/icodex/tools/icode_state.py reserve-patch --run-dir "${ICODE_OUT_DIR}"` 获取唯一编号；完成并验证 `08_patch.md` 草稿后用 `publish-artifact --key patches` 发布，再运行 `finalize-patch --run-dir "${ICODE_OUT_DIR}" --number "${N}" --status <completed|issues|analysis_only> --summary <摘要>` 原子收口。预留后中断时保留 `status=in_progress`，恢复同一编号继续，不得再次预留。不得自行 `patch_count + 1`，不得用固定文件名绕开映射。
 
 **patch 是主流程（步骤 1~6）之外的追加修改步骤**，解决两个场景：
 

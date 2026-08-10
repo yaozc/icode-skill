@@ -66,6 +66,26 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(tickets[0]["ticket_id"], "demo-1")
         self.assertTrue(tickets[1]["ticket_id"].startswith("demo-1-migrated-"))
 
+    def test_target_uses_ascii_only_safe_ticket_id(self) -> None:
+        legacy = self.make_legacy_run(ticket_id="需求/a 1")
+        target = migrate_legacy_run(self.project, legacy, self.codex_root)
+        self.assertRegex(target.name, r"^legacy-___a_1-[0-9a-f]{16}$")
+
+    def test_target_is_created_under_the_legacy_project(self) -> None:
+        other_project = Path(self.temp_dir.name) / "other-project"
+        other_legacy_root = other_project / ".icode_output"
+        other_legacy_root.mkdir(parents=True)
+        legacy = other_legacy_root / ".icode_output_1"
+        legacy.mkdir()
+        (legacy / ".ico_metadata.json").write_text(
+            json.dumps({"ticket_id": "cross-project", "patch_count": 0, "patch_history": []}),
+            encoding="utf-8",
+        )
+        target = migrate_legacy_run(other_project, legacy, self.codex_root)
+        self.assertEqual(target.parents[1], (other_project / ".ai").resolve())
+        index = json.loads((self.codex_root / "index.json").read_text(encoding="utf-8"))
+        self.assertEqual(index["tickets"][0]["project_path"], str(other_project.resolve()))
+
     def test_rejects_path_outside_legacy_container(self) -> None:
         outside = self.project / "outside"
         outside.mkdir()
@@ -78,6 +98,17 @@ class MigrationTests(unittest.TestCase):
         (legacy / "unsafe-link").symlink_to(legacy / "01_plan.md")
         with self.assertRaisesRegex(ValueError, "symlink or special file"):
             migrate_legacy_run(self.project, legacy, self.codex_root)
+
+    def test_copy_failure_leaves_source_unchanged_and_no_target(self) -> None:
+        legacy = self.make_legacy_run()
+        original_plan = (legacy / "01_plan.md").read_bytes()
+        with mock.patch.object(state.shutil, "copyfile", side_effect=OSError("simulated copy failure")):
+            with self.assertRaisesRegex(OSError, "simulated copy failure"):
+                migrate_legacy_run(self.project, legacy, self.codex_root)
+        self.assertEqual((legacy / "01_plan.md").read_bytes(), original_plan)
+        destination = self.project / ".ai" / "icode"
+        self.assertFalse([path for path in destination.iterdir() if path.name.startswith("legacy-")])
+        self.assertFalse([path for path in destination.iterdir() if path.name.startswith(".migrate-")])
 
     def test_source_manifest_change_refuses_existing_target(self) -> None:
         legacy = self.make_legacy_run()
@@ -130,6 +161,32 @@ class MigrationTests(unittest.TestCase):
         self.assertFalse([value for status, value in results if status == "error"])
         tickets = json.loads((self.codex_root / "index.json").read_text(encoding="utf-8"))["tickets"]
         self.assertEqual({ticket["ticket_id"] for ticket in tickets}, {"demo-1", "demo-2"})
+
+    def test_same_migration_id_concurrently_publishes_one_target(self) -> None:
+        legacy = self.make_legacy_run()
+        queue = multiprocessing.Queue()
+        workers = [
+            multiprocessing.Process(
+                target=migration_worker,
+                args=(str(self.project), str(legacy), str(self.codex_root), queue),
+            )
+            for _ in range(2)
+        ]
+        for worker in workers:
+            worker.start()
+        results = [queue.get(timeout=10) for _ in workers]
+        for worker in workers:
+            worker.join(timeout=5)
+        self.assertFalse([value for status, value in results if status == "error"])
+        self.assertEqual(len({value for status, value in results if status == "ok"}), 1)
+        targets = [
+            path
+            for path in (self.project / ".ai" / "icode").iterdir()
+            if path.name.startswith("legacy-")
+        ]
+        self.assertEqual(len(targets), 1)
+        tickets = json.loads((self.codex_root / "index.json").read_text(encoding="utf-8"))["tickets"]
+        self.assertEqual(len(tickets), 1)
 
 
 if __name__ == "__main__":

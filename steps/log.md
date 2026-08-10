@@ -5,7 +5,7 @@
 **命令**: `$icodex log [零散信息...]`
 **产出**: `{ICODE_OUT_DIR}/log_analysis.md` + `{ICODE_OUT_DIR}/00_init.md`（修复需求初稿，衔接步骤1）
 **会话**: 主会话
-**Codex 发布键**: `log_analysis.md` 使用 `root_cause`，生成的 `00_init.md` 使用 `requirement`。两份都经 `publish-artifact` 成功后才写 `status=log_done` 并运行 `validate`。
+**Codex 发布键**: `log_analysis.md` 使用 `root_cause`，生成的 `00_init.md` 使用 `requirement`。新工单第一次发布 root cause 时用 `status=log_in_progress, completed_steps=[]` 的 metadata seed；再发布 requirement，最后以 `update-metadata` 原子切换为 `status=log_done, completed_steps=["log"]`。两份都成功并通过 `validate` 后才报告完成。
 **定位**: **与 init/run/fast/plan 并列的入口命令，非流程步骤编号**。把"一坨设备/服务日志 + 模糊症状"转化为"有证据、经对抗验证、可信"的根因报告，并自动转成修复需求衔接步骤1。**领域无关**——适用于任何能产生日志的系统（机器人/服务端/嵌入式/Web 等均不限）。完成后用户敲 `$icodex plan`（仅步骤1）/ `$icodex run`（全流程）/ `$icodex fast`（精简全流程）（无参）复用同目录进入修复流程，详见 SKILL.md「调用命令」段的目录复用规则说明。
 
 ## 设计借鉴（方法论，非绑定具体技能）

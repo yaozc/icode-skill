@@ -95,18 +95,52 @@ def _get_config(codex: str, name: str) -> Mapping[str, object]:
         raise RuntimeError(f"codex mcp get {name} returned invalid JSON") from error
 
 
+def _canonical_command(command: object) -> object:
+    if not isinstance(command, str) or not command:
+        return command
+    expanded = Path(command).expanduser()
+    if expanded.is_absolute() or len(expanded.parts) > 1:
+        return str(expanded.resolve())
+    resolved = shutil.which(command)
+    return str(Path(resolved).resolve()) if resolved else command
+
+
+def _normalized_transport(config: Mapping[str, object]) -> Dict[str, object]:
+    transport = config.get("transport")
+    if not isinstance(transport, dict):
+        return {"type": None, "command": None, "args": None, "cwd": None, "env": None}
+    cwd = transport.get("cwd") or None
+    if isinstance(cwd, str):
+        cwd = str(Path(cwd).expanduser().resolve())
+    return {
+        "type": transport.get("type"),
+        "command": _canonical_command(transport.get("command")),
+        "args": transport.get("args"),
+        "cwd": cwd,
+        "env": transport.get("env") or None,
+    }
+
+
+def _desired_transport(desired: ServerConfig) -> Dict[str, object]:
+    return {
+        "type": "stdio",
+        "command": _canonical_command(desired.command),
+        "args": desired.args,
+        "cwd": None,
+        "env": desired.env or None,
+    }
+
+
+def _redact_transport(config: Mapping[str, object]) -> Dict[str, object]:
+    redacted = dict(config)
+    env = redacted.get("env")
+    if isinstance(env, dict):
+        redacted["env"] = {str(key): "<redacted>" for key in sorted(env)}
+    return redacted
+
+
 def _same_config(existing: Mapping[str, object], desired: ServerConfig) -> bool:
-    transport = existing.get("transport")
-    if not isinstance(transport, dict) or transport.get("type") != "stdio":
-        return False
-    existing_env = transport.get("env") or None
-    desired_env = desired.env or None
-    return (
-        transport.get("command") == desired.command
-        and transport.get("args") == desired.args
-        and transport.get("cwd") in (None, "")
-        and existing_env == desired_env
-    )
+    return _normalized_transport(existing) == _desired_transport(desired)
 
 
 def _prepare_local_server(config: ServerConfig) -> None:
@@ -139,19 +173,21 @@ def install(root: Path, names: Sequence[str], dry_run: bool, auto_install: bool)
 
     existing_names = set(_list_names(codex))
     identical = set()
-    conflicts = []
+    conflicts: Dict[str, Dict[str, object]] = {}
     for name in selected:
         if name not in existing_names:
             continue
-        if _same_config(_get_config(codex, name), catalog[name]):
+        existing = _get_config(codex, name)
+        if _same_config(existing, catalog[name]):
             identical.add(name)
         else:
-            conflicts.append(name)
+            conflicts[name] = {
+                "existing": _redact_transport(_normalized_transport(existing)),
+                "candidate": _redact_transport(_desired_transport(catalog[name])),
+            }
     if conflicts:
-        print(
-            "Refusing to replace different Codex MCP configuration(s): " + ", ".join(conflicts),
-            file=sys.stderr,
-        )
+        print("Refusing to replace different Codex MCP configuration(s):", file=sys.stderr)
+        print(json.dumps(conflicts, ensure_ascii=False, indent=2, sort_keys=True), file=sys.stderr)
         return 2
 
     failures = []

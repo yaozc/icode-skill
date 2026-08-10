@@ -73,13 +73,13 @@ python3 ~/.codex/skills/icodex/tools/icode_state.py validate --run-dir "${ICODE_
 > **步骤0 init 状态转换时机**（避免状态机歧义）：
 > - `init` 调用：建新目录，立即写 `status=init_in_progress` + `completed_steps=["0"]` 落盘
 > - 多轮对话期间：状态保持 `init_in_progress`，`00_init.md` 每轮增量更新
-> - 用户决定进入步骤1（调 `run`/`plan`）：**run/plan 调用时立即**把 status 从 `init_in_progress` 切换为 `plan_done`，`completed_steps` 追加 `"1"`（**步骤1计划已就绪等价于 plan_done 终态**，因为 run 调用前已读 00_init.md 作步骤1输入）
-> - **不得在 init 阶段把 status 切换为 plan_done**——只有 run/plan 显式复用时才切换
+> - 用户决定进入步骤1（调 `run`/`plan`/`start`）：先保持 `init_in_progress` 执行计划；只有 `01_plan.md` 通过 `publish-artifact` 发布后，才用 `update-metadata` 把 status 切换为 `plan_done` 并追加 `"1"`
+> - **不得在计划产物发布前把 status 切换为 plan_done**；`start` 与 `plan` 完成该转换后停止，`run` 才继续步骤2
 
 > **log 入口状态转换时机**（方式D log→run 工单）：
 > - `log` 调用：建新目录，写 `status=log_done` + `completed_steps=["log"]` 落盘
-> - 用户决定进入步骤1（调 `run`/`plan`）：**run/plan 调用时立即**把 status 从 `log_done` 切换为 `plan_done`，`completed_steps` 追加 `"1"`（与 init→run 复用规则一致）
-> - **不得在 log 阶段把 status 切换为 plan_done**——只有 run/plan 显式复用时才切换
+> - 用户决定进入步骤1（调 `run`/`plan`/`start`）：先保持 `log_done` 执行计划；只有 `01_plan.md` 成功发布后，才用 `update-metadata` 切换为 `plan_done` 并追加 `"1"`
+> - **不得在计划产物发布前把 status 切换为 plan_done**
 | `[流程]` `$icodex review [N]` | **仅步骤2**：多轮循环审查 + 独立质疑者对抗验证（N=软上限轮数，默认3；如最后一轮仍有新问题自动延长 +2 轮，最多扩展至 `max(10, N×2)`）。`mode=="fast"` 时强制 1 轮无对抗 | 用最新目录 |
 | `[流程]` `$icodex merge` | **仅步骤3**：合并审查意见定稿 | 用最新目录 |
 | `[流程]` `$icodex code` | **仅步骤4**：落地编码实施（含**末尾 1.5 子段"Code Review Fix" 4 维度复检**——核对实施是否与计划设计的 4 维度一致。复检失败轻/重度分流回代码修复或重设计，不强制阻断；详见 [steps/04_code.md](steps/04_code.md)） | 用最新目录 |
@@ -305,8 +305,27 @@ ICODE_OUT_DIR=".ai/icode/icode_${LAST}"
 {
   "requirement": "需求描述",
   "created_at": "创建时间",
+  "artifact_layout": "staged",
+  "workflow_kind": "staged_full",
   "status": "当前步骤状态",
+  "current_phase": null,
   "completed_steps": ["1", "2"],
+  "completed_phases": [],
+  "artifact_map": {
+    "requirement": null,
+    "root_cause": null,
+    "plan": "01_plan.md",
+    "plan_review": "02_review.md",
+    "final_plan": null,
+    "implementation": null,
+    "deepcheck": null,
+    "audit": null,
+    "patches": null,
+    "delivery_report": null,
+    "delivery_brief": null
+  },
+  "patch_count": 0,
+  "patch_history": [],
   "code_files": ["path/to/file"],
   "total_rounds": 1,
   "clean_rounds": 0,

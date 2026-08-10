@@ -245,7 +245,7 @@ def validate_metadata(metadata: Mapping[str, Any], run_dir: Path) -> List[str]:
         if _validate_staged_prefix(completed_steps):
             numbered_steps = [step for step in completed_steps if step in STAGED_STEPS]
             allowed_status_by_count = {
-                0: {"init_in_progress", "log_done"},
+                0: {"init_in_progress", "log_in_progress", "log_done"},
                 1: {"plan_done", "review_in_progress"},
                 2: {"review_done"},
                 3: {"plan_finalized", "code_in_progress"},
@@ -340,7 +340,13 @@ def _safe_relative_target(root: Path, relative_name: str) -> Path:
     return target
 
 
-def publish_artifact(run_dir: Path, key: str, source: Path, relative_name: str) -> Path:
+def publish_artifact(
+    run_dir: Path,
+    key: str,
+    source: Path,
+    relative_name: str,
+    metadata_seed: Optional[Mapping[str, Any]] = None,
+) -> Path:
     """Publish a verified file, then atomically expose it through artifact_map."""
 
     run_dir = Path(run_dir)
@@ -353,7 +359,28 @@ def publish_artifact(run_dir: Path, key: str, source: Path, relative_name: str) 
     metadata_path = run_dir / ".ico_metadata.json"
 
     with PortableFileLock(run_dir / ".ico.lock"):
-        metadata = _read_json(metadata_path)
+        if metadata_path.is_file():
+            metadata = _read_json(metadata_path)
+            if metadata_seed is not None:
+                raise ValueError("metadata seed is only allowed when metadata does not exist")
+        else:
+            if metadata_seed is None:
+                raise FileNotFoundError(f"metadata does not exist: {metadata_path}")
+            metadata = dict(metadata_seed)
+            supplied_map = metadata.get("artifact_map")
+            if supplied_map not in (None, {}) and supplied_map != {key: None for key in ARTIFACT_KEYS}:
+                raise ValueError("metadata seed artifact_map must be absent, empty, or all-null stable keys")
+            metadata["artifact_map"] = {stable_key: None for stable_key in ARTIFACT_KEYS}
+            metadata.setdefault("artifact_layout", "staged")
+            metadata.setdefault(
+                "workflow_kind",
+                "staged_fast" if metadata.get("mode") == "fast" else "staged_full",
+            )
+            metadata.setdefault("current_phase", None)
+            metadata.setdefault("completed_phases", [])
+            metadata.setdefault("patch_count", 0)
+            metadata.setdefault("patch_history", [])
+            metadata.setdefault("code_files", [])
         artifact_map = metadata.get("artifact_map")
         if not isinstance(artifact_map, dict) or key not in artifact_map:
             raise ValueError("metadata does not contain the stable artifact map")
@@ -421,6 +448,45 @@ def reserve_patch_number(run_dir: Path) -> int:
         ]
         _atomic_write_json(metadata_path, metadata)
         return number
+
+
+def finalize_patch(run_dir: Path, number: int, status: str, summary: str = "") -> Dict[str, Any]:
+    """Finalize one reserved patch after its mapped artifact has been published."""
+
+    if number < 1:
+        raise ValueError("patch number must be positive")
+    if status not in ("completed", "issues", "analysis_only"):
+        raise ValueError("patch status must be completed, issues, or analysis_only")
+    run_dir = Path(run_dir)
+    metadata_path = run_dir / ".ico_metadata.json"
+    with PortableFileLock(run_dir / ".ico.lock"):
+        metadata = _read_json(metadata_path)
+        history = metadata.get("patch_history")
+        if not isinstance(history, list):
+            raise ValueError("patch_history must be an array")
+        matches = [position for position, item in enumerate(history) if isinstance(item, dict) and item.get("number") == number]
+        if len(matches) != 1:
+            raise ValueError(f"patch reservation {number} was not found exactly once")
+        entry = dict(history[matches[0]])
+        if entry.get("status") not in ("in_progress", status):
+            raise ValueError(f"patch {number} is already finalized as {entry.get('status')}")
+        if not metadata.get("artifact_map", {}).get("patches"):
+            raise ValueError("patch artifact must be published before finalization")
+        entry.update(
+            {
+                "status": status,
+                "summary": summary,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        updated_history = list(history)
+        updated_history[matches[0]] = entry
+        metadata["patch_history"] = updated_history
+        errors = validate_metadata(metadata, run_dir)
+        if errors:
+            raise ValueError("metadata validation failed: " + "; ".join(errors))
+        _atomic_write_json(metadata_path, metadata)
+        return entry
 
 
 def update_metadata(run_dir: Path, updates: Mapping[str, Any]) -> Dict[str, Any]:
@@ -655,7 +721,12 @@ def _safe_existing_migration_file(directory: Path, relative: str) -> bool:
 
 
 def _safe_ticket_id(ticket_id: str) -> str:
-    safe = "".join(character if character.isalnum() or character in "._-" else "_" for character in ticket_id)
+    safe = "".join(
+        character
+        if character.isascii() and (character.isalnum() or character in "._-")
+        else "_"
+        for character in ticket_id
+    )
     return safe or "legacy"
 
 
@@ -836,8 +907,14 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
     publish_parser.add_argument("--key", required=True, choices=ARTIFACT_KEYS)
     publish_parser.add_argument("--source", required=True, type=Path)
     publish_parser.add_argument("--name", required=True)
+    publish_parser.add_argument("--metadata-seed", type=Path)
     reserve_parser = subparsers.add_parser("reserve-patch", help="reserve a patch number")
     reserve_parser.add_argument("--run-dir", required=True, type=Path)
+    finalize_parser = subparsers.add_parser("finalize-patch", help="finalize a published patch")
+    finalize_parser.add_argument("--run-dir", required=True, type=Path)
+    finalize_parser.add_argument("--number", required=True, type=int)
+    finalize_parser.add_argument("--status", required=True, choices=("completed", "issues", "analysis_only"))
+    finalize_parser.add_argument("--summary", default="")
     update_parser = subparsers.add_parser("update-metadata", help="apply a validated metadata transition")
     update_parser.add_argument("--run-dir", required=True, type=Path)
     update_parser.add_argument("--patch-json", required=True, type=Path)
@@ -863,10 +940,14 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         print(json.dumps({"ok": not errors, "errors": errors}, ensure_ascii=False))
         return 1 if errors else 0
     if args.command == "publish-artifact":
-        print(publish_artifact(args.run_dir, args.key, args.source, args.name))
+        seed = _read_json(args.metadata_seed) if args.metadata_seed else None
+        print(publish_artifact(args.run_dir, args.key, args.source, args.name, seed))
         return 0
     if args.command == "reserve-patch":
         print(reserve_patch_number(args.run_dir))
+        return 0
+    if args.command == "finalize-patch":
+        print(json.dumps(finalize_patch(args.run_dir, args.number, args.status, args.summary), ensure_ascii=False))
         return 0
     if args.command == "update-metadata":
         print(json.dumps(update_metadata(args.run_dir, _read_json(args.patch_json)), ensure_ascii=False, indent=2))

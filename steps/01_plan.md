@@ -324,7 +324,7 @@
 
 ## 强制操作（完成后必须执行）
 
-5. **创建或更新 `{ICODE_OUT_DIR}/.ico_metadata.json`**：
+5. **创建或更新 `{ICODE_OUT_DIR}/.ico_metadata.json`**：新工单不得直接 Write 下方示意 JSON；把它作为 `--metadata-seed` 交给首次 `publish-artifact`，由 helper 原子创建完整 metadata。复用工单则先发布 plan，再用 `update-metadata` 转换状态。
 
    - **复用步骤0目录的情况**：metadata 已存在，需**更新**（而非覆盖）以下字段：
      - `status`: `init_in_progress` → `plan_done`
@@ -337,8 +337,15 @@
 {
   "requirement": "{用户输入的原始需求}",
   "created_at": "当前时间",
+  "artifact_layout": "staged",
+  "workflow_kind": "staged_full",
   "status": "plan_done",
+  "current_phase": null,
   "completed_steps": ["1"],
+  "completed_phases": [],
+  "artifact_map": {},
+  "patch_count": 0,
+  "patch_history": [],
   "code_files": [],
   "requirement_summary": "{基于完整计划的一句话摘要，≤100 token}",
   "requirement_points": [],

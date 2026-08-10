@@ -6,10 +6,12 @@ from pathlib import Path
 
 from tools.icode_state import (
     ARTIFACT_KEYS,
+    finalize_patch,
     iter_merged_files,
     load_merged_index,
     merged_source_digest,
     publish_artifact,
+    reserve_patch_number,
     update_metadata,
     upsert_index_entry,
     validate_metadata,
@@ -138,12 +140,40 @@ class MetadataValidationTests(unittest.TestCase):
         self.assertEqual(published.read_text(encoding="utf-8"), "approved plan\n")
         self.assertEqual(updated["artifact_map"]["plan"], "PLAN.md")
 
+    def test_first_artifact_can_atomically_create_metadata(self) -> None:
+        source = self.run_dir / "draft.tmp"
+        source.write_text("first plan\n", encoding="utf-8")
+        seed = {
+            "status": "plan_done",
+            "completed_steps": ["1"],
+        }
+        publish_artifact(self.run_dir, "plan", source, "01_plan.md", seed)
+        metadata = json.loads((self.run_dir / ".ico_metadata.json").read_text(encoding="utf-8"))
+        self.assertEqual(metadata["artifact_map"]["plan"], "01_plan.md")
+        self.assertEqual(metadata["workflow_kind"], "staged_full")
+        self.assertEqual(set(metadata["artifact_map"]), set(ARTIFACT_KEYS))
+        self.assertEqual(validate_metadata(metadata, self.run_dir), [])
+
     def test_update_metadata_rejects_invalid_transition(self) -> None:
         metadata = load_fixture("concise_in_progress.json")
         materialize_mapped_files(self.run_dir, metadata)
         (self.run_dir / ".ico_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "current_phase"):
             update_metadata(self.run_dir, {"current_phase": "audit"})
+
+    def test_patch_reservation_publish_and_finalize(self) -> None:
+        metadata = load_fixture("staged_completed.json")
+        materialize_mapped_files(self.run_dir, metadata)
+        (self.run_dir / ".ico_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+        number = reserve_patch_number(self.run_dir)
+        source = self.run_dir / "patch-draft.tmp"
+        source.write_text("# Patch 1\n", encoding="utf-8")
+        publish_artifact(self.run_dir, "patches", source, "08_patch.md")
+        entry = finalize_patch(self.run_dir, number, "completed", "verified patch")
+        updated = json.loads((self.run_dir / ".ico_metadata.json").read_text(encoding="utf-8"))
+        self.assertEqual(entry["status"], "completed")
+        self.assertEqual(updated["patch_history"][0]["summary"], "verified patch")
+        self.assertEqual(validate_metadata(updated, self.run_dir), [])
 
 
 class MergedViewTests(unittest.TestCase):

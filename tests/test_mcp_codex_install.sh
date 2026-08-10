@@ -6,6 +6,7 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 FAKE_CODEX="$TMP_DIR/codex"
+FAKE_NPX="$TMP_DIR/npx"
 LOG_FILE="$TMP_DIR/calls.log"
 
 cat > "$FAKE_CODEX" <<'FAKE'
@@ -24,6 +25,8 @@ case "${2:-}" in
   get)
     if [ "${FAKE_EXISTING:-absent}" = "identical" ]; then
       printf '{"name":"memory","transport":{"type":"stdio","command":"%s","args":["-y","@modelcontextprotocol/server-memory"],"env":null,"cwd":null}}\n' "$ICODEX_NPX_BIN"
+    elif [ "${FAKE_EXISTING:-absent}" = "equivalent" ]; then
+      printf '{"name":"memory","transport":{"type":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-memory"],"env":null,"cwd":""}}\n'
     elif [ "${FAKE_EXISTING:-absent}" = "different" ]; then
       printf '{"name":"memory","transport":{"type":"stdio","command":"other-npx","args":[],"env":null,"cwd":null}}\n'
     else
@@ -38,11 +41,14 @@ case "${2:-}" in
 esac
 FAKE
 chmod +x "$FAKE_CODEX"
+touch "$FAKE_NPX"
+chmod +x "$FAKE_NPX"
 
 export ICODEX_CODEX_BIN="$FAKE_CODEX"
-export ICODEX_NPX_BIN="/fake/npx"
+export ICODEX_NPX_BIN="$FAKE_NPX"
 export ICODEX_PYTHON_BIN="/fake/python"
 export FAKE_CODEX_LOG="$LOG_FILE"
+export PATH="$TMP_DIR:$PATH"
 
 clear_log() { : > "$LOG_FILE"; }
 assert_no_mutation() {
@@ -61,11 +67,17 @@ FAKE_EXISTING=identical "$ROOT/mcp/install-codex.sh" memory >/dev/null
 assert_no_mutation
 
 clear_log
+FAKE_EXISTING=equivalent "$ROOT/mcp/install-codex.sh" memory >/dev/null
+assert_no_mutation
+
+clear_log
 set +e
-FAKE_EXISTING=different "$ROOT/mcp/install-codex.sh" memory >/dev/null 2>&1
+conflict_output=$(FAKE_EXISTING=different "$ROOT/mcp/install-codex.sh" memory 2>&1)
 conflict_status=$?
 set -e
 [ "$conflict_status" -eq 2 ]
+printf '%s' "$conflict_output" | grep -q '"existing"'
+printf '%s' "$conflict_output" | grep -q '"candidate"'
 assert_no_mutation
 
 clear_log

@@ -29,7 +29,9 @@ python3 ~/.codex/skills/icodex/tools/icode_state.py publish-artifact \
 python3 ~/.codex/skills/icodex/tools/icode_state.py validate --run-dir "${ICODE_OUT_DIR}"
 ```
 
-只有两条命令都成功才推进状态。`status`、`patch`、`readme` 与历史检索只通过 `artifact_map` 找文件，不猜编号名。patch 先用 `reserve-patch` 取得唯一编号。
+新工单尚无 `.ico_metadata.json` 时，先把该首个产物完成后的完整状态写入临时 seed JSON，并在第一次 `publish-artifact` 增加 `--metadata-seed <seed.json>`。helper 会在同一把 run lock 内补齐全-null 稳定映射、发布首个文件、校验最终状态并原子创建 metadata；禁止先落一个缺少 artifact_map 或状态不一致的半成品 metadata。
+
+只有两条命令都成功才推进状态。`status`、`patch`、`readme` 与历史检索只通过 `artifact_map` 找文件，不猜编号名。patch 必须依次执行 `reserve-patch` 取得唯一编号、`publish-artifact --key patches` 发布追加后的完整文件、`finalize-patch --number <N> --status <completed|issues|analysis_only> --summary <摘要>` 收口记录；预留后中断会保留 `in_progress` 恢复信号，重试同一编号，不得手工递增或覆盖历史。
 
 普通状态字段更新写入临时 JSON 后调用 `update-metadata --patch-json <file>`；全局索引条目写入临时 JSON 后调用 `upsert-index --codex-root ~/.codex/icode_data --entry-json <file>`。不得在 Markdown 步骤里自行实现无锁的 `json.load → 修改 → write_text`。legacy overlay 只能包含来源标识和 `hit_count/last_used_at/stale/stale_reason` 可变字段。
 

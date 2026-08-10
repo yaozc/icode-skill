@@ -197,7 +197,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 ## .ico_metadata.json 模板
 
-入口命令（init/log）和步骤1常规新建目录时创建。完整字段定义见 SKILL.md「元信息文件」段，此处仅列入口创建时的最小模板：
+入口命令（init/log）和步骤1常规新建目录时创建。完整字段定义见 SKILL.md「元信息文件」段，此处 JSON 仅是业务字段 seed，不得直接写成最终 metadata：首次产物必须通过 `publish-artifact --metadata-seed`，由 helper 自动补齐 `artifact_layout/workflow_kind/current_phase/completed_phases`、全部稳定 `artifact_map` 键、`patch_count` 与 `patch_history`，校验后原子创建。
 
 > **`template_version` 字段**（schema 版本，自 [v1.1 升级](../steps/01_plan.md) 起所有新建工单默认带）：
 >
