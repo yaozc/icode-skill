@@ -44,8 +44,8 @@ python3 ~/.codex/skills/icodex/tools/icode_state.py validate --run-dir "${ICODE_
 查询两侧数据时使用：
 
 ```bash
-python3 ~/.codex/skills/icodex/tools/icode_state.py merged-index --codex-root ~/.codex/icode_data --claude-root ~/.claude/icode_data
-python3 ~/.codex/skills/icodex/tools/icode_state.py merged-files --kind <project_docs|module_docs|limits> --codex-root ~/.codex/icode_data --claude-root ~/.claude/icode_data
+python3 ~/.codex/skills/icodex/tools/icode_state.py merged-index --codex-root ~/.codex/icode_data --claude-root ~/.claude/icode_data  # legacy 只读
+python3 ~/.codex/skills/icodex/tools/icode_state.py merged-files --kind <project_docs|module_docs|limits> --codex-root ~/.codex/icode_data --claude-root ~/.claude/icode_data  # legacy 只读
 ```
 
 Codex 同 key 优先；legacy-only 条目保持只读。用户要继续旧工单时：

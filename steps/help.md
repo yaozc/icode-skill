@@ -8,6 +8,7 @@
 
 ```text
 $icodex <任务>                 Codex full mode：根因→计划→实现→自审→审计→验证
+$icodex help                   只读命令帮助
 $icodex init [需求]            步骤0，需求初稿
 $icodex log [日志/症状]        日志根因分析入口
 $icodex plan [需求]            仅步骤1，完成后暂停

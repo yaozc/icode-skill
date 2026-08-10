@@ -123,7 +123,7 @@ def check_file(filepath: Path, required_mcps: List[str]) -> Dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="lint icode 工单产物 MCP 调用覆盖率")
-    ap.add_argument("out_dir", help="工单目录路径（如 demo/.icode_output/.icode_output_10）")
+    ap.add_argument("out_dir", help="工单目录路径（如 demo/.ai/icode/icode_10）")
     ap.add_argument("--strict", action="store_true", help="严格模式：缺段或 MCP 缺失直接报错退出")
     ap.add_argument("--json", action="store_true", help="输出 JSON 格式")
     args = ap.parse_args()

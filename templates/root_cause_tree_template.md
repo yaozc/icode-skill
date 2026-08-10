@@ -1,6 +1,6 @@
 # 根因树模板（防"停在症状层"）
 
-> **用途**：`/icode log` 阶段3 对抗根因分析时，分析师提假设**必须填本模板**，确保根因追问到触发层而非停在症状层。3 层都 confirmed 才算真 confirmed。引用 [steps/log.md](../steps/log.md)「根因树 3 层假设链」+ [references/adversarial.md](../references/adversarial.md) 对抗裁决。
+> **用途**：`$icodex log` 阶段3 对抗根因分析时，分析师提假设**必须填本模板**，确保根因追问到触发层而非停在症状层。3 层都 confirmed 才算真 confirmed。引用 [steps/log.md](../steps/log.md)「根因树 3 层假设链」+ [references/adversarial.md](../references/adversarial.md) 对抗裁决。
 
 ---
 

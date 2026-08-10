@@ -183,6 +183,10 @@ assert_file() {
   fi
 }
 
+file_size() {
+  wc -c < "$1" | tr -d '[:space:]'
+}
+
 echo
 echo "=== 断言 1：template_version 自动升级 ==="
 assert_contains "$META" '"template_version": "v1.1"' "metadata.template_version = \"v1.1\""
@@ -217,9 +221,9 @@ assert_contains "$DEEPCHECK" "blast-radius 三链自检（v1.1 自动迁移）" 
 echo
 echo "=== 断言 5：幂等性（再跑一次迁移不会重复追加） ==="
 # 先记录当前文件大小，再跑一次"已迁移"检测分支（marker 字面量已存在于文件）
-PLAN_SIZE_BEFORE=$(stat -c%s "$PLAN")
+PLAN_SIZE_BEFORE=$(file_size "$PLAN")
 atomic_append "$PLAN" "工程结构快照（v1.1 自动迁移）" "## 重复段（不应落地）"  # marker 已存在走幂等分支
-PLAN_SIZE_AFTER=$(stat -c%s "$PLAN")
+PLAN_SIZE_AFTER=$(file_size "$PLAN")
 if [ "$PLAN_SIZE_BEFORE" = "$PLAN_SIZE_AFTER" ]; then
   echo "  ✅ 重跑迁移 01_plan.md 文件大小未变（幂等）"
 else
@@ -243,10 +247,10 @@ assert_file "$META" "metadata 文件未被破坏"
 echo
 echo "=== 断言 7：二次进入步骤 N 完全跳过（template_version=v1.1 + marker 已含） ==="
 # 模拟"工单已 v1.1 迁移完毕，user 再跑一次步骤 1"——应零副作用
-META_SIZE_BEFORE=$(stat -c%s "$META")
-PLAN_SIZE_BEFORE=$(stat -c%s "$PLAN")
-PFINAL_SIZE_BEFORE=$(stat -c%s "$PFINAL")
-DEEPCHECK_SIZE_BEFORE=$(stat -c%s "$DEEPCHECK")
+META_SIZE_BEFORE=$(file_size "$META")
+PLAN_SIZE_BEFORE=$(file_size "$PLAN")
+PFINAL_SIZE_BEFORE=$(file_size "$PFINAL")
+DEEPCHECK_SIZE_BEFORE=$(file_size "$DEEPCHECK")
 LOG_LEN_BEFORE=$(python3 -c "import json; print(len(json.load(open('$META'))['migration_log']))")
 
 # 模拟三步的"完整迁移流程"：检查 template_version → 不进迁移 → 跳过 metadata 写回
@@ -259,12 +263,12 @@ assert tv == "v1.1", f"二次进入前提：template_version 必为 v1.1，实�
 # 真实生产会在这里直接 return 不追加 migration_log；本测试只验证 tv 字段正确
 PY
 
-if [ "$META_SIZE_BEFORE" = "$(stat -c%s "$META")" ] && \
-   [ "$PLAN_SIZE_BEFORE" = "$(stat -c%s "$PLAN")" ] && \
-   [ "$PFINAL_SIZE_BEFORE" = "$(stat -c%s "$PFINAL")" ] && \
-   [ "$DEEPCHECK_SIZE_BEFORE" = "$(stat -c%s "$DEEPCHECK")" ] && \
+if [ "$META_SIZE_BEFORE" = "$(file_size "$META")" ] && \
+   [ "$PLAN_SIZE_BEFORE" = "$(file_size "$PLAN")" ] && \
+   [ "$PFINAL_SIZE_BEFORE" = "$(file_size "$PFINAL")" ] && \
+   [ "$DEEPCHECK_SIZE_BEFORE" = "$(file_size "$DEEPCHECK")" ] && \
    [ "$LOG_LEN_BEFORE" = "$(python3 -c "import json; print(len(json.load(open('$META'))['migration_log']))")" ]; then
-  echo "  ✅ 二次进入 metadata/三个产物全部零增量，migration_log 长度=$LOG_LEN_BEFORE（正确未追加）"
+  echo "  ✅ 二次进入 metadata/三个产物全部零增量，migration_log 长度=${LOG_LEN_BEFORE}（正确未追加）"
 else
   echo "  ❌ 二次进入任一文件大小变化或 migration_log 被追加"
   FAIL=$((FAIL+1))

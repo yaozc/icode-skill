@@ -1,6 +1,6 @@
 # tools/tb - Teambition 缺陷单拉取（icode log 步骤的可选数据源）
 
-通用、参数化的 Teambition 缺陷拉取层，供 icode `/icode log` 步骤在**零散输入含 TB 引用时**可选调用，
+通用、参数化的 Teambition 缺陷拉取层，供 `$icodex log` 步骤在**零散输入含 TB 引用时**可选调用，
 把缺陷单的标题/描述/评论/日志附件拉到本地作为日志根因分析的输入。
 
 > 本目录只做「拉取」，**不做回写**：不向 TB 发任何 POST，不生成评论草稿。分析结论产出在
@@ -24,7 +24,7 @@ pip install requests cryptography secretstorage
 
 ## 首次配置
 
-**config 可选**：`/icode log <TB URL> <单号>` 用法不配 config 也行--AI 从 URL 抽 domain+pid 传 `--domain --pid`。config 仅在多项目 lib 快捷（`--lib`）或固定 domain 时更省事。
+**config 可选**：`$icodex log <TB URL> <单号>` 用法不配 config 也行--AI 从 URL 抽 domain+pid 传 `--domain --pid`。config 仅在多项目 lib 快捷（`--lib`）或固定 domain 时更省事。
 
 1. **建 config（可选）**：`cp config.example.json config.json`，填 `domain` 和 `projects`（见下）。不建也行，用 `--domain` 传域名。
 2. **取 cookie**：在 Chrome 登录 `https://<你的TB域名>/` 后，二选一：
@@ -76,7 +76,7 @@ python3 scripts/tb_pull.py --domain <你的TB域名> --pid <项目ID> defect DEM
 
 ## 被 icode log 步骤调用时
 
-`/icode log` 在阶段0 输入收敛时，若零散输入含 Teambition 项目 URL（含 `/project/<pid>/` 路径）或 `<LIB>-<NUM>`，会自动：
+`$icodex log` 在阶段0 输入收敛时，若零散输入含 Teambition 项目 URL（含 `/project/<pid>/` 路径）或 `<LIB>-<NUM>`，会自动：
 
 ```
 python3 tools/tb/scripts/tb_pull.py --pid <URL里的pid> defect <LIB>-<NUM> --out {ICODE_OUT_DIR}/tb_source
