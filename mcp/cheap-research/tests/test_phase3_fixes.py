@@ -21,7 +21,8 @@ with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
     tmp_config_path = f.name
 os.environ["CHEAP_RESEARCH_CONFIG"] = tmp_config_path
 
-CR_DIR = Path("/home/orbbec/git/icode-skill/mcp/cheap-research")
+CR_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = CR_DIR.parents[1]
 sys.path.insert(0, str(CR_DIR))
 
 # 加载
@@ -107,14 +108,14 @@ async def test_apply_migration():
     # P0-4: is_relative_to 严防
     r = await apply_migration(
         schema_diff={"add": [{"path": "/etc/passwd"}]},
-        repo_path="/home/orbbec/git/icode-skill",
+        repo_path=str(REPO_ROOT),
     )
     assert "error" in r and ("逃逸" in r["error"] or "不在 repo" in r["error"]), r
     print("✅ apply_migration 绝对路径逃逸 → 阻止")
 
     r = await apply_migration(
         schema_diff={"add": [{"path": "."}]},
-        repo_path="/home/orbbec/git/icode-skill",
+        repo_path=str(REPO_ROOT),
     )
     # 路径 "." 会被 resolve 为 repo 自身 → 应被拒绝
     assert "error" in r and ("逃逸" in r["error"] or "根" in r["error"]), r
@@ -123,7 +124,7 @@ async def test_apply_migration():
     # 正常路径仍 OK
     r = await apply_migration(
         schema_diff={"add": [{"path": "src/new.py", "content": "print('hi')"}]},
-        repo_path="/home/orbbec/git/icode-skill",
+        repo_path=str(REPO_ROOT),
     )
     assert "answer" in r, r
     print("✅ apply_migration 合法路径 → 成功")

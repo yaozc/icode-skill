@@ -17,7 +17,8 @@ with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
 os.environ["CHEAP_RESEARCH_CONFIG"] = tmp_config_path
 
 # 把 cheap-research 目录加到 sys.path
-CR_DIR = Path("/home/orbbec/git/icode-skill/mcp/cheap-research")
+CR_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = CR_DIR.parents[1]
 sys.path.insert(0, str(CR_DIR))
 
 # 加载 server.py 但绕过 mcp.tool 装饰（直接读源码提取函数）
@@ -154,7 +155,7 @@ if has_mcp:
         assert "error" in r and "cheap-research 未配置" in r["error"], r
         print("✅ extract UnconfiguredProvider 路径")
 
-        r = await audit_facts(repo_path="/home/orbbec/git/icode-skill")  # 此目录有 README
+        r = await audit_facts(repo_path=str(REPO_ROOT))  # 此目录有 README
         assert "error" in r and "cheap-research 未配置" in r["error"], r
         print("✅ audit_facts UnconfiguredProvider 路径")
 

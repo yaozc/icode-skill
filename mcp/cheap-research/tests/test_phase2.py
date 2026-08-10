@@ -18,18 +18,19 @@ with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
     tmp_config_path = f.name
 os.environ["CHEAP_RESEARCH_CONFIG"] = tmp_config_path
 
-CR_DIR = Path("/home/orbbec/git/icode-skill/mcp/cheap-research")
+CR_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = CR_DIR.parents[1]
 sys.path.insert(0, str(CR_DIR))
 
 # 让 server.py 知道 sys.path
-sys.path.insert(0, "/home/orbbec/git/icode-skill/mcp/cheap-research")
+sys.path.insert(0, str(CR_DIR))
 
 # 加载
 import _utils
 print("✅ _utils.py 加载成功")
 
 # 验证 _utils 新增函数
-assert _utils.iter_source_files(Path("/home/orbbec/git/icode-skill/mcp/cheap-research"), max_files=5) is not None
+assert _utils.iter_source_files(CR_DIR, max_files=5) is not None
 print("✅ iter_source_files")
 
 assert _utils.validate_int_range(5, "f", 1, 10) is None
@@ -82,7 +83,7 @@ async def test_enhanced():
     # scan_patterns 成功路径（用 cheap-research 目录测试）
     r = await scan_patterns(
         patterns=[r"def\s+\w+"],
-        scope_path="/home/orbbec/git/icode-skill/mcp/cheap-research",
+        scope_path=str(CR_DIR),
         max_files=10,
         max_matches=10,
     )
@@ -98,7 +99,7 @@ async def test_enhanced():
     # trace_refs 成功路径
     r = await trace_refs(
         symbol="summarize",
-        scope_path="/home/orbbec/git/icode-skill/mcp/cheap-research",
+        scope_path=str(CR_DIR),
         max_files=10,
     )
     assert "answer" in r and r["answer"]["count"] > 0, r
@@ -126,7 +127,7 @@ async def test_enhanced():
 
     r = await apply_migration(
         schema_diff={"add": [{"path": "../escape.py"}]},
-        repo_path="/home/orbbec/git/icode-skill",
+        repo_path=str(REPO_ROOT),
     )
     assert "error" in r and "逃逸" in r["error"], r
     print("✅ apply_migration 路径逃逸 → 错误兜底")
@@ -137,7 +138,7 @@ async def test_enhanced():
             "add": [{"path": "src/new.py", "content": "print('hello')"}],
             "remove": [{"path": "src/old.py"}],
         },
-        repo_path="/home/orbbec/git/icode-skill",
+        repo_path=str(REPO_ROOT),
     )
     assert "answer" in r, r
     assert r["answer"]["op_count"] == 2, r
@@ -151,7 +152,7 @@ async def test_enhanced():
     print("✅ parse_project_id 路径不存在 → 错误兜底")
 
     # parse_project_id 成功路径
-    r = await parse_project_id(repo_path="/home/orbbec/git/icode-skill")
+    r = await parse_project_id(repo_path=str(REPO_ROOT))
     assert "answer" in r, r
     assert "project_id" in r["answer"], r
     print(f"✅ parse_project_id 成功: project_id={r['answer']['project_id']}, branch={r['answer']['branch']}")
@@ -162,7 +163,7 @@ async def test_enhanced():
     print("✅ scan_modules 路径不存在 → 错误兜底")
 
     # scan_modules 成功路径（dev_repo 应该有 .gitmodules 之类的）
-    r = await scan_modules(repo_path="/home/orbbec/git/icode-skill")
+    r = await scan_modules(repo_path=str(REPO_ROOT))
     assert "answer" in r, r
     print(f"✅ scan_modules 成功: 找到 {r['answer']['count']} 个模块")
 
