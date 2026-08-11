@@ -74,7 +74,8 @@ fi
 # --delete                  : 镜像同步语义——删除目标端 dev_repo 已不存在的文件
 #                            (dev repo 删除的文件会同步删除; --no-delete 可关闭)
 #                            被 .gitignore 排除的 mcp/*/config.json 等用户配置不受影响
-rsync -avc --delete "${RSYNC_ARGS[@]}" \
+# Bash 3.2 在 set -u 下展开空数组会报 unbound variable；条件展开保持零参数。
+rsync -avc --delete ${RSYNC_ARGS[@]+"${RSYNC_ARGS[@]}"} \
   --filter=':- .gitignore' \
   --exclude='.git/' \
   --exclude='.codex/' \
