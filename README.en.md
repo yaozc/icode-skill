@@ -1,12 +1,12 @@
 # ICODEX Review
 
-This is the read-only cross-model final review skill for ICODEX. Use it after another AI has completed `$icodex` implementation, self review, self audit, and verification.
+This is the read-only cross-model final review skill for ICODEX v2.17. Use it after another AI has completed `$icodex` implementation, self review, self audit, and verification.
 
 Core constraints:
 
 - Review only; do not modify code
 - Do not implement, format, stage, commit, or push
-- Output `EXTERNAL_REVIEW.md`
+- Return `EXTERNAL_REVIEW.md` content only; the caller decides whether to save it
 - Final decision must be `PASS`, `FIX_REQUIRED`, or `SKIPPED`
 
 ## Install
@@ -31,13 +31,13 @@ $icodex-review Review the current git diff and .ai/icode/{run_dir} artifacts. On
 
 ## Inputs
 
-- `.ai/icode/{run_dir}/RCA.md`
-- `.ai/icode/{run_dir}/PLAN.md`
-- `.ai/icode/{run_dir}/IMPLEMENT.md`
-- `.ai/icode/{run_dir}/SELF_REVIEW.md`
-- `.ai/icode/{run_dir}/AUDIT.md`
-- Current `git diff`
-- Available verification output
+Start with `.ai/icode/<run-name>/.ico_metadata.json`. Resolve artifacts through `artifact_layout` and `artifact_map`; do not guess filenames or repair metadata.
+
+- Codex full / `concise`: `root_cause`, `plan`, `implementation`, `deepcheck`, and `audit` (normally `RCA.md`, `PLAN.md`, `IMPLEMENT.md`, `SELF_REVIEW.md`, and `AUDIT.md`)
+- staged: mapped `requirement`, `root_cause`, `plan`, `plan_review`, `final_plan`, `implementation`, `deepcheck`, and `audit` artifacts (normally `00_init.md` through `06_audit.md`)
+- Current `git diff` and available verification output
+
+Unused staged-entry artifacts may be absent. When essential artifacts, mappings, or verification evidence are insufficient, record the gap and return `SKIPPED`; never write or modify files.
 
 ## Output
 
@@ -55,9 +55,9 @@ Output `EXTERNAL_REVIEW.md` content with:
 ## Recommended Flow
 
 ```text
-$icodex
+$icodex (full or staged)
   ↓
-RCA / PLAN / IMPLEMENT / SELF_REVIEW / AUDIT / VERIFY
+metadata + artifact_map + artifacts + VERIFY
   ↓
 $icodex-review
   ↓

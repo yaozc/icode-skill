@@ -38,6 +38,13 @@ Load only the sections relevant to the current task.
 - Public contracts and serialized formats remain compatible.
 - Error handling is intentional rather than swallowed or converted into silent success.
 
+## ICode Artifact and Metadata Contract
+
+- The review identifies `artifact_layout` and resolves evidence through `artifact_map` before reading workflow artifacts.
+- Concise and staged layouts are not mixed: absent optional entry artifacts are reported as absent, not invented.
+- Metadata, mapped artifacts, patches, and verification evidence agree on the claimed workflow state.
+- Missing or invalid evidence is reported as an evidence gap; the reviewer does not repair metadata, rename artifacts, or create placeholders.
+
 ## Regression and Compatibility
 
 - Retry loops are bounded and observable.

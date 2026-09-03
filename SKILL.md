@@ -1,61 +1,50 @@
 ---
 name: icodex-review
-description: Use when performing read-only external final review for an ICODEX run, especially after another AI has produced RCA, plan, implementation notes, self review, audit, verification results, and a git diff. Do not use for implementation.
+description: Use when performing a read-only, independent final review for an ICode v2.17 run after another AI has completed implementation, local review, audit, and verification. Do not use for implementation.
 ---
 
 # ICODEX Review
 
-## Overview
+## Role and boundary
 
-This skill is the read-only external reviewer for ICODEX. It must not modify files, implement fixes, stage changes, commit, or push.
+`$icodex-review` is an independent, read-only final reviewer. It reviews a supplied ICode run directory, the current `git diff`, and available verification evidence after `$icodex` has completed local work.
 
-Use it after `$icodex` has completed local diagnosis, implementation, same-model self review, self audit, and verification.
+It must not edit files, run formatters or generators, install MCPs, write metadata or artifacts, stage, commit, push, reset, clean, or implement fixes. Return the `EXTERNAL_REVIEW.md` content in the response; the caller decides whether to save it.
 
-## Inputs
+## Input discovery
 
-Read the available artifacts from `.ai/icode/{run_dir}/`:
+Start from the supplied `.ai/icode/<run-name>/` directory. Read `.ico_metadata.json` when present and use its `artifact_layout` and `artifact_map` as the only authority for logical artifacts; do not infer an arbitrary numbered filename.
 
-- `RCA.md`
-- `PLAN.md`
-- `IMPLEMENT.md`
-- `SELF_REVIEW.md`
-- `AUDIT.md`
-- Verification output, if present
-- Current `git diff`
+The stable logical keys are:
 
-If an artifact is missing, continue with available evidence and record the missing input in `EXTERNAL_REVIEW.md`.
+```text
+requirement, root_cause, plan, plan_review, final_plan, implementation,
+deepcheck, audit, patches, delivery_report, delivery_brief
+```
 
-## Workflow
+Support both ICode v2.17 layouts:
 
-1. Confirm read-only mode.
-   - Do not edit files.
-   - Do not run formatters or generators.
-   - Do not stage, commit, push, reset, or clean.
+| Layout | Review evidence |
+|---|---|
+| `concise` / Codex full | `root_cause`, `plan`, `implementation`, `deepcheck`, `audit` (normally `RCA.md`, `PLAN.md`, `IMPLEMENT.md`, `SELF_REVIEW.md`, `AUDIT.md`) |
+| `staged` | `requirement`, `root_cause`, `plan`, `plan_review`, `final_plan`, `implementation`, `deepcheck`, `audit` as present (normally `00_init.md`, `log_analysis.md`, `01_plan.md`, `02_review.md`, `03_plan_final.md`, `04_code_review_fix.md`, `05_deepcheck.md`, `06_audit.md`) |
 
-2. Reconstruct the claim.
-   - Identify the reported symptom, root cause, intended fix, modified files, and verification evidence.
-   - Separate proven facts from assumptions.
+`requirement`, `root_cause`, and `plan_review` are optional for staged runs that did not use the corresponding entry or step. `patches`, `delivery_report`, and `delivery_brief` are supplementary evidence. A missing metadata file, invalid mapping, or missing essential artifact is an evidence gap: report it precisely and use `SKIPPED` when the claim cannot be reconstructed. Do not repair the metadata or create placeholder files.
 
-3. Review root cause.
-   - Check whether observations support the causal chain.
-   - Look for alternative explanations that were not ruled out.
-   - Decide `PASS` or `FAIL`.
+Also read the current `git diff` and any supplied test, build, or deployment evidence. Do not inspect legacy `.icode_output/` or Claude data as a substitute for an absent current artifact.
 
-4. Review implementation.
-   - Inspect the diff for correctness, edge cases, state handling, async/concurrency risks, lifecycle/resource ownership, and contract compatibility.
-   - Decide `PASS` or `FAIL`.
+## Review workflow
 
-5. Review regression risk.
-   - Check likely neighboring workflows, old behavior, configuration, serialization/API compatibility, and recovery paths.
-   - Decide `PASS` or `FAIL`.
+1. Confirm read-only mode and list the evidence actually available.
+2. Reconstruct the claimed symptom, root cause, change, verification, run layout, and workflow status. Separate facts from assumptions.
+3. Review root cause and plan: verify the causal chain, rejected alternatives, and whether the selected change targets the cause.
+4. Review implementation and contracts: inspect the diff for correctness, edge cases, state, concurrency, lifecycle, API/configuration/persistence compatibility, and ICode artifact/metadata consistency where relevant.
+5. Review regression, security, and performance risk. Read [references/domain-checklists.md](references/domain-checklists.md) only for relevant risks.
+6. Return the required report. If findings require a change, hand them back to `$icodex`; do not fix them here.
 
-6. Produce external review.
-   - Write or return `EXTERNAL_REVIEW.md` content only.
-   - Final decision must be `PASS`, `FIX_REQUIRED`, or `SKIPPED`.
+## Required output
 
-## Required Output
-
-Use this exact structure:
+Return exactly this structure:
 
 ```markdown
 # External Review
@@ -66,53 +55,49 @@ Claude CLI / Claude Code / Other, or SKIPPED with reason.
 
 ## Inputs
 
-- RCA.md: present / missing
-- PLAN.md: present / missing
-- IMPLEMENT.md: present / missing
-- SELF_REVIEW.md: present / missing
-- AUDIT.md: present / missing
+- Run directory: present / missing
+- Metadata and layout: present / missing / invalid
+- Artifacts read: logical keys and resolved paths, or missing
 - git diff: present / missing
-- verification output: present / missing
+- Verification output: present / missing
 
 ## Root Cause Review
 
-PASS / FAIL
+PASS / FAIL / INSUFFICIENT_EVIDENCE
 
 ## Implementation Review
 
-PASS / FAIL
+PASS / FAIL / INSUFFICIENT_EVIDENCE
 
 ## Architecture and Contract Review
 
-PASS / FAIL
+PASS / FAIL / INSUFFICIENT_EVIDENCE
 
 ## Regression Review
 
-PASS / FAIL
+PASS / FAIL / INSUFFICIENT_EVIDENCE
 
 ## Security Review
 
-PASS / FAIL / N/A
+PASS / FAIL / N/A / INSUFFICIENT_EVIDENCE
 
 ## Performance Review
 
-PASS / FAIL / N/A
+PASS / FAIL / N/A / INSUFFICIENT_EVIDENCE
 
 ## Findings
 
-Concrete findings only. Use "None" if there are no actionable findings.
+Concrete findings only. Use `None` if there are no actionable findings.
 
 ## Final Decision
 
 PASS / FIX_REQUIRED / SKIPPED
 ```
 
-## Decision Rules
+## Decision rules
 
-- Use `PASS` only when root cause, implementation, regression risk, and verification evidence are all acceptable.
-- Use `FIX_REQUIRED` when any actionable correctness, regression, architecture, security, or performance issue remains.
-- Use `SKIPPED` only when required context is unavailable or the environment prevents review.
+- `PASS`: root cause, implementation, contracts, regression risk, and relevant verification evidence are acceptable.
+- `FIX_REQUIRED`: one or more actionable correctness, compatibility, security, performance, or evidence-integrity findings remain.
+- `SKIPPED`: the available run directory, metadata/artifact mapping, diff, or verification evidence cannot support a responsible review.
 
-## Handoff Back
-
-If the final decision is `FIX_REQUIRED`, do not fix it in this skill. Return findings to the implementer and ask them to rerun `$icodex` on the findings.
+For `FIX_REQUIRED`, include file and line references where available, explain impact, and give the smallest actionable correction. For `SKIPPED`, name the missing evidence and the exact command or artifact needed to resume review.

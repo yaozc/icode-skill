@@ -1,4 +1,4 @@
 interface:
   display_name: "ICODEX Review"
-  short_description: "Read-only external final review"
-  default_prompt: "Use $icodex-review to review the current git diff and ICODEX artifacts without modifying code."
+  short_description: "Read-only v2.17 external final review"
+  default_prompt: "Use $icodex-review to read the ICode v2.17 metadata/artifact_map, current git diff, and verification evidence without modifying files."
