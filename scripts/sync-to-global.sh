@@ -13,7 +13,7 @@
 #
 # 设计意图:
 #   - 单一入口, 所有规则集中在顶层 .gitignore
-#   - 默认排除 .git/ .codex/ demo/ tests/ (开发仓库本地配置)
+#   - 默认排除 .git .codex/ demo/ tests/ (开发仓库本地配置)
 #   - 默认 dry-run, 显式 --apply 才落地, 防止误操作
 # ============================================================
 set -euo pipefail
@@ -58,7 +58,7 @@ if [ "$MODE" = "apply" ]; then
   echo "⚠️  即将执行实际同步 (--apply)"
   echo "   src: $DEV_REPO/"
   echo "   dst: $GLOBAL_DIR/"
-  echo "   规则: 顶层 .gitignore + 默认排除 .git/ .codex/ demo/ tests/"
+  echo "   规则: 顶层 .gitignore + 默认排除 .git .codex/ demo/ tests/"
   echo ""
 else
   RSYNC_ARGS+=(--dry-run)
@@ -75,9 +75,10 @@ fi
 #                            (dev repo 删除的文件会同步删除; --no-delete 可关闭)
 #                            被 .gitignore 排除的 mcp/*/config.json 等用户配置不受影响
 # Bash 3.2 在 set -u 下展开空数组会报 unbound variable；条件展开保持零参数。
+# worktree 的 .git 是普通文件，普通 checkout 的 .git 是目录；不带尾斜杠同时保护两种形态。
 rsync -avc --delete ${RSYNC_ARGS[@]+"${RSYNC_ARGS[@]}"} \
   --filter=':- .gitignore' \
-  --exclude='.git/' \
+  --exclude='.git' \
   --exclude='.codex/' \
   --exclude='demo/' \
   --exclude='tests/' \
