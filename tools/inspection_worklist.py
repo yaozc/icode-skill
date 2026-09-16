@@ -26,7 +26,7 @@ LANGUAGE = {".c": "c_cpp_lifetime_and_undefined_behavior",
             ".py": "python_types_exceptions_and_mutable_state"}
 CONFIG = {".json", ".yaml", ".yml", ".toml", ".ini", ".conf", ".xml"}
 HASH = re.compile(r"^[0-9a-f]{64}$")
-FORBIDDEN = {".git", ".icode_output", ".ssh", ".gnupg", ".aws"}
+FORBIDDEN = {".git", ".icode_output", ".ssh", ".gnupg", ".aws"}  # legacy read-only exclusion
 ASSOCIATED_SUFFIXES = set(LANGUAGE) | CONFIG | {".cc", ".cxx", ".hxx", ".rs", ".go", ".java", ".js", ".ts", ".tsx", ".jsx"}
 
 
@@ -40,7 +40,7 @@ def _positive(value):
 
 def _is_control_path(path):
     parts = tuple(part.lower() for part in Path(path).parts)
-    if ".git" in parts or ".icode_output" in parts:
+    if ".git" in parts or ".icode_output" in parts:  # legacy read-only exclusion
         return True
     return any(parts[index:index + 2] == (".ai", "icode")
                for index in range(max(0, len(parts) - 1)))
@@ -233,7 +233,7 @@ def build_worklist(workspace, code_files, *, step, ticket_id, attempt, mode="ful
         local_scopes = [s if not s.startswith("..") else "." for s in local_scopes]
         # Literal user scopes, plus fixed exclusions, keep ticket sidecars out
         # of enumeration itself (not merely filtered after consuming budgets).
-        excluded_specs = [":(glob,exclude)**/.icode_output/**",
+        excluded_specs = [":(glob,exclude)**/.icode_output/**",  # legacy read-only exclusion
                           ":(glob,exclude)**/.ai/icode/**"]
         pathspecs = [f":(literal){s}" for s in local_scopes] + excluded_specs
         changed = set(names(repo, diff + pathspecs)) if local_scopes else set()

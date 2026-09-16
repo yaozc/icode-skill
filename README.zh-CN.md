@@ -54,6 +54,7 @@ bash ~/.codex/skills/icodex/mcp/install-codex.sh
 | `$icodex code` | staged 步骤4 |
 | `$icodex deepcheck` | staged 步骤5 |
 | `$icodex audit` | staged 步骤6 |
+| `$icodex crosscheck [目标]` | 对 completed 工单做持久化多轮复评；目标保持只读 |
 | `$icodex run [需求]` | 自动执行 staged 1→6 |
 | `$icodex fast [需求]` | 精简 staged 流程 |
 | `$icodex patch [变更]` | 在既有工单上追加验证过的补丁 |
@@ -64,7 +65,7 @@ bash ~/.codex/skills/icodex/mcp/install-codex.sh
 | `$icodex list [关键词]` | 跨工程只读检索 |
 | `$icodex install [name]` | 安全注册 Codex MCP |
 
-异模型独立终审仍由单独的 `$icodex-review` 承担；本地验证完成后向它交付产物目录、diff 和测试证据。
+`$icodex crosscheck` 只在 `.ai/icode/.crosscheck/` 持久化隔离复评记录，不修改目标工单或源码。异模型 `$icodex-review` 仍为零写入，仅在响应中返回报告。
 
 ## 存储与恢复
 

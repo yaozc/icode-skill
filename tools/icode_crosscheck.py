@@ -353,8 +353,8 @@ def git_snapshot(code_root):
             ["git", "-C", str(code_root), "status", "--porcelain=v1", "--untracked-files=all"],
             text=True, capture_output=True, check=True, timeout=30,
         ).stdout.splitlines()
-        control_prefixes = {".ai/icode", ".icode_output"}
-        for candidate in (Path(code_root) / ".ai" / "icode", Path(code_root) / ".icode_output"):
+        control_prefixes = {".ai/icode", ".icode_output"}  # legacy read-only exclusion
+        for candidate in (Path(code_root) / ".ai" / "icode", Path(code_root) / ".icode_output"):  # legacy read-only exclusion
             try:
                 control_prefixes.add(candidate.resolve().relative_to(top_path).as_posix())
             except ValueError:
@@ -894,7 +894,7 @@ def render_report(directory, manifest, cumulative):
             f"- `{finding['finding_id']}` [{finding['severity']}/{finding['status']}] "
             f"{finding['title']}（Round {finding['round']}）"
         )
-    lines.extend(["", "> Crosscheck 只提供复评建议；如需修改，由用户显式调用 `/icode patch`。", ""])
+    lines.extend(["", "> Crosscheck 只提供复评建议；如需修改，由用户显式调用 `$icodex patch`。", ""])
     return "\n".join(lines)
 
 

@@ -54,6 +54,7 @@ Use explicit commands for staged mode:
 | `$icodex code` | Staged step 4 |
 | `$icodex deepcheck` | Staged step 5 |
 | `$icodex audit` | Staged step 6 |
+| `$icodex crosscheck [target]` | Persistent multi-round review of a completed run; target remains read-only |
 | `$icodex run [requirement]` | Automatic staged steps 1→6 |
 | `$icodex fast [requirement]` | Reduced staged workflow |
 | `$icodex patch [change]` | Append a verified patch to an existing run |
@@ -64,7 +65,7 @@ Use explicit commands for staged mode:
 | `$icodex list [query]` | Read-only cross-project ticket search |
 | `$icodex install [name]` | Safe Codex MCP registration |
 
-Independent cross-model review remains outside this skill. After local verification, hand the artifact directory, diff, and test evidence to `$icodex-review`.
+`$icodex crosscheck` persists isolated review records under `.ai/icode/.crosscheck/` without changing the target run or source. Independent cross-model `$icodex-review` remains zero-write and returns its report only in the response.
 
 ## Storage and recovery
 

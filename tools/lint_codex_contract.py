@@ -44,6 +44,7 @@ COMMAND_ROUTES = {
     "code": "steps/04_code.md",
     "deepcheck": "steps/05_deepcheck.md",
     "audit": "steps/06_audit.md",
+    "crosscheck": "steps/crosscheck.md",
     "run": "steps/run.md",
     "fast": "steps/fast.md",
     "patch": "steps/08_patch.md",

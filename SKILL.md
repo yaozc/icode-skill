@@ -1,6 +1,6 @@
 ---
 name: icodex
-description: Use for non-trivial implementation, bug fixing, risky refactors, root-cause-first diagnosis, same-model self review, audit, verification, or the staged ICode v2.17 workflow and its auxiliary commands.
+description: Use for non-trivial implementation, bug fixing, risky refactors, root-cause-first diagnosis, same-model self review, audit, verification, persistent crosscheck, or the staged ICode v2.17 workflow and its auxiliary commands.
 ---
 
 **版本**: v2.17.0
@@ -12,8 +12,8 @@ description: Use for non-trivial implementation, bug fixing, risky refactors, ro
 `$icodex` 保留两套互补流程：
 
 - **Codex full mode**：用户直接以 `$icodex <任务>` 请求非平凡开发且未指定下方子命令时使用。按 Diagnose → Plan → Implement → Senior Reviewer self-review → Principal Engineer audit → Verify 在同一任务内连续执行，只在确需用户决策时暂停；产物使用 `RCA.md`、`PLAN.md`、`IMPLEMENT.md`、`SELF_REVIEW.md`、`AUDIT.md`。
-- **staged mode**：用户指定 `init|log|plan|start|review|merge|code|deepcheck|audit|run|fast` 时使用 v2.17 编号步骤。每个单步命令完成后停止；`$icodex start` 永远只是 `$icodex plan` 的兼容别名。只有 `$icodex run` 会自动串联步骤 1→6，阻塞失败时立即停止。
-- **外部复核边界**：本 skill 只做同模型 self-review/audit。需要异模型或独立终审时，完成本地验证后把产物目录、diff 和验证结果交给独立 `$icodex-review`，不得在 `$icodex` 内冒充外部复核。
+- **staged mode**：用户指定 `init|log|plan|start|review|merge|code|deepcheck|audit|run|fast|crosscheck` 时使用 v2.17 编号步骤或其独立辅助流程。每个单步命令完成后停止；`$icodex start` 永远只是 `$icodex plan` 的兼容别名。只有 `$icodex run` 会自动串联步骤 1→6，阻塞失败时立即停止。
+- **复核边界**：`$icodex crosscheck` 会在 `.ai/icode/.crosscheck/` 持久化可多轮的只读复评记录，但不修改目标工单或源码；独立 `$icodex-review` 仍是零写入的外部复核，只在响应中返回报告。需要异模型或独立终审时，完成本地验证后把产物目录、diff 和验证结果交给 `$icodex-review`，不得把本 skill 的 self-review/audit/crosscheck 冒充外部复核。
 
 full mode 必须先证明根因再修改：记录症状/复现、观察、多个合理假设、反证、根因与置信度；实现后以 Senior Reviewer 视角检查逻辑、边界、状态机、并发、生命周期、架构和回归，再以 Principal Engineer 视角假设实现错误并逆向攻击，修完所有有效发现后重新验证。复杂风险检查读取 [references/domain-checklists.md](references/domain-checklists.md)。
 
@@ -85,6 +85,7 @@ python3 ~/.codex/skills/icodex/tools/icode_state.py validate --run-dir "${ICODE_
 | `[流程]` `$icodex code` | **仅步骤4**：落地编码实施（含**末尾 1.5 子段"Code Review Fix" 4 维度复检**——核对实施是否与计划设计的 4 维度一致。复检失败轻/重度分流回代码修复或重设计，不强制阻断；详见 [steps/04_code.md](steps/04_code.md)） | 用最新目录 |
 | `[流程]` `$icodex deepcheck` | **仅步骤5**：三阶段递进复检（Reverse → Fixed → Free）。`mode=="fast"` 时只跑 Reverse 阶段 | 用最新目录 |
 | `[流程]` `$icodex audit` | **仅步骤6**：终极终审 + 统一修复（产出 `{ICODE_OUT_DIR}/06_audit.md`） | 用最新目录 |
+| `[独立]` `$icodex crosscheck [--ticket <id> \| 工单路径]` | **已完成工单独立复评**：fresh-before-history、多轮追加、输入漂移检测；只写 `.ai/icode/.crosscheck/`，目标工单与源码零回写（详见 [steps/crosscheck.md](steps/crosscheck.md)） | 否（只建隔离复评容器） |
 | `[流程]` `$icodex readme` | **可选步骤7**：一次性生成两份——**交付报告**（**给自己看**：完整技术档案，自包含，智能识别功能/查BUG模板）+ **跨领域简报**（`_brief.md`，**给其它模块研发/测试/产品看**：含必要改动/修复代码，主要问题/需求/时间点/链路/修复，较简略）。步骤6完成后手动触发 | 用最新目录 |
 | `[独立]` `$icodex patch [问题或新需求...]` | **追加修改（独立步骤）**：主流程完成后（`completed`）或中途（步骤1~5任一状态）继续修改既有工单——测试发现问题 / 后续新需求，在既有工单上打补丁。**轻量四段式**（重审现状 → 增量计划 → 最小实施 → 反向复检，含**分析验证型分支**：纯分析无代码修改时豁免实施/编译、改「结论验证」，但**端到端代码追溯/证据方法可靠性/链路完整性结论验证不豁免），**不靠会话记忆靠磁盘产物重载上下文**（治"越问上下文越爆炸"）。产物 `08_patch.md` 追加式（每次**显式调用**追加 Patch N 段；**会话内追问/补充归入当前 Patch N，不新增段**）。**不改变 status/completed_steps**（completed 保持 completed），靠 `patch_count`/`patch_history` 记录；可选 `--listen`（自动监听）/ `--test`（显式触发验证）→ 阶段 4「1.5 实机部署验证」（连设备部署 + 持续轮询 + 实时链路分析；`--listen` 告知触发即监听、用户随时操作被捕获，`--test` 空转停下确认用户已操作再继续）；无 flag 跳过实机验证（详见 [steps/08_patch.md](steps/08_patch.md)） | 用最新目录 |
 | `[工程]` `$icodex doc [自然语言]` | **工程级知识库生成（独立步骤）**：扫描工程代码特征，生成/维护 `~/.codex/icode_data/project_docs/<project_id>/<branch>/` 下的工程知识库章节（架构/IPC/术语表/代码事实审计，**按分支分目录**，切分支跑 doc 不互相覆盖），**同时检测工程依赖的独立模块**（git submodule / `repo` 管理 / CMake FetchContent / monorepo / vendor / 用户配置，6 级优先级）并生成 `~/.codex/icode_data/module_docs/{key}/` 模块共享文档（**按仓库+分支 key 跨工程共享**，同一上游仓库同分支只一份），供 init/log/plan/run/fast 段零自动跨仓库检索注入。**去参数化**——目标工程与动作（全量/增量/新增）由自然语言识别。**v1 单级布局自动迁移**：检测到旧 `<project_id>/` 平铺布局时自动迁移到 `<project_id>/<branch>/`（保留所有字段 + 备份 `_meta.json.v1_migrated_from`，详见 doc.md 步骤 5）。**不创建工单目录、不写工单 metadata、不参与步骤1~6推进**（详见 [steps/doc.md](steps/doc.md)） | 否（写全局 `project_docs/` 和 `module_docs/`） |
@@ -758,6 +759,7 @@ $icodex install --no-auto-install
 | 4 | `code` | [steps/04_code.md](steps/04_code.md) |
 | 5 | `deepcheck` | [steps/05_deepcheck.md](steps/05_deepcheck.md) |
 | 6 | `audit` | [steps/06_audit.md](steps/06_audit.md) |
+| crosscheck | `crosscheck` | [steps/crosscheck.md](steps/crosscheck.md)（独立复评，不参与 1~6 推进） |
 | 7 | `readme` | [steps/07_readme.md](steps/07_readme.md) |
 | patch | `patch` | [steps/08_patch.md](steps/08_patch.md)（独立步骤，主流程后/中途追加修改，不参与 1~6 推进） |
 | doc | `doc` | [steps/doc.md](steps/doc.md) |
@@ -789,6 +791,8 @@ $icodex install --no-auto-install
 | [references/anti_laziness.md](references/anti_laziness.md) | 反偷懒约束（31条偷懒行为+合规要求+references必读+确认行） | 所有 step |
 | [references/adversarial.md](references/adversarial.md) | 对抗分析模式（3质疑者/裁决优先级/诚实降级/证据回指） | 02_review / log |
 | [references/dir_and_metadata.md](references/dir_and_metadata.md) | 目录管理 + ticket_id 生成 + 全局索引写入（含LRU淘汰） + metadata 模板 + **注入缓存机制（防重复注入，两源共用）** + **project_docs 工程文档库 + 段零检索** | init / log / plan / run / fast / doc |
+| [references/crosscheck_mode.md](references/crosscheck_mode.md) | 独立复评的隔离目录、多轮状态、输入快照、零回写与恢复真源 | crosscheck |
+| [references/inspection_worklist.md](references/inspection_worklist.md) | Crosscheck 审查范围、真实 Read 登记、定位证据与基线合同 | crosscheck |
 | [references/doc_template.md](references/doc_template.md) | icode doc 章节模板：前 50 行四块结构（项目元信息/KEYS/简要说明/目录）+ 十位桶编号 + 自适应 grep 关键词表 + 99 章审计策略 + **v2.0.0 双视角必含元素清单（14 项）+ 业务流独立成章 + 英文首次中文备注 + 链路中文说明 + 质量审视检查清单 + 模板版本自举迁移** | doc |
 | [references/necessity_check.md](references/necessity_check.md) | **现有功能覆盖度检查（防重复实现机制）**：触发时机 + 执行命令（全工程检索 + Read 命中处行为链）+ 三类判定（已覆盖/部分/未覆盖）+ 各步骤落点（init §2.X/预筛列、plan 前置/断言/ADR/对抗、review 维度7、deepcheck Reverse 对比、audit 视角 C） | init / plan / review / deepcheck / audit |
 | [references/first_activation_path.md](references/first_activation_path.md) | **首次激活路径一致性检查**：静态分析盲区（"写了从没实机执行过"的死路径既有 bug）+ 触发条件 + 检测法（软信号、不阻断）+ 双侧校验一致性核对清单 + 部署后验证建议下游输出 | plan（断言⑤）/ deepcheck（Reverse）/ audit（部署后建议）/ patch（部署后验证发现） |

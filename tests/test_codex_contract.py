@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.lint_codex_contract import lint_active_boundaries, lint_repo
+from tools.lint_codex_contract import COMMAND_ROUTES, lint_active_boundaries, lint_repo
 
 
 class BoundaryTests(unittest.TestCase):
@@ -39,6 +39,16 @@ class BoundaryTests(unittest.TestCase):
 
 
 class RepositoryContractTests(unittest.TestCase):
+    def test_crosscheck_is_persistent_but_target_read_only(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        skill = (root / "SKILL.md").read_text(encoding="utf-8")
+        step = (root / "steps" / "crosscheck.md").read_text(encoding="utf-8")
+        self.assertEqual(COMMAND_ROUTES["crosscheck"], "steps/crosscheck.md")
+        self.assertIn("$icodex crosscheck", skill)
+        self.assertIn(".ai/icode/.crosscheck/", step)
+        self.assertIn("不得修改目标工单", step)
+        self.assertIn("$icodex-review", skill)
+
     def test_repository_contract(self) -> None:
         root = Path(__file__).resolve().parents[1]
         self.assertEqual(lint_repo(root), [])

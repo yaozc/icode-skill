@@ -18,6 +18,7 @@ $icodex merge                  仅步骤3
 $icodex code                   仅步骤4
 $icodex deepcheck              仅步骤5
 $icodex audit                  仅步骤6
+$icodex crosscheck [目标]      completed 工单持久化多轮复评；目标零回写
 $icodex run [需求]             staged mode 自动串联步骤1→6
 $icodex fast [需求]            精简 staged 全流程
 $icodex patch [问题]           既有工单追加修改
@@ -29,4 +30,4 @@ $icodex list [关键词]          跨工程工单查询
 $icodex install [name]         安全注册 Codex MCP
 ```
 
-明确说明：`start` 不会串联后续步骤；需要自动执行 1→6 时使用 `run`。外部独立终审由 `$icodex-review` 承担。
+明确说明：`start` 不会串联后续步骤；需要自动执行 1→6 时使用 `run`。`crosscheck` 只把复评记录写入 `.ai/icode/.crosscheck/`，不修改目标工单与源码；外部独立终审仍由零写入的 `$icodex-review` 承担。
