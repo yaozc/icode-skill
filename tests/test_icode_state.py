@@ -1,5 +1,8 @@
 import copy
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,9 +14,11 @@ from tools.icode_state import (
     load_merged_index,
     merged_source_digest,
     publish_artifact,
+    resolve_ticket,
     reserve_patch_number,
     update_metadata,
     upsert_index_entry,
+    validate_completed_run,
     validate_metadata,
 )
 
@@ -250,6 +255,130 @@ class MergedViewTests(unittest.TestCase):
                     "status": "completed",
                 },
             )
+
+
+class TicketResolutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        root = Path(self.temp_dir.name)
+        self.project = root / "project"
+        self.codex_root = root / "codex"
+        self.project.mkdir()
+        self.codex_root.mkdir()
+        source = self.project / "src" / "example.py"
+        source.parent.mkdir()
+        source.write_text("VALUE = 1\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def completed_metadata(self, ticket_id: str = "demo-1") -> dict:
+        metadata = load_fixture("staged_completed.json")
+        metadata["ticket_id"] = ticket_id
+        metadata["project_path"] = str(self.project)
+        metadata["code_files"] = ["src/example.py"]
+        return metadata
+
+    def materialize_run(self, name: str = "icode_1", ticket_id: str = "demo-1") -> Path:
+        run_dir = self.project / ".ai" / "icode" / name
+        metadata = self.completed_metadata(ticket_id)
+        materialize_mapped_files(run_dir, metadata)
+        (run_dir / ".ico_metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+        return run_dir
+
+    def write_index(self, tickets: list) -> None:
+        (self.codex_root / "index.json").write_text(
+            json.dumps({"tickets": tickets}), encoding="utf-8"
+        )
+
+    def native_entry(self, out_dir: str = ".ai/icode/icode_1") -> dict:
+        return {
+            "ticket_id": "demo-1",
+            "project_path": str(self.project),
+            "out_dir": out_dir,
+            "status": "completed",
+        }
+
+    def test_resolve_ticket_requires_one_consistent_codex_identity(self) -> None:
+        run_dir = self.materialize_run()
+        self.write_index([self.native_entry()])
+        self.assertEqual(resolve_ticket(self.project, self.codex_root, "demo-1"), run_dir.resolve())
+
+        self.write_index([self.native_entry(".ai/icode/icode_2")])
+        with self.assertRaisesRegex(ValueError, "disagree"):
+            resolve_ticket(self.project, self.codex_root, "demo-1")
+
+    def test_resolve_ticket_rejects_zero_and_duplicate_matches(self) -> None:
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            resolve_ticket(self.project, self.codex_root, "missing")
+        self.materialize_run("icode_1")
+        self.materialize_run("icode_2")
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            resolve_ticket(self.project, self.codex_root, "demo-1")
+
+    def test_resolve_ticket_ignores_legacy_overlay(self) -> None:
+        run_dir = self.materialize_run()
+        entry = self.native_entry(".ai/icode/icode_99")
+        entry["legacy_overlay"] = True
+        self.write_index([entry])
+        self.assertEqual(resolve_ticket(self.project, self.codex_root, "demo-1"), run_dir.resolve())
+
+    def test_validate_completed_run_rejects_artifact_and_code_escapes(self) -> None:
+        run_dir = self.materialize_run()
+        metadata_path = run_dir / ".ico_metadata.json"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["artifact_map"]["plan"] = "../escape.md"
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "artifact_map.plan escapes"):
+            validate_completed_run(run_dir, self.project)
+
+        metadata = self.completed_metadata()
+        metadata["code_files"] = ["../escape.py"]
+        materialize_mapped_files(run_dir, metadata)
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "code_files"):
+            validate_completed_run(run_dir, self.project)
+
+    @unittest.skipIf(os.name == "nt", "symlink creation may require Windows developer mode")
+    def test_validate_completed_run_rejects_symlink_code_file(self) -> None:
+        run_dir = self.materialize_run()
+        outside = Path(self.temp_dir.name) / "outside.py"
+        outside.write_text("VALUE = 2\n", encoding="utf-8")
+        link = self.project / "src" / "link.py"
+        link.symlink_to(outside)
+        metadata_path = run_dir / ".ico_metadata.json"
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["code_files"] = ["src/link.py"]
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            validate_completed_run(run_dir, self.project)
+
+    def test_resolve_ticket_cli_is_machine_readable_and_read_only(self) -> None:
+        run_dir = self.materialize_run()
+        self.write_index([self.native_entry()])
+        before_run = (run_dir / ".ico_metadata.json").read_bytes()
+        before_index = (self.codex_root / "index.json").read_bytes()
+        process = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).parents[1] / "tools" / "icode_state.py"),
+                "resolve-ticket",
+                "--ticket",
+                "demo-1",
+                "--project-root",
+                str(self.project),
+                "--codex-root",
+                str(self.codex_root),
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        payload = json.loads(process.stdout)
+        self.assertEqual(payload["run_dir"], str(run_dir.resolve()))
+        self.assertEqual((run_dir / ".ico_metadata.json").read_bytes(), before_run)
+        self.assertEqual((self.codex_root / "index.json").read_bytes(), before_index)
 
 
 if __name__ == "__main__":

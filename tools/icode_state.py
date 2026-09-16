@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import stat
@@ -42,6 +43,8 @@ FULL_PHASES: Tuple[str, ...] = (
 )
 
 STAGED_STEPS: Tuple[str, ...] = ("1", "2", "3", "4", "5", "6")
+
+CODEX_RUN_RE = re.compile(r"^icode_([1-9][0-9]*)$")
 
 MUTABLE_OVERLAY_FIELDS: Tuple[str, ...] = (
     "hit_count",
@@ -319,6 +322,139 @@ def validate_metadata(metadata: Mapping[str, Any], run_dir: Path) -> List[str]:
                     errors.append(f"artifact_map.{key} is required after staged step {step}")
 
     return errors
+
+
+def _path_has_symlink(root: Path, relative: Path) -> bool:
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
+def _validate_code_files(code_files: Any, project_root: Path) -> List[str]:
+    errors: List[str] = []
+    root = Path(project_root).resolve()
+    if not isinstance(code_files, list) or not code_files:
+        return ["code_files must be a non-empty array for completed crosscheck targets"]
+    for position, raw in enumerate(code_files):
+        label = f"code_files[{position}]"
+        if not isinstance(raw, str) or not raw or "\\" in raw:
+            errors.append(f"{label} must be a non-empty relative POSIX path")
+            continue
+        relative = Path(raw)
+        if relative.is_absolute() or ".." in relative.parts:
+            errors.append(f"{label} must stay within the project root")
+            continue
+        if _path_has_symlink(root, relative):
+            errors.append(f"{label} must not traverse a symlink")
+            continue
+        candidate = (root / relative).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            errors.append(f"{label} escapes the project root")
+            continue
+        if not candidate.is_file():
+            errors.append(f"{label} must reference a regular file")
+    return errors
+
+
+def validate_completed_run(run_dir: Path, project_root: Path) -> Dict[str, Any]:
+    """Validate one completed Codex run before it can be crosschecked."""
+
+    project_root = Path(project_root).resolve()
+    raw_run_dir = Path(run_dir).expanduser()
+    expected_parent = project_root / ".ai" / "icode"
+    if raw_run_dir.is_symlink():
+        raise ValueError("completed run directory must not be a symlink")
+    resolved_run_dir = raw_run_dir.resolve()
+    if resolved_run_dir.parent != expected_parent or not CODEX_RUN_RE.fullmatch(resolved_run_dir.name):
+        raise ValueError("completed run must be <project>/.ai/icode/icode_N")
+    metadata_path = resolved_run_dir / ".ico_metadata.json"
+    if metadata_path.is_symlink() or not metadata_path.is_file():
+        raise ValueError("completed run metadata must be a regular non-symlink file")
+    metadata = _read_json(metadata_path)
+    errors = validate_metadata(metadata, resolved_run_dir)
+    if metadata.get("status") != "completed":
+        errors.append("status must be completed for crosscheck")
+    ticket_id = metadata.get("ticket_id")
+    if not isinstance(ticket_id, str) or not ticket_id:
+        errors.append("ticket_id must be a non-empty string")
+    errors.extend(_validate_code_files(metadata.get("code_files"), project_root))
+    if errors:
+        raise ValueError("completed run validation failed: " + "; ".join(errors))
+    return metadata
+
+
+def _local_ticket_candidates(project_root: Path, ticket_id: str) -> List[Path]:
+    output_root = project_root / ".ai" / "icode"
+    if not output_root.is_dir():
+        return []
+    candidates: List[Path] = []
+    for child in sorted(output_root.iterdir()):
+        if not CODEX_RUN_RE.fullmatch(child.name):
+            continue
+        if child.is_symlink():
+            raise ValueError(f"ticket directory must not be a symlink: {child}")
+        metadata_path = child / ".ico_metadata.json"
+        if not metadata_path.is_file():
+            continue
+        metadata = _read_json(metadata_path)
+        if metadata.get("ticket_id") == ticket_id and metadata.get("status") == "completed":
+            candidates.append(child.resolve())
+    return candidates
+
+
+def _indexed_ticket_candidates(project_root: Path, codex_root: Path, ticket_id: str) -> List[Path]:
+    index = _load_index(codex_root)
+    candidates: List[Path] = []
+    for entry in index.get("tickets", []):
+        if not isinstance(entry, dict) or entry.get("legacy_overlay") is True:
+            continue
+        if entry.get("ticket_id") != ticket_id:
+            continue
+        raw_project = entry.get("project_path")
+        raw_out_dir = entry.get("out_dir")
+        if not isinstance(raw_project, str) or not isinstance(raw_out_dir, str) or not raw_out_dir:
+            raise ValueError("ticket index entry is missing project_path or out_dir")
+        indexed_project = Path(raw_project).expanduser().resolve()
+        if indexed_project != project_root:
+            continue
+        if entry.get("status") != "completed":
+            raise ValueError("ticket index status disagrees with completed target requirement")
+        out_path = Path(raw_out_dir).expanduser()
+        if out_path.is_absolute():
+            candidate = out_path.resolve()
+        else:
+            candidate = (indexed_project / out_path).resolve()
+        try:
+            candidate.relative_to(indexed_project / ".ai" / "icode")
+        except ValueError as error:
+            raise ValueError("ticket index out_dir escapes the Codex run root") from error
+        if not CODEX_RUN_RE.fullmatch(candidate.name):
+            raise ValueError("ticket index out_dir is not a numbered Codex run")
+        candidates.append(candidate)
+    return candidates
+
+
+def resolve_ticket(project_root: Path, codex_root: Path, ticket_id: str) -> Path:
+    """Resolve one native Codex ticket without reading legacy merged views."""
+
+    if not isinstance(ticket_id, str) or not ticket_id:
+        raise ValueError("ticket_id must be a non-empty string")
+    project_root = Path(project_root).expanduser().resolve()
+    if not project_root.is_dir():
+        raise ValueError(f"project root does not exist: {project_root}")
+    local = set(_local_ticket_candidates(project_root, ticket_id))
+    indexed = set(_indexed_ticket_candidates(project_root, Path(codex_root), ticket_id))
+    if local and indexed and local != indexed:
+        raise ValueError("ticket index and metadata identities disagree")
+    candidates = local | indexed
+    if len(candidates) != 1:
+        raise ValueError(f"ticket resolution requires exactly one candidate; found {len(candidates)}")
+    return next(iter(candidates))
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -928,6 +1064,10 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
     merged_files_parser.add_argument("--kind", required=True, choices=("project_docs", "module_docs", "limits"))
     merged_files_parser.add_argument("--codex-root", required=True, type=Path)
     merged_files_parser.add_argument("--claude-root", required=True, type=Path)
+    resolve_parser = subparsers.add_parser("resolve-ticket", help="resolve one native Codex ticket")
+    resolve_parser.add_argument("--ticket", required=True)
+    resolve_parser.add_argument("--project-root", required=True, type=Path)
+    resolve_parser.add_argument("--codex-root", required=True, type=Path)
     migrate_parser = subparsers.add_parser("migrate-legacy", help="migrate one legacy run")
     migrate_parser.add_argument("--project-root", required=True, type=Path)
     migrate_parser.add_argument("--legacy-run", required=True, type=Path)
@@ -964,6 +1104,25 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
             for item in iter_merged_files(args.kind, args.codex_root, args.claude_root)
         ]
         print(json.dumps(files, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "resolve-ticket":
+        try:
+            run_dir = resolve_ticket(args.project_root, args.codex_root, args.ticket)
+            metadata = validate_completed_run(run_dir, args.project_root)
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            print(json.dumps({"resolved": False, "error": str(error)}, ensure_ascii=False))
+            return 1
+        print(
+            json.dumps(
+                {
+                    "resolved": True,
+                    "ticket_id": metadata["ticket_id"],
+                    "run_dir": str(run_dir),
+                    "project_root": str(args.project_root.expanduser().resolve()),
+                },
+                ensure_ascii=False,
+            )
+        )
         return 0
     if args.command == "migrate-legacy":
         print(migrate_legacy_run(args.project_root, args.legacy_run, args.codex_root))
