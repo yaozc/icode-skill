@@ -38,7 +38,7 @@ Use explicit commands for staged mode:
 01 Plan → 02 Review → 03 Finalize → 04 Code → 05 Deep Check → 06 Audit
 ```
 
-`$icodex plan` and `$icodex start` execute only step 1 and then pause. `start` is a compatibility alias for `plan`. `$icodex run` is the automatic staged 1→6 chain. `$icodex fast` is the reduced staged chain.
+`$icodex start` is the standard automatic staged 1→6 chain; `$icodex run` is a behavior-identical compatibility alias. `$icodex plan` executes only step 1 and then pauses. `$icodex fast` is the reduced staged chain.
 
 ## Commands
 
@@ -48,14 +48,14 @@ Use explicit commands for staged mode:
 | `$icodex init [requirement]` | Step 0 requirement draft and discussion |
 | `$icodex log [logs/symptoms]` | Root-cause analysis entry |
 | `$icodex plan [requirement]` | Staged step 1, then pause |
-| `$icodex start [requirement]` | Alias for `plan`, then pause |
+| `$icodex start [requirement]` | Standard automatic staged steps 1→6 |
 | `$icodex review [N]` | Staged step 2 |
 | `$icodex merge` | Staged step 3 |
 | `$icodex code` | Staged step 4 |
 | `$icodex deepcheck` | Staged step 5 |
 | `$icodex audit` | Staged step 6 |
 | `$icodex crosscheck [target]` | Persistent multi-round review of a completed run; target remains read-only |
-| `$icodex run [requirement]` | Automatic staged steps 1→6 |
+| `$icodex run [requirement]` | Compatibility alias for `start`; automatic staged steps 1→6 |
 | `$icodex fast [requirement]` | Reduced staged workflow |
 | `$icodex patch [change]` | Append a verified patch to an existing run |
 | `$icodex doc [request]` | Project/module knowledge base |

@@ -39,6 +39,19 @@ class BoundaryTests(unittest.TestCase):
 
 
 class RepositoryContractTests(unittest.TestCase):
+    def test_start_and_run_share_full_chain_route(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        skill = (root / "SKILL.md").read_text(encoding="utf-8")
+        run_step = (root / "steps" / "run.md").read_text(encoding="utf-8")
+        plan_step = (root / "steps" / "01_plan.md").read_text(encoding="utf-8")
+        self.assertEqual(COMMAND_ROUTES["start"], "steps/run.md")
+        self.assertEqual(COMMAND_ROUTES["start"], COMMAND_ROUTES["run"])
+        self.assertEqual(COMMAND_ROUTES["plan"], "steps/01_plan.md")
+        self.assertIn("`$icodex start` 是标准全流程入口", skill)
+        self.assertIn("`$icodex plan` 只执行步骤 1 后暂停", skill)
+        self.assertIn("行为完全一致", run_step)
+        self.assertIn("单独调用 `plan` 随后停止", plan_step)
+
     def test_crosscheck_is_persistent_but_target_read_only(self) -> None:
         root = Path(__file__).resolve().parents[1]
         skill = (root / "SKILL.md").read_text(encoding="utf-8")

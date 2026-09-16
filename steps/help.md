@@ -12,14 +12,14 @@ $icodex help                   只读命令帮助
 $icodex init [需求]            步骤0，需求初稿
 $icodex log [日志/症状]        日志根因分析入口
 $icodex plan [需求]            仅步骤1，完成后暂停
-$icodex start [需求]           plan 的兼容别名，完成后暂停
+$icodex start [需求]           标准 staged 全流程，自动恢复并串联步骤1→6
 $icodex review [N]             仅步骤2
 $icodex merge                  仅步骤3
 $icodex code                   仅步骤4
 $icodex deepcheck              仅步骤5
 $icodex audit                  仅步骤6
 $icodex crosscheck [目标]      completed 工单持久化多轮复评；目标零回写
-$icodex run [需求]             staged mode 自动串联步骤1→6
+$icodex run [需求]             start 的兼容别名，行为完全一致
 $icodex fast [需求]            精简 staged 全流程
 $icodex patch [问题]           既有工单追加修改
 $icodex doc [自然语言]         工程/模块知识库
@@ -30,4 +30,6 @@ $icodex list [关键词]          跨工程工单查询
 $icodex install [name]         安全注册 Codex MCP
 ```
 
-明确说明：`start` 不会串联后续步骤；需要自动执行 1→6 时使用 `run`。`crosscheck` 只把复评记录写入 `.ai/icode/.crosscheck/`，不修改目标工单与源码；外部独立终审仍由零写入的 `$icodex-review` 承担。
+明确说明：`start` 与 `run` 都从下一未完成步骤自动执行到步骤6。
+
+`plan` 只执行步骤1并暂停。`crosscheck` 只把复评记录写入 `.ai/icode/.crosscheck/`，不修改目标工单与源码；外部独立终审仍由零写入的 `$icodex-review` 承担。

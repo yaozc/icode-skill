@@ -38,7 +38,7 @@ COMMAND_ROUTES = {
     "init": "steps/00_init.md",
     "log": "steps/log.md",
     "plan": "steps/01_plan.md",
-    "start": "steps/01_plan.md",
+    "start": "steps/run.md",
     "review": "steps/02_review.md",
     "merge": "steps/03_merge.md",
     "code": "steps/04_code.md",
@@ -58,6 +58,16 @@ COMMAND_ROUTES = {
 LEGACY_MARKERS = ("legacy", "兼容", "只读", "read-only", "不写", "禁止", "不得", "never", "绝不")
 OLD_RUN_TOKEN = ".icode" + "_output"
 OLD_HOME_TOKEN = "~/" + ".claude"
+STALE_START_TEXT = (
+    "`$icodex start` 永远只是 `$icodex plan`",
+    "`start` 是 `plan` 的兼容别名",
+    "`start` is a compatibility alias for `plan`",
+    "`$icodex start` 不路由到本文件",
+    "`plan/start` 随后停止",
+    "`start` 不会串联后续步骤",
+    "`$icodex plan` 与 `$icodex start` 都只执行步骤1",
+    "`$icodex plan` and `$icodex start` execute only step 1",
+)
 
 
 def _matches(path: str, patterns: Sequence[str]) -> bool:
@@ -148,10 +158,21 @@ def lint_routes(root: Path) -> List[str]:
             "steps/help.md: command set differs from routes; "
             f"missing={sorted(expected - help_commands)} extra={sorted(help_commands - expected)}"
         )
-    if "`$icodex start` 永远只是 `$icodex plan`" not in skill:
-        errors.append("SKILL.md: start must be documented as the plan alias")
-    if "只有 `$icodex run` 会自动串联步骤 1→6" not in skill:
-        errors.append("SKILL.md: run must be the automatic staged chain")
+    if COMMAND_ROUTES["start"] != COMMAND_ROUTES["run"] or COMMAND_ROUTES["start"] != "steps/run.md":
+        errors.append("SKILL.md: start and run must share steps/run.md")
+    if COMMAND_ROUTES["plan"] != "steps/01_plan.md":
+        errors.append("SKILL.md: plan must remain the single-step route")
+    if "`$icodex start` 是标准全流程入口" not in skill:
+        errors.append("SKILL.md: start must be documented as the standard full chain")
+    if "`$icodex plan` 只执行步骤 1 后暂停" not in skill:
+        errors.append("SKILL.md: plan must be documented as step 1 only")
+    for path in active_files(root):
+        if path.suffix != ".md":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for stale in STALE_START_TEXT:
+            if stale in text:
+                errors.append(f"{path.relative_to(root).as_posix()}: stale start-as-plan statement: {stale}")
     return errors
 
 

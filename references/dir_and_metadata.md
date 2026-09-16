@@ -50,7 +50,7 @@ fi
 ```bash
 LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n | tail -1)
 if [ -z "$LAST" ]; then
-  echo "错误：没有找到 .ai/icode/icode_N 目录，请先运行 $icodex run <需求> 或 $icodex init"
+  echo "错误：没有找到 .ai/icode/icode_N 目录，请先运行 $icodex start <需求>（run 同义）或 $icodex init"
   exit 1
 fi
 ICODE_OUT_DIR=".ai/icode/icode_${LAST}"
@@ -212,19 +212,19 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 > - 失败兜底：迁移任何步骤失败，写 `{from, to, at, skip_reason}` 条目，不阻塞主流程
 > - 字段缺失兼容：旧 metadata 缺 `migration_log` 视为 `[]`；新增工单一律初始化为 `[]`
 
-> **三步迁移的相互独立性**：步骤 1 / 步骤 4 / 步骤 5 的迁移契约**互不依赖**——分别读 metadata、各自判定版本、各自追加产物段；同一工单走 `$icodex run` 全流程时三步依次触发，migration_log 数组会按顺序追加 3 条（不全靠一记，单独 step 启动也 OK）。
+> **三步迁移的相互独立性**：步骤 1 / 步骤 4 / 步骤 5 的迁移契约**互不依赖**——分别读 metadata、各自判定版本、各自追加产物段；同一工单走 `$icodex start` / `$icodex run` 全流程时三步依次触发，migration_log 数组会按顺序追加 3 条（不全靠一记，单独 step 启动也 OK）。
 
 > **verdict 字段族**（方向结论，可选，详见 SKILL.md「verdict 字段族」）：所有入口模板均可选；**创建时可不写**（缺失视为 `"unknown"`，向后兼容旧 metadata）；需标注时回填 `verdict`+`verdict_reason`+`correct_direction`+`verdict_source`+`verdict_at`（`superseded` 额外填 `superseded_by`；`disproved`/`superseded` 可选填 `verdict_premise_deps` 支持硬复活），途径见 `$icodex status --verdict`（[steps/status.md](../steps/status.md)）/ 步骤6 终审（[steps/06_audit.md](../steps/06_audit.md)）/ 批量识别扫描。**索引首次写入时 verdict 固定 `"unknown"`、关联字段 null、premise_deps `[]`/review_needed `false`**（见「全局索引写入」段）
 
-> **`workload_estimate` 字段族**（工作量评估，v2 新增）：由步骤 0 init 收尾时自动评估，辅助用户决定走 `$icodex run` 还是 `$icodex fast`。详见 SKILL.md「workload_estimate 字段族」与 [steps/00_init.md](../steps/00_init.md)「步骤 9 工作量评估」段：
-> - `workload_estimate`（可选，枚举，默认 `"medium"`）：工作量等级。`"small"` 建议 `$icodex fast`，`"medium"` 建议 `$icodex run`，`"large"` **必须** `$icodex run`
+> **`workload_estimate` 字段族**（工作量评估，v2 新增）：由步骤 0 init 收尾时自动评估，辅助用户决定走 `$icodex start`（`run` 同义）还是 `$icodex fast`。详见 SKILL.md「workload_estimate 字段族」与 [steps/00_init.md](../steps/00_init.md)「步骤 9 工作量评估」段：
+> - `workload_estimate`（可选，枚举，默认 `"medium"`）：工作量等级。`"small"` 建议 `$icodex fast`，`"medium"` 建议 `$icodex start`，`"large"` **必须** `$icodex start`（`run` 同义）
 > - `workload_reason`（可选，≤80 token）：评估理由
 > - **字段缺失兼容**：旧 metadata 无 `workload_estimate` 视为 `"medium"`（中性默认），不阻塞后续步骤
 > - **4 维度 max 算法**：需求点数 / 涉及文件数 / 跨模块数 / 大改词命中，任一维度落入即评该级，取最严
 >
 > **大改词典**（大改词命中维度扫的关键词）：`重构` / `大改` / `跨模块` / `架构` / `迁移` / `拆分` / `整合` / `refactor` / `migration` / `overhaul`
 >
-> **入口建议映射**：`small` → 建议 `$icodex fast`，`medium` → 建议 `$icodex run`，`large` → **必须** `$icodex run`
+> **入口建议映射**：`small` → 建议 `$icodex fast`，`medium` → 建议 `$icodex start`，`large` → **必须** `$icodex start`（`run` 同义）
 >
 > **阈值表**（任一维度落入即评该级）：
 >
@@ -335,7 +335,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 **`mode` 字段**（新增，可选，默认 `"full"`）：
 
-- `"full"`：全流程模式（`$icodex run`），步骤2 review 默认 3 轮 + 对抗，步骤5 deepcheck 三阶段循环
+- `"full"`：全流程模式（`$icodex start` / `$icodex run`），步骤2 review 默认 3 轮 + 对抗，步骤5 deepcheck 三阶段循环
 - `"fast"`：精简模式（`$icodex fast`），步骤2 review 固定 1 轮无对抗，步骤5 deepcheck 只跑 Reverse
 - **字段缺失**视为 `"full"`（向后兼容旧 metadata）
 

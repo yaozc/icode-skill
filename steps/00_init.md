@@ -6,7 +6,7 @@
 **产出**: `{ICODE_OUT_DIR}/00_init.md`
 **会话**: 主会话
 **Codex 发布键**: 首轮及每轮修订先写校验草稿，再用 `publish-artifact --key requirement --name 00_init.md` 发布；随后更新状态并执行 `validate`。不得直接覆盖已映射文件后跳过 metadata 发布。
-**与后续步骤的关系**: **独立步骤，不自动串联到步骤1**。完成后用户须显式运行 `$icodex run`（全流程）/ `$icodex fast`（精简全流程）/ `$icodex plan`（仅步骤1）才进入步骤1。复用规则详见 SKILL.md「调用命令」段的目录复用规则说明。
+**与后续步骤的关系**: **独立步骤，不自动串联到步骤1**。完成后用户须显式运行 `$icodex start`（标准全流程；`run` 同义）/ `$icodex fast`（精简全流程）/ `$icodex plan`（仅步骤1）才进入步骤1。复用规则详见 SKILL.md「调用命令」段的目录复用规则说明。
 
 ## 关键约定（必读）
 
@@ -83,8 +83,8 @@
    - **算法**：4 维度分别评 small/medium/large，**取 max**（最严原则，宁可高估不低估），写入 `metadata.workload_estimate` + `metadata.workload_reason`（≤80 token 理由）
    - **入口建议**（按评估等级自动给）：
      - `small` → 推荐 `$icodex fast`（1 轮无对抗，省 35% 时间，适合单文件/小改）
-     - `medium` → 推荐 `$icodex run`（3 轮对抗保险）
-     - `large` → **必须** `$icodex run`（多轮对抗 + 完整 deepcheck，跨模块/重构场景）
+     - `medium` → 推荐 `$icodex start`（`run` 同义；3 轮对抗保险）
+     - `large` → **必须** `$icodex start`（`run` 同义；多轮对抗 + 完整 deepcheck，跨模块/重构场景）
    - **输出建议块**（替换原"提示用户"语，格式固定）：
 
      ```
@@ -93,7 +93,7 @@
      理由：需求点 N / 涉及 M 文件 / 跨 K 模块 / 命中 H 大改词
      
      💡 建议入口：$icodex {run|fast}
-     - $icodex run：完整 3 轮对抗 + 完整 deepcheck（{适用情况}）
+     - $icodex start（run 同义）：完整 3 轮对抗 + 完整 deepcheck（{适用情况}）
      - $icodex fast：1 轮无对抗 + 单阶段 deepcheck（{适用情况}）—— {当前是否推荐}
      ```
 
@@ -153,7 +153,7 @@
 ````markdown
 # 需求初稿：{标题，基于讨论内容自动生成}
 
-> 本文档由 `$icodex init` 生成，随对话增量更新。运行 `$icodex run` 或 `$icodex plan` 可基于本文档进入步骤1。
+> 本文档由 `$icodex init` 生成，随对话增量更新。运行 `$icodex start`（`run` 同义）或 `$icodex plan` 可基于本文档进入步骤1。
 
 ## 1. 背景与目标
 
@@ -343,7 +343,7 @@
 ## 强制规则
 
 - **每轮都更新**：任何一轮对话结束前都必须 Write 一次 `00_init.md`，即使本轮只是细微调整，也要落档
-- **不自动串联**：即使讨论已经非常充分，也不主动跳到步骤1。等用户显式运行 `$icodex run` / `$icodex plan`
+- **不自动串联**：即使讨论已经非常充分，也不主动跳到步骤1。等用户显式运行 `$icodex start` / `$icodex run` / `$icodex plan`
 - **保持模板结构**：无论信息多少，7 个章节都要存在（§1-§5 背景/现状/需求点/影响面/待决策 + §6 链路图 + **§7 4 维度验证清单**），不足处写"待补"。**§7 对 init 工单必填**——同事提示词 4 维度在功能开发同样适用，缺 §7 = 设计遗漏 = 04_code 复检必失败
 - **链路图每轮同步**：第 6 节链路图是「最终改什么」的一图流总览，每轮涉及现状/改动方案/需求点/影响面变化时必须同步刷新，**before/after 必须是具体 ASCII 链路**（节点 + 箭头 + file:line 或模块名锚点），不得整节留空或仅写"待补"（信息不足时画已知部分 + `?` 标未定节点）
 - **链路图一致**：图上每个 `[+]`/`[~]`/`[-]` 标注在改动点清单有对应行、反之亦然；改动点清单「关联需求点」必须回指第 3 节某需求点（一个需求点可对应多个改动点），不得矛盾或遗漏；after 图改动点必须能回指 file:line/模块
@@ -351,7 +351,7 @@
 
 ## 与步骤1的衔接
 
-`$icodex run` / `$icodex plan` 启动时，如果检测到**当前最新目录只有 `00_init.md`（仅含 `.ico_metadata.json` + `00_init.md`，无 `01_plan.md` 等其他步骤产物）**，则：
+`$icodex start` / `$icodex run` / `$icodex plan` 启动时，如果检测到**当前最新目录只有 `00_init.md`（仅含 `.ico_metadata.json` + `00_init.md`，无 `01_plan.md` 等其他步骤产物）**，则：
 
 1. **复用**该目录（不创建新的 N+1 目录）
 2. 将 `00_init.md` 内容作为步骤1的需求输入（优先级高于命令行参数；命令行参数若有，仅作为补充上下文）

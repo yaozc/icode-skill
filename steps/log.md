@@ -6,7 +6,7 @@
 **产出**: `{ICODE_OUT_DIR}/log_analysis.md` + `{ICODE_OUT_DIR}/00_init.md`（修复需求初稿，衔接步骤1）
 **会话**: 主会话
 **Codex 发布键**: `log_analysis.md` 使用 `root_cause`，生成的 `00_init.md` 使用 `requirement`。新工单第一次发布 root cause 时用 `status=log_in_progress, completed_steps=[]` 的 metadata seed；再发布 requirement，最后以 `update-metadata` 原子切换为 `status=log_done, completed_steps=["log"]`。两份都成功并通过 `validate` 后才报告完成。
-**定位**: **与 init/run/fast/plan 并列的入口命令，非流程步骤编号**。把"一坨设备/服务日志 + 模糊症状"转化为"有证据、经对抗验证、可信"的根因报告，并自动转成修复需求衔接步骤1。**领域无关**——适用于任何能产生日志的系统（机器人/服务端/嵌入式/Web 等均不限）。完成后用户敲 `$icodex plan`（仅步骤1）/ `$icodex run`（全流程）/ `$icodex fast`（精简全流程）（无参）复用同目录进入修复流程，详见 SKILL.md「调用命令」段的目录复用规则说明。
+**定位**: **与 init/start/run/fast/plan 并列的入口命令，非流程步骤编号**。把"一坨设备/服务日志 + 模糊症状"转化为"有证据、经对抗验证、可信"的根因报告，并自动转成修复需求衔接步骤1。**领域无关**——适用于任何能产生日志的系统（机器人/服务端/嵌入式/Web 等均不限）。完成后用户敲 `$icodex start`（标准全流程；`run` 同义）/ `$icodex plan`（仅步骤1）/ `$icodex fast`（精简全流程）（无参）复用同目录进入修复流程，详见 SKILL.md「调用命令」段的目录复用规则说明。
 
 ## 设计借鉴（方法论，非绑定具体技能）
 
@@ -234,7 +234,7 @@
    > - **不是实施，只设计**：§7 是设计态证据，不写代码；步骤1 plan 读入并固化到 `03_plan_final.md` 的「修复方案设计」段，由 04_code 末尾 "Code Review Fix" 复检核对实施是否与设计一致
 
 > - **修复方案三档分级（反偷懒第 26 条）**：§7 修复设计 + `00_init.md` §3 新增需求点 + §0 一句话定性都按 A/B/C 三档呈现：A 档（根因修复，H/P/V 链，必做）/ B 档（兜底防御，每条标注"A 修复后是否触发"，可选增强）/ C 档（后续工单，进 §9 范围外）。§0 修复方向只写 A 档最小修复。A 档跨工程标注"跨工程：属 <X>，本工程不改，已转工单"。最小修复=只做 A 档（范围最小，A 管必改不管改多少）。详见 anti_laziness 第 26 条
-   - **转修复需求**：把根因 + 建议修复方向提炼成 `00_init.md`（**log 修复需求版**，结构 = 症状/根因/新增需求点/链路图，详见下方「`00_init.md` 结构」；需求=修复该根因），其中**第 4 节链路图：before = 阶段 1 状态链路图所示的「带 bug 当前链路」（标注故障点 file:line）、after = 修复后链路（在修复点标 `[+]`/`[~]`/`[-]`）、改动点清单对齐第 3 节新增需求点**，供 `$icodex plan` / `$icodex run` / `$icodex fast`（均无参）复用进入步骤1
+   - **转修复需求**：把根因 + 建议修复方向提炼成 `00_init.md`（**log 修复需求版**，结构 = 症状/根因/新增需求点/链路图，详见下方「`00_init.md` 结构」；需求=修复该根因），其中**第 4 节链路图：before = 阶段 1 状态链路图所示的「带 bug 当前链路」（标注故障点 file:line）、after = 修复后链路（在修复点标 `[+]`/`[~]`/`[-]`）、改动点清单对齐第 3 节新增需求点**，供 `$icodex plan` / `$icodex start` / `$icodex run` / `$icodex fast`（均无参）复用进入步骤1
    - **根因多候选未实机区分 → 诊断先行（P0）**：若根因存在多个候选且**无日志铁证**区分（同一现象可由候选 A 或候选 B 触发），**不得**直接按主候选转需求定修法——把「加诊断日志以区分候选」作为 `00_init.md` 的**显式 P0 待办**（列入 §3 新增需求点 A 档首条），并在 §2 根因假设标注「候选未区分：A / B / …」，供 plan 阶段先证明是哪个候选再定修法（配合 [01_plan.md](01_plan.md)「根因候选区分前置」）。诊断日志应指向**能一票区分候选的观测点**（各候选在哪个日志/哪个分支产生不同行为），不得加"两边都打"的无区分日志。
 
 > **`00_init.md` 结构**（log 阶段产出 vs init 阶段产出的差异）：
@@ -329,7 +329,7 @@
     - `has_00_init` = true（log 已产出 `00_init.md`），`has_plan` = false，`status` = `log_done`，`created_at` = 当前时间，`last_used_at` = 当前时间（首次写入=created_at），`hit_count` = 0，`stale` = false，`stale_reason` = null，`stale_checked_commit` = null，`created_commit` = `git rev-parse HEAD`（只读，非 git 仓库为 null），`created_branch` = `git rev-parse --abbrev-ref HEAD`
     - `tb_source` = 步骤9 metadata 的 `tb_source`（无 TB 源时 null）
     - 写回 index.json，置 metadata `indexed = true`、`ticket_id`；**写后执行唯一性验证**（见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)「全局索引写入·写后唯一性验证」）
-11. 提示用户：根因已定，可敲 `$icodex plan` / `$icodex run` / `$icodex fast`（均无参）复用本目录的 `00_init.md` 进入修复流程；其中 fast 适合小改动（单文件/少量文件、边界清晰、无架构变更）；若对根因有异议，继续对话即可重跑对抗分析
+11. 提示用户：根因已定，可敲 `$icodex start`（`run` 同义）/ `$icodex plan` / `$icodex fast`（均无参）复用本目录的 `00_init.md` 进入修复流程；其中 fast 适合小改动（单文件/少量文件、边界清晰、无架构变更）；若对根因有异议，继续对话即可重跑对抗分析
 
 ## TB 缺陷源拉取（可选前置，仅当零散输入含 TB 引用）
 
@@ -465,7 +465,7 @@
 
 ## 与步骤1的衔接
 
-`$icodex plan` / `$icodex run` / `$icodex fast`（均无参）启动时，如果检测到最新目录 status 为 `log_done`（或 `init_in_progress`，详见 SKILL.md 复用规则）且无 `01_plan.md`：
+`$icodex plan` / `$icodex start` / `$icodex run` / `$icodex fast`（均无参）启动时，如果检测到最新目录 status 为 `log_done`（或 `init_in_progress`，详见 SKILL.md 复用规则）且无 `01_plan.md`：
 1. 复用该目录（不创建新目录）
 2. 将 `00_init.md`（log 已生成修复需求）作为步骤1的主要需求输入
 3. `log_analysis.md` 作为背景参考（步骤1可读其根因+建议修复方向）
