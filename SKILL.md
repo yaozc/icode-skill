@@ -535,7 +535,7 @@ test -f "{ICODE_OUT_DIR}/03_plan_final.md" && python3 -c "import json,sys; d=jso
 
    > **为何先粗筛**：index.json 到 200 条上限时全量进上下文 ≈ 3.5 万 token，纯靠 LLM 现场扫全部 summary 会撑爆 context 且判断质量随条数下降。粗筛把 O(全部) 降到 O(候选集)，实测能圈出 ≤10 条强相关候选。
 
-   **段二·精读（调 `mcp__cheap-research__retrieve_similar`）**：只把候选集的 `keywords + requirement_points`（约 50-100 token/条，10 条 ≤1K token）喂给 cheap-research 的 `retrieve_similar` 工具，传入 `query`=当前需求/症状、`candidates`=候选集（每项含 `id`/`summary`/`keywords`/`status`）、`k`=候选集总数（确保所有候选都被评分，不截断）。返回带 `score` 的排序结果。按分数选 top-N 命中（N 由梯度规则定，见下）。**降级**（cheap-research 不可用）：退回主代理手动打分（`Agent(model="haiku")` 兜底，见 [references/mcp_integration.md](references/mcp_integration.md) ⑦ 段），不阻塞流程。
+   **段二·精读（调 `mcp__cheap-research__retrieve_similar`）**：只把候选集的 `keywords + requirement_points`（约 50-100 token/条，10 条 ≤1K token）喂给 cheap-research 的 `retrieve_similar` 工具，传入 `query`=当前需求/症状、`candidates`=候选集（每项含 `id`/`summary`/`keywords`/`status`）、`k`=候选集总数（确保所有候选都被评分，不截断）。返回带 `score` 的排序结果。按分数选 top-N 命中（N 由梯度规则定，见下）。**降级**（cheap-research 不可用）：由主会话基于原始候选手动打分；只有当前宿主确实提供子代理能力时，才可改用可用的低成本子代理，不绑定具体 API 或模型名，也不阻塞流程。
 
 2. **过时校验 + 命中续期**（对 top-N 命中工单，注入前逐条；`H = git -C {project_path} rev-parse HEAD`（每候选一次）；详见 [references/dir_and_metadata.md](references/dir_and_metadata.md)「过时校验」）：
    - **项目路径校验**：`test -d {project_path}` 失败->`stale=true`+`stale_reason=path_gone`，跳过注入
@@ -617,15 +617,15 @@ test -f "{ICODE_OUT_DIR}/03_plan_final.md" && python3 -c "import json,sys; d=jso
 **强制规则**：
 
 1. **产物文件不记录 MCP 调用信息**（消除 MCP 噪声对用户的干扰）：MCP 调用结果只进**思考块**「MCP 调用」段（按 [references/thinking_core.md](references/thinking_core.md) 通用流程第 3 步 gate + 各 step 执行步骤内嵌点），不写入 01_plan.md / 02_review.md / 03_plan_final.md / 04_code_review_fix.md / 05_deepcheck.md / 06_audit.md / log_analysis.md / 00_init.md 等产物文件。
-2. **🟢 必须调的 MCP**：强证据场景满足 + MCP 可用 -> **必须实际调用一次**（双保险承载），失败/空才能降级。降级需在思考块「MCP 调用」段写明原因（MCP 不可用 / LSP server 缺失 / 调用返回空）
+2. **🟢 MCP 的业务 eligibility 与工具 availability 分离**：强证据场景满足即为 🟢。工具可见或经当前宿主的发现能力取得 schema 时必须实际调用；成功记 `called`，错误/超时/空结果记 `degraded_after_attempt`。工具经可用发现机制检查后仍未暴露，或当前宿主没有工具发现能力时，记 `unavailable_before_call`，明确 `attempted=false`、发现依据、替代方法以及替代结果/残余风险；不得伪造调用尝试，也不得把“工具未暴露”改写为业务“不适用”。
 
 3. **⚪ 不必调的 MCP**：强证据场景不满足 -> 无需评估、无需声明、无需记录
 
 4. **双保险承载**：
    - **A 层·执行步骤内嵌**：cheap-research 等在各 step 执行步骤主体里有独立的调用指令（非末尾推荐表），AI 顺序执行必然走到
-   - **B 层·thinking_core MCP gate**：[references/thinking_core.md](references/thinking_core.md) 通用流程第 3 步--思考块先列本步 🟢 MCP（工具已在列表直接可见则直接调用，不可见才 ToolSearch 取 schema）-> 实际调用 -> 结果进思考块。覆盖 context7/memory/vision-bridge/playwright
+   - **B 层·thinking_core MCP gate**：[references/thinking_core.md](references/thinking_core.md) 通用流程第 3 步--思考块先列本步 🟢 MCP；工具直接可见则调用，不可见时仅使用当前宿主实际提供的工具发现能力；最终把 `called` / `degraded_after_attempt` / `unavailable_before_call` 之一及证据写进思考块。覆盖 context7/memory/vision-bridge/playwright
 
-**降级路径仍然合规**：MCP 真的不可用（tool unavailable / LSP server 缺失），用 Bash/Read/Write/Grep 等原生工具替代--降级不是错误，但**必须先实际调用一次，失败/空才能标降级**，且**必须显式声明**。
+**降级路径仍然合规**：工具可调用时，必须先实际调用，失败/空才能记 `degraded_after_attempt`；工具根本未暴露时不得调用不存在的 schema，应记 `unavailable_before_call` 后使用 Bash/Read/Write/Grep 等确定性工具替代。两类降级都必须显式声明证据和残余风险。
 
 详见 [references/mcp_per_step.md](references/mcp_per_step.md)。
 
@@ -677,17 +677,17 @@ icode 工作流可调用 6 个 MCP（`$icodex install` 一键安装）。**双�
 - [references/thinking_core.md](references/thinking_core.md)：**MCP gate（通用流程第 3 步）**
 - 本文件「MCP 调用覆盖强制化」章节：强制规则
 
-**判定逻辑**：AI 在每个步骤开始时，按 [references/mcp_per_step.md](references/mcp_per_step.md)「强证据场景判定」判定每个 MCP 是否 🟢：
-- 证据 A：`Read Codex MCP 配置` 的 `mcpServers.<name>` 段存在
-- 证据 B：工具可在当前会话直接调用（工具列表直接可见——按语义识别，标准 `mcp__<name>__<tool>` 或代理前缀 `__<proxy>_<tool>` 形态——或 ToolSearch 可取 schema）
-- **强证据场景满足**（如 context7 在 plan 步骤 + 需求涉及第三方库）+ 证据 A/B 任一 -> 🟢 必须调
-- 强证据场景不满足 -> ⚪ 无需评估
+**判定逻辑**：AI 在每个步骤开始时，先按 [references/mcp_per_step.md](references/mcp_per_step.md)「强证据场景判定」确定业务 eligibility，再单独检查工具 availability：
+- **强证据场景满足**（如 context7 在 plan 步骤 + 需求涉及第三方库）-> 🟢，不因工具未暴露而改成 ⚪
+- 工具直接可见，或经当前宿主实际提供的工具发现能力取得 schema -> 必须实际调用
+- 工具未暴露 -> 记录 `unavailable_before_call`；`codex mcp list --json` 或配置只用于诊断是否已注册，不能证明当前会话已经暴露工具
+- 强证据场景不满足 -> ⚪，无需评估 availability
 
 **🟢 MCP 承载**：
 - context7 / memory / vision-bridge / playwright -> B 层（thinking_core gate）
 - sequential-thinking -> thinking_core 通用流程第 4 步（结构化思考载体）
 
-**未调用合规处理**：🟢 需在思考块「MCP 调用」段写降级原因（先实际调用一次，失败/空才能降级）；⚪ 无需记录。
+**未调用合规处理**：🟢 且工具可调用却未调用属于违规；🟢 且工具未暴露时必须记 `unavailable_before_call` 与替代证据；⚪ 无需记录。
 
 ### 6 个 MCP 速览
 
@@ -698,7 +698,7 @@ icode 工作流可调用 6 个 MCP（`$icodex install` 一键安装）。**双�
 | **vision-bridge** | 图片/视频理解 | 任意步骤 + 用户给图(直接调) / TB 缺陷源附件含视频/图片时 **vision-bridge 可用则主动调**(视频先用 ffmpeg 本地抽帧省钱；不可用时仅提示不主动调，防纯文字模型报错)，详见 [steps/log.md](steps/log.md)「附件分析（含本地路径 + TB 源）与 ffmpeg 抽帧」 | B 层·thinking_core gate |
 | **playwright** | 浏览器自动化 | deepcheck/audit + 前端工程 | B 层·thinking_core gate |
 | **memory** | 跨工单记忆 | init/plan + 本工程有历史工单 | B 层·thinking_core gate |
-| **cheap-research** | 便宜 LLM 推理（降本） | init/log/doc/plan/review/code/deepcheck/audit/readme + 单闸门入选的 23 个子任务（长上下文压缩/历史检索/模板填充/结构化提取/TB 评论预提取/代码事实审计/模式扫描/符号追溯/差异摘要等）；未装走 Agent(model="haiku") 兜底。**不接管决策**：3 质疑者对抗/架构决策/终审裁决/修复方案一律不走（零灰区原则） | B 层·thinking_core gate + 执行步骤内嵌 |
+| **cheap-research** | 便宜 LLM 推理（降本） | init/log/doc/plan/review/code/deepcheck/audit/readme + 单闸门入选的 23 个子任务（长上下文压缩/历史检索/模板填充/结构化提取/TB 评论预提取/代码事实审计/模式扫描/符号追溯/差异摘要等）；未装时由主会话基于原始证据兜底，宿主确有子代理能力时才可使用可用的低成本子代理。**不接管决策**：3 质疑者对抗/架构决策/终审裁决/修复方案一律不走（零灰区原则） | B 层·thinking_core gate + 执行步骤内嵌 |
 
 > cheap-research 跟 vision-bridge 模式完全对齐（用户自己配 URL/KEY/模型，不锁平台），详见 [mcp/cheap-research/README.md](mcp/cheap-research/README.md) + [references/mcp_integration.md](references/mcp_integration.md) ⑦ 段 + [references/mcp_per_step.md](references/mcp_per_step.md) 矩阵。
 

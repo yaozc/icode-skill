@@ -124,7 +124,7 @@ session 模型只看工具返回结构化 dict，**永远不直接调 LLM API**�
 ## SKILL 端约定（与 icode 主工作流）
 
 - **cheap-research 装好后**：长上下文压缩 / 模板填充 / 信息提取等场景优先走 `mcp__cheap-research__*`
-- **未装 cheap-research**：走 Agent(model="haiku") 兜底（不阻塞）
+- **未装 cheap-research**：主会话按原始证据兜底；宿主确实支持时可使用可用的低成本子代理，不绑定具体 API 或模型名（不阻塞）
 - **不接管决策**：3 质疑者对抗 / 架构决策 / 终审裁决 / 修复方案一律不走本工具
 
 详见 [mcp/cheap-research/server.py](server.py) 与 14 工具自检用例（tests/）。

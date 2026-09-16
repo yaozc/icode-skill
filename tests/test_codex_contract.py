@@ -2,7 +2,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.lint_codex_contract import COMMAND_ROUTES, lint_active_boundaries, lint_repo
+from tools.lint_codex_contract import (
+    COMMAND_ROUTES,
+    MCP_THREE_STATE_TRUTH_SOURCES,
+    lint_active_boundaries,
+    lint_mcp_fallback_contract,
+    lint_repo,
+)
 
 
 class BoundaryTests(unittest.TestCase):
@@ -37,8 +43,25 @@ class BoundaryTests(unittest.TestCase):
         (root / "steps" / "bad.md").write_text("run mcp/demo/install.sh\n", encoding="utf-8")
         self.assertTrue(lint_active_boundaries(root))
 
+    def test_host_specific_mcp_fallback_fails(self) -> None:
+        temporary, root = self.make_root()
+        self.addCleanup(temporary.cleanup)
+        for relative in MCP_THREE_STATE_TRUTH_SOURCES:
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("unavailable_before_call\n", encoding="utf-8")
+        (root / "SKILL.md").write_text(
+            'unavailable_before_call\nAgent(model="haiku")\n',
+            encoding="utf-8",
+        )
+        self.assertTrue(lint_mcp_fallback_contract(root))
+
 
 class RepositoryContractTests(unittest.TestCase):
+    def test_mcp_fallback_contract_is_host_neutral_and_three_state(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual(lint_mcp_fallback_contract(root), [])
+
     def test_start_is_the_only_full_chain_route(self) -> None:
         root = Path(__file__).resolve().parents[1]
         skill = (root / "SKILL.md").read_text(encoding="utf-8")

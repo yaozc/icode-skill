@@ -6,7 +6,7 @@
 
 | 级别 | 符号 | 语义 | 触发条件 | 未调用的合规处理 |
 |------|------|------|---------|-----------------|
-| **必须调** | 🟢 | 强证据场景满足就**必须调用**（先实际调用一次，失败/空才能降级） | 强证据场景满足（见下表）+ MCP 在 `Codex MCP 配置` 注册 且 工具可调用（列表直接可见 或 ToolSearch 可取 schema） | **降级声明**：在思考块「MCP 调用」段写明降级原因（MCP 不可用 / 调用返回空）|
+| **必须调** | 🟢 | 业务强证据场景满足即入选；availability 单独判定 | 强证据场景满足（见下表），不因工具未暴露而改成 ⚪ | 工具可调用时必须调用；成功记 `called`，失败/空记 `degraded_after_attempt`；未暴露记 `unavailable_before_call` + 发现依据 + 替代证据 |
 | **不必调** | ⚪ | 强证据场景不满足，**无需评估、无需声明** | 强证据场景不满足 | 无需说明 |
 
 ## 强证据场景判定
@@ -146,7 +146,7 @@
 🟢 MCP 由两层强制驱动，确保真实触发（治本"只触发 sequential-thinking"问题）：
 
 1. **执行步骤内嵌**（A 层）：cheap-research 等在各 step 执行步骤主体里有独立的调用指令（非末尾推荐表），AI 顺序执行必然走到——复制 sequential-thinking 的成功模式
-2. **thinking_core MCP gate**（B 层）：强制思考前置流程里，思考块先列本步 🟢 MCP（工具已在列表直接可见则直接调用，不可见才 ToolSearch 取 schema）-> 实际调用 -> 结果进思考块。覆盖 context7/memory/vision-bridge/playwright
+2. **thinking_core MCP gate**（B 层）：强制思考前置流程里，思考块先列本步 🟢 MCP；工具直接可见则调用，不可见时只使用当前宿主实际提供的发现能力；结果按 `called` / `degraded_after_attempt` / `unavailable_before_call` 记录。覆盖 context7/memory/vision-bridge/playwright
 
 两层任一触发即合规。cheap-research 走 A 层（执行步骤内嵌）+ B 层，其余 🟢 MCP 走 B 层（thinking_core gate）。
 
@@ -158,6 +158,6 @@
 - **vision-bridge 不可用**：用户自负原生多模态能力，标降级
 - **playwright 不可用**：Bash + curl 兜底（无 JS 渲染），标降级
 - **memory 不可用**：本对话手动笔记兜底，标降级
-- **cheap-research 不可用**：主会话 / 子代理走 `Agent(model="haiku")` 兜底（Claude 家族最便宜模型）。整体 token 节省幅度下降，但工作流不阻塞
+- **cheap-research 不可用**：主会话按原始证据兜底；只有当前宿主确实提供子代理能力时，才使用可用的低成本子代理，不绑定具体 API 或模型名。整体 token 节省幅度下降，但工作流不阻塞
 
-**降级不是错误，但必须显式声明**（先实际调用一次，失败/空才能标降级）。
+**降级不是错误，但必须显式声明**：工具可调用时先实际尝试，失败/空记 `degraded_after_attempt`；工具未暴露时记 `unavailable_before_call`、`attempted=false`、发现依据、替代方法和替代结果/残余风险，不伪造调用。

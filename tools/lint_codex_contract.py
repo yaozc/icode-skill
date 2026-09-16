@@ -69,6 +69,26 @@ STALE_START_TEXT = (
 )
 STALE_RUN_COMMAND = re.compile(r"\$icodex\s+run\b")
 
+MCP_FALLBACK_SURFACES = (
+    "SKILL.md",
+    "steps/fast.md",
+    "references/anti_laziness.md",
+    "references/mcp_integration.md",
+    "references/mcp_per_step.md",
+    "references/thinking_core.md",
+    "mcp/cheap-research/README.md",
+)
+MCP_THREE_STATE_TRUTH_SOURCES = (
+    "SKILL.md",
+    "references/anti_laziness.md",
+    "references/mcp_per_step.md",
+    "references/thinking_core.md",
+)
+HOST_SPECIFIC_MCP_FALLBACKS = (
+    (re.compile(r"Agent\s*\(\s*model\s*="), "Agent(model=...)"),
+    (re.compile(r"Claude\s*家族最便宜模型"), "Claude-specific cheapest-model fallback"),
+)
+
 
 def _matches(path: str, patterns: Sequence[str]) -> bool:
     return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
@@ -219,8 +239,37 @@ def lint_readme_parity(root: Path) -> List[str]:
     return errors
 
 
+def lint_mcp_fallback_contract(root: Path) -> List[str]:
+    """Keep MCP degradation honest and independent from Claude-only APIs."""
+    errors: List[str] = []
+    for relative in MCP_FALLBACK_SURFACES:
+        path = root / relative
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        for pattern, label in HOST_SPECIFIC_MCP_FALLBACKS:
+            if pattern.search(text):
+                errors.append(f"{relative}: host-specific MCP fallback is forbidden: {label}")
+
+    for relative in MCP_THREE_STATE_TRUTH_SOURCES:
+        path = root / relative
+        if not path.is_file():
+            errors.append(f"{relative}: missing MCP fallback truth source")
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "unavailable_before_call" not in text:
+            errors.append(f"{relative}: missing unavailable_before_call MCP state")
+    return errors
+
+
 def lint_repo(root: Path) -> List[str]:
-    return lint_active_boundaries(root) + lint_links(root) + lint_routes(root) + lint_readme_parity(root)
+    return (
+        lint_active_boundaries(root)
+        + lint_links(root)
+        + lint_routes(root)
+        + lint_readme_parity(root)
+        + lint_mcp_fallback_contract(root)
+    )
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
