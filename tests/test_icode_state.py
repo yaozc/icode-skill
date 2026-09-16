@@ -316,6 +316,12 @@ class TicketResolutionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one"):
             resolve_ticket(self.project, self.codex_root, "demo-1")
 
+    def test_resolve_ticket_rejects_duplicate_native_index_entries(self) -> None:
+        self.materialize_run()
+        self.write_index([self.native_entry(), self.native_entry()])
+        with self.assertRaisesRegex(ValueError, "duplicate native ticket"):
+            resolve_ticket(self.project, self.codex_root, "demo-1")
+
     def test_resolve_ticket_ignores_legacy_overlay(self) -> None:
         run_dir = self.materialize_run()
         entry = self.native_entry(".ai/icode/icode_99")

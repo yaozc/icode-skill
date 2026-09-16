@@ -435,6 +435,8 @@ def _indexed_ticket_candidates(project_root: Path, codex_root: Path, ticket_id: 
             raise ValueError("ticket index out_dir escapes the Codex run root") from error
         if not CODEX_RUN_RE.fullmatch(candidate.name):
             raise ValueError("ticket index out_dir is not a numbered Codex run")
+        if candidate in candidates:
+            raise ValueError("ticket index contains duplicate native ticket entries")
         candidates.append(candidate)
     return candidates
 
