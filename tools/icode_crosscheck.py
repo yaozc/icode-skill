@@ -35,7 +35,7 @@ FINDING_STATES = {
 }
 ROUND_STATES = {"in_progress", "completed", "blocked", "stale_input"}
 ROUND_PHASES = {"fresh_review", "history_compare", "finalized"}
-TRANSIENT_TARGET_FILES = {".icontrol.lock", ".icode_lock"}
+TRANSIENT_TARGET_FILES = {".ico.lock", ".index.lock", ".migration.lock"}
 
 
 class CrosscheckError(Exception):
@@ -221,7 +221,13 @@ def derive_project_root(ticket_dir, metadata):
 
 
 def validate_target(ticket_dir):
-    ticket_dir = Path(ticket_dir).resolve()
+    raw_ticket_dir = Path(ticket_dir).expanduser()
+    if raw_ticket_dir.is_symlink():
+        raise CrosscheckError(
+            f"目标工单目录不得是符号链接: {raw_ticket_dir}",
+            gate_id="target_symlink",
+        )
+    ticket_dir = raw_ticket_dir.resolve()
     project_root = derive_project_root(ticket_dir, {})
     try:
         metadata = state_module().validate_completed_run(ticket_dir, project_root)
@@ -582,6 +588,11 @@ def cmd_start(args):
         requested_baselines = json.loads(args.baselines_json) if args.baselines_json else None
         if matches:
             directory, manifest = matches[0]
+            if manifest["target"]["ticket_dir"] != target["ticket_dir"]:
+                raise CrosscheckError(
+                    "已存在 crosscheck 容器绑定到同 ticket_id 的不同工单目录，拒绝恢复",
+                    gate_id="crosscheck_manifest_identity",
+                )
             for old in manifest["rounds"]:
                 verify_frozen_worklist(directory, old)
             current = manifest["rounds"][-1]
@@ -617,6 +628,7 @@ def cmd_start(args):
                 manifest["current_round"] = len(manifest["rounds"])
                 manifest["updated_at"] = now_iso()
                 atomic_write_json(directory / MANIFEST_NAME, manifest)
+                refresh_derived_outputs_if_completed(directory, manifest)
         else:
             number = max(numbers, default=0) + 1
             directory = root / f"icode_{number}"
@@ -790,6 +802,7 @@ def cmd_freeze(args):
             item["phase"] = "history_compare"
             manifest["updated_at"] = now_iso()
             atomic_write_json(directory / MANIFEST_NAME, manifest)
+            refresh_derived_outputs_if_completed(directory, manifest)
             already = False
         _previous_item, previous = previous_completed_round(directory, manifest, args.round)
         return {
@@ -930,6 +943,11 @@ def write_derived_outputs(directory, manifest):
     write_if_changed(directory / "crosscheck_report.md", report_data)
 
 
+def refresh_derived_outputs_if_completed(directory, manifest):
+    if any(item["state"] == "completed" for item in manifest["rounds"]):
+        write_derived_outputs(directory, manifest)
+
+
 def mark_stale(directory, manifest, item, round_no, final_path, reason, current_digest=None):
     updates = {
         "state": "stale_input", "phase": "finalized", "finished_at": now_iso(),
@@ -940,6 +958,7 @@ def mark_stale(directory, manifest, item, round_no, final_path, reason, current_
     item.update(updates)
     manifest["updated_at"] = now_iso()
     atomic_write_json(directory / MANIFEST_NAME, manifest)
+    refresh_derived_outputs_if_completed(directory, manifest)
     raise CrosscheckError(
         reason, gate_id="crosscheck_stale_input", state="stale_input", round=round_no,
         crosscheck_dir=str(directory),
@@ -986,7 +1005,9 @@ def cmd_finish(args):
                 directory, manifest, item, args.round, final_path,
                 f"目标工单在本轮期间变为不可复评状态，本轮标记 stale_input: {exc.message}",
             )
-        if target["ticket_id"] != manifest["target"]["ticket_id"] or target["project_root"] != manifest["target"]["project_root"]:
+        if (target["ticket_id"] != manifest["target"]["ticket_id"]
+                or target["project_root"] != manifest["target"]["project_root"]
+                or target["ticket_dir"] != manifest["target"]["ticket_dir"]):
             mark_stale(
                 directory, manifest, item, args.round, final_path,
                 "目标工单身份在评审期间变化，本轮标记 stale_input",
@@ -1032,7 +1053,8 @@ def cmd_validate(args):
     directory, manifest = load_manifest(args.dir)
     target, _ = validate_target(manifest["target"]["ticket_dir"])
     if (target["ticket_id"] != manifest["target"]["ticket_id"]
-            or target["project_root"] != manifest["target"]["project_root"]):
+            or target["project_root"] != manifest["target"]["project_root"]
+            or target["ticket_dir"] != manifest["target"]["ticket_dir"]):
         raise CrosscheckError(
             "目标工单身份与 crosscheck manifest 不一致",
             gate_id="crosscheck_manifest_identity",

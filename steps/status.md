@@ -49,7 +49,7 @@ schema: {template_version 字段读取方式：直接读 metadata.template_versi
 | `deepcheck_in_progress` / `deepcheck_done` | 步骤5 复检中 / 完成 |
 | `completed` | 步骤6 终审完成（终态） |
 
-4. 若无 `.ai/icode/icode_N` 目录，输出提示："未找到工单目录，请先运行 $icodex run/init/log"
+4. 若无 `.ai/icode/icode_N` 目录，输出提示："未找到工单目录，请先运行 $icodex start/init/log"
 
 ## 模式二：verdict 手动标注（`$icodex status --verdict ...`）
 

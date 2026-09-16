@@ -4,7 +4,7 @@
 
 ## 目录管理
 
-### 创建新目录（用于 init / log，以及 run / plan 在不满足复用条件时）
+### 创建新目录（用于 init / log，以及 start / plan / fast 在不满足复用条件时）
 
 ```bash
 mkdir -p .ai/icode   # 统一父目录，所有产物收纳于此
@@ -14,25 +14,40 @@ ICODE_OUT_DIR=".ai/icode/icode_${NEXT}"
 mkdir -p "$ICODE_OUT_DIR"
 ```
 
-### 复用 / 创建新目录决策（仅用于 run / plan）
+### 复用 / 创建新目录决策（用于 start / plan / fast）
 
 ```bash
+# 入口层先设置 COMMAND=start|plan|fast；有非空需求参数时 HAS_REQUIREMENT=1，否则为 0
 mkdir -p .ai/icode
 LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n | tail -1)
 REUSE=0
 if [ -n "$LAST" ]; then
   CAND=".ai/icode/icode_${LAST}"
-  # 判定最新目录是否为"入口态"：有 .ico_metadata.json + 00_init.md，且无 01_plan.md
-  if [ -f "$CAND/.ico_metadata.json" ] && [ -f "$CAND/00_init.md" ] && [ ! -f "$CAND/01_plan.md" ]; then
+  if [ -f "$CAND/.ico_metadata.json" ]; then
     STATUS=$(grep -oP '"status"\s*:\s*"\K[^"]+' "$CAND/.ico_metadata.json")
-    # 入口态：init_in_progress 或 log_done
-    case "$STATUS" in
-      init_in_progress|log_done) REUSE=2 ;;  # 2 = 有歧义，需问用户
-    esac
+    ARTIFACT_LAYOUT=$(grep -oP '"artifact_layout"\s*:\s*"\K[^"]+' "$CAND/.ico_metadata.json")
+    if [ -f "$CAND/00_init.md" ] && [ ! -f "$CAND/01_plan.md" ]; then
+      case "$STATUS" in
+        init_in_progress|log_done) REUSE=2 ;;  # 入口态有歧义，需问用户
+      esac
+    elif [ "$COMMAND" = "start" ] && [ "$HAS_REQUIREMENT" = "0" ] \
+         && [ "$ARTIFACT_LAYOUT" = "staged" ] && [ "$STATUS" != "completed" ] \
+         && [ -f "$CAND/01_plan.md" ]; then
+      REUSE=1  # start 无参数：校验后恢复最新未完成 staged 工单
+    fi
   fi
 fi
-# REUSE=2：有歧义，问用户"复用 / 新建"；REUSE=0：非入口态，带参新建 / 无参报错
+# REUSE=1：复用前校验 completed_steps/artifact/status/code_files；校验失败立即停止
+if [ "$REUSE" = "1" ]; then
+  ICODE_OUT_DIR="$CAND"
+fi
+# REUSE=2：询问复用/新建
+# REUSE=0：带参新建；无参报错
 if [ "$REUSE" = "0" ]; then
+  if [ "$HAS_REQUIREMENT" = "0" ]; then
+    echo "错误：无可恢复工单且未提供需求；无参数不得创建新目录"
+    exit 1
+  fi
   NEXT=${LAST:-0}; NEXT=$((NEXT + 1))
   ICODE_OUT_DIR=".ai/icode/icode_${NEXT}"
   mkdir -p "$ICODE_OUT_DIR"
@@ -42,7 +57,8 @@ fi
 ### 复用决策三档
 
 - `REUSE=2`（入口态有歧义）→ **必须问用户"复用 / 新建"**（无论命令是否带参——带参可能是补充旧需求也可能是新需求，区分不了，故一律问），按答复定；复用时将 `00_init.md` 作为步骤1主要需求输入（命令行参数作补充）
-- `REUSE=0`（非入口态）→ 带参新建、无参报错
+- `REUSE=1`（仅 `start` 无参数，且最新目录是已有 `01_plan.md` 的未完成 staged 工单）→ 先校验 metadata、artifact、status、`completed_steps` 和必要 `code_files`，校验通过后设置 `ICODE_OUT_DIR="$CAND"`，再从下一未完成步骤继续
+- `REUSE=0`（非入口态）→ 带参新建、无参报错；**无参数不得创建新目录**
 - **不得擅自复用**（会丢失新需求）也**不得擅自新建**（会丢失 init/log 上下文）
 
 ### 检测最新目录（用于 review / merge / code / deepcheck / audit）
@@ -50,7 +66,7 @@ fi
 ```bash
 LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n | tail -1)
 if [ -z "$LAST" ]; then
-  echo "错误：没有找到 .ai/icode/icode_N 目录，请先运行 $icodex start <需求>（run 同义）或 $icodex init"
+  echo "错误：没有找到 .ai/icode/icode_N 目录，请先运行 $icodex start <需求> 或 $icodex init"
   exit 1
 fi
 ICODE_OUT_DIR=".ai/icode/icode_${LAST}"
@@ -106,7 +122,7 @@ Read `~/.codex/icode_data/index.json`（不存在则创建 `{"version":"1","upda
 
 > **⚠️ index.json 读取方式（防与 DOC 混淆）**：本段 index.json 指**全局工单索引** `~/.codex/icode_data/index.json`，是完整 JSON 文件，必须用 `json.load` **整体解析 `tickets` 数组全量读**，禁止按行截断（如只读前 50 行--12 条工单约占 350 行，前 50 行仅覆盖 2 条，会漏掉其余工单导致检索失真）。「前 50 行」规则**仅适用于** `project_docs/<id>/*.md` 章节（见下文「段零·工程文档检索」段步骤 2），两者不可混用。
 
-检索阶段（init/log/plan/run 启动时扫 index.json）采用**两段式检索**（详见 SKILL.md「检索注入流程」）——段一 keywords Jaccard 粗筛取 ≤10 候选（零 token，复活预扫后排除剩余 stale/当前 ticket_id），段二只把候选 keywords+requirement_points 喂 LLM 精读打分选 top-N 命中（N 由梯度决定）。对 top-N 命中工单，**先做过时校验，再续期**：
+检索阶段（init/log/plan/start 启动时扫 index.json）采用**两段式检索**（详见 SKILL.md「检索注入流程」）——段一 keywords Jaccard 粗筛取 ≤10 候选（零 token，复活预扫后排除剩余 stale/当前 ticket_id），段二只把候选 keywords+requirement_points 喂 LLM 精读打分选 top-N 命中（N 由梯度决定）。对 top-N 命中工单，**先做过时校验，再续期**：
 
 ### 项目路径校验（防注入已删除工程）
 
@@ -212,19 +228,19 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 > - 失败兜底：迁移任何步骤失败，写 `{from, to, at, skip_reason}` 条目，不阻塞主流程
 > - 字段缺失兼容：旧 metadata 缺 `migration_log` 视为 `[]`；新增工单一律初始化为 `[]`
 
-> **三步迁移的相互独立性**：步骤 1 / 步骤 4 / 步骤 5 的迁移契约**互不依赖**——分别读 metadata、各自判定版本、各自追加产物段；同一工单走 `$icodex start` / `$icodex run` 全流程时三步依次触发，migration_log 数组会按顺序追加 3 条（不全靠一记，单独 step 启动也 OK）。
+> **三步迁移的相互独立性**：步骤 1 / 步骤 4 / 步骤 5 的迁移契约**互不依赖**——分别读 metadata、各自判定版本、各自追加产物段；同一工单走 `$icodex start` 全流程时三步依次触发，migration_log 数组会按顺序追加 3 条（不全靠一记，单独 step 启动也 OK）。
 
 > **verdict 字段族**（方向结论，可选，详见 SKILL.md「verdict 字段族」）：所有入口模板均可选；**创建时可不写**（缺失视为 `"unknown"`，向后兼容旧 metadata）；需标注时回填 `verdict`+`verdict_reason`+`correct_direction`+`verdict_source`+`verdict_at`（`superseded` 额外填 `superseded_by`；`disproved`/`superseded` 可选填 `verdict_premise_deps` 支持硬复活），途径见 `$icodex status --verdict`（[steps/status.md](../steps/status.md)）/ 步骤6 终审（[steps/06_audit.md](../steps/06_audit.md)）/ 批量识别扫描。**索引首次写入时 verdict 固定 `"unknown"`、关联字段 null、premise_deps `[]`/review_needed `false`**（见「全局索引写入」段）
 
-> **`workload_estimate` 字段族**（工作量评估，v2 新增）：由步骤 0 init 收尾时自动评估，辅助用户决定走 `$icodex start`（`run` 同义）还是 `$icodex fast`。详见 SKILL.md「workload_estimate 字段族」与 [steps/00_init.md](../steps/00_init.md)「步骤 9 工作量评估」段：
-> - `workload_estimate`（可选，枚举，默认 `"medium"`）：工作量等级。`"small"` 建议 `$icodex fast`，`"medium"` 建议 `$icodex start`，`"large"` **必须** `$icodex start`（`run` 同义）
+> **`workload_estimate` 字段族**（工作量评估，v2 新增）：由步骤 0 init 收尾时自动评估，辅助用户决定走 `$icodex start` 还是 `$icodex fast`。详见 SKILL.md「workload_estimate 字段族」与 [steps/00_init.md](../steps/00_init.md)「步骤 9 工作量评估」段：
+> - `workload_estimate`（可选，枚举，默认 `"medium"`）：工作量等级。`"small"` 建议 `$icodex fast`，`"medium"` 建议 `$icodex start`，`"large"` **必须** `$icodex start`
 > - `workload_reason`（可选，≤80 token）：评估理由
 > - **字段缺失兼容**：旧 metadata 无 `workload_estimate` 视为 `"medium"`（中性默认），不阻塞后续步骤
 > - **4 维度 max 算法**：需求点数 / 涉及文件数 / 跨模块数 / 大改词命中，任一维度落入即评该级，取最严
 >
 > **大改词典**（大改词命中维度扫的关键词）：`重构` / `大改` / `跨模块` / `架构` / `迁移` / `拆分` / `整合` / `refactor` / `migration` / `overhaul`
 >
-> **入口建议映射**：`small` → 建议 `$icodex fast`，`medium` → 建议 `$icodex start`，`large` → **必须** `$icodex start`（`run` 同义）
+> **入口建议映射**：`small` → 建议 `$icodex fast`，`medium` → 建议 `$icodex start`，`large` → **必须** `$icodex start`
 >
 > **阈值表**（任一维度落入即评该级）：
 >
@@ -335,7 +351,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 **`mode` 字段**（新增，可选，默认 `"full"`）：
 
-- `"full"`：全流程模式（`$icodex start` / `$icodex run`），步骤2 review 默认 3 轮 + 对抗，步骤5 deepcheck 三阶段循环
+- `"full"`：全流程模式（`$icodex start`），步骤2 review 默认 3 轮 + 对抗，步骤5 deepcheck 三阶段循环
 - `"fast"`：精简模式（`$icodex fast`），步骤2 review 固定 1 轮无对抗，步骤5 deepcheck 只跑 Reverse
 - **字段缺失**视为 `"full"`（向后兼容旧 metadata）
 
@@ -356,11 +372,11 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 ## 注入缓存机制（防重复注入，两源共用）
 
-> 本机制解决「同一开发链路内重复注入同一来源的同一信息切片」问题。**历史检索复用（现有）**和**段零工程文档检索（icode doc 新增）**共用此缓存。定义在此处一处，五入口（init/log/plan/run/fast）统一引用。
+> 本机制解决「同一开发链路内重复注入同一来源的同一信息切片」问题。**历史检索复用（现有）**和**段零工程文档检索（icode doc 新增）**共用此缓存。定义在此处一处，五入口（init/log/plan/start/fast）统一引用。
 
 ### 设计动机
 
-五入口（init/log/plan/run/fast）启动时都会触发检索注入，但一次开发链路常跨多命令（如 init→run 复用同目录），同一历史工单/文档章节会被多次命中，导致 **token 浪费**（重复注入同一切片）+ **hit_count 扭曲**（同目录多次续期虚高，扭曲 `hit_count >= 20` 永久保留判定）。
+五入口（init/log/plan/start/fast）启动时都会触发检索注入，但一次开发链路常跨多命令（如 init→start 复用同目录），同一历史工单/文档章节会被多次命中，导致 **token 浪费**（重复注入同一切片）+ **hit_count 扭曲**（同目录多次续期虚高，扭曲 `hit_count >= 20` 永久保留判定）。
 
 ### 缓存文件
 
@@ -393,11 +409,11 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 | source | slice | 注入命令 | 含义 |
 |--------|-------|---------|------|
 | `history` | `requirement_points` | init | 需求要点清单 |
-| `history` | `adr_risks` | plan / run / fast | ADR + 风险评估章节 |
+| `history` | `adr_risks` | plan / start / fast | ADR + 风险评估章节 |
 | `history` | `root_cause_evidence` | log | 根因结论 + 决定性证据 |
-| `history` | `verdict_lesson` | init/plan/run/fast/log | disproved/superseded 工单反转注入的避坑结论（`verdict_reason`+`correct_direction`，见「检索命中续期·过时校验」段 verdict 分流注入） |
-| `project_doc` | `section:<file>` | init/log/plan/run/fast | 工程文档章节（可细化到小节锚点 `section:<file>#<anchor>`） |
-| `project_doc` | `section:<file>#stale-summary` | init/log/plan/run/fast | stale 章节降级注入的简要说明（不读正文小节，见「stale 章节降级注入」） |
+| `history` | `verdict_lesson` | init/plan/start/fast/log | disproved/superseded 工单反转注入的避坑结论（`verdict_reason`+`correct_direction`，见「检索命中续期·过时校验」段 verdict 分流注入） |
+| `project_doc` | `section:<file>` | init/log/plan/start/fast | 工程文档章节（可细化到小节锚点 `section:<file>#<anchor>`） |
+| `project_doc` | `section:<file>#stale-summary` | init/log/plan/start/fast | stale 章节降级注入的简要说明（不读正文小节，见「stale 章节降级注入」） |
 
 ### 去重规则（核心）
 
@@ -408,7 +424,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 **不同 slice 允许共存**（不是 bug，是特性）：
 
-- init 注 `(history, demo-3, requirement_points)`，后续 run 注 `(history, demo-3, adr_risks)`——两个不同 slice，各自注入一次，合理
+- init 注 `(history, demo-3, requirement_points)`，后续 start 注 `(history, demo-3, adr_risks)`——两个不同 slice，各自注入一次，合理
 - 这是"一次开发链路里不同步骤注入同一工单的不同信息切片"的正常场景
 
 ### 续期去重（hit_count 防重复 +1）
@@ -478,7 +494,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 每个章节前 50 行承载项目元信息块（工程名/git/提交/子模块/产品线/模块/时间）+ KEYS 块（检索词带 `[小节锚点]`，段零按小节注入不灌全章）+ 简要说明（50~100 字），完整结构见 [references/doc_template.md](doc_template.md)。**元信息块替代 config + state + index 三个文件**——文件系统即数据库（`ls` 枚举、元信息查状态、KEYS 做检索）。
 
-### 段零·工程文档检索（init/log/plan/run/fast 共用）
+### 段零·工程文档检索（init/log/plan/start/fast 共用）
 
 五入口启动时，与历史检索复用并行做段零检索，**候选合并后统一排序**注入（不分来源，最相关者胜）。除工程自身章节（`project_docs/`）外，自动覆盖工程依赖的模块共享文档（`module_docs/`，按仓库+分支 key 跨工程共享，详见「module_docs 工程模块库」段）。
 
@@ -546,7 +562,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 **stale 章节降级注入（不注正文，防误导）**：stale 章节**绝不注入正文小节**（避免过时 file:line / IPC 契约 / 调用链误导新工作流），改为**只注入「简要说明」（50~100 字概览，不含 file:line，误导风险低）+ 警告行**「⚠️ 章节 `<文件>` 基于旧 commit `<generation_commit>`，当前 HEAD `<HEAD>`，已过时仅注入摘要，建议重跑 `$icodex doc` 更新」。与历史工单 stale「跳过注入」同等防误导强度--过时的正文小节不进新工作流思考输入；降级保留「简要说明」仅给新工作流方向性参考，不构成事实依据（配合下文「不盲信约束」）。 注入缓存 slice 记为 `section:<file>#stale-summary`（与正文小节 `section:<file>#<anchor>` 区分，避免去重混淆；章节重跑变新鲜后注入正文小节不被误跳过）。
 
-**不盲信约束（段零注入的工程/模块文档仅作参考）**：段零注入的 project_docs / module_docs 章节是 `$icodex doc` 生成时的**快照**，可能因工程迭代而过时（即使未标 stale 也只是「未检测到过时」，非「已验证最新」）。下游 init/plan/run/fast/log 步骤**不得将注入的文档描述当作事实直接采信**：凡涉及代码行为 / 位置 / 接口契约 / 调用链 / 错误码的断言，**必须用 Read/Grep 实证当前代码**后再纳入决策（与 [anti_laziness.md](anti_laziness.md)「段零文档不盲信」条 + [01_plan.md](../steps/01_plan.md) 计划断言实证一致）。文档只作「设计意图与模块关系」的启发，不作「代码事实」的依据。
+**不盲信约束（段零注入的工程/模块文档仅作参考）**：段零注入的 project_docs / module_docs 章节是 `$icodex doc` 生成时的**快照**，可能因工程迭代而过时（即使未标 stale 也只是「未检测到过时」，非「已验证最新」）。下游 init/plan/start/fast/log 步骤**不得将注入的文档描述当作事实直接采信**：凡涉及代码行为 / 位置 / 接口契约 / 调用链 / 错误码的断言，**必须用 Read/Grep 实证当前代码**后再纳入决策（与 [anti_laziness.md](anti_laziness.md)「段零文档不盲信」条 + [01_plan.md](../steps/01_plan.md) 计划断言实证一致）。文档只作「设计意图与模块关系」的启发，不作「代码事实」的依据。
 
 **质量信号（v2 新增，模板版本驱动的注入优先级）**：章节 `_meta.json.template_version` 与 [doc_template.md](../references/doc_template.md) 顶部 `SCHEMA_VERSION` 比对：
 
@@ -562,7 +578,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 **双视角使用说明（v2 新增）**：v2 章节**同时服务两类读者**，段零注入策略因下游角色不同而不同：
 
-- **init/plan/run/fast 步骤**：偏重 AI 视角的 14 项必含元素（H2 摘要 + 锚点表 + API 速查表 + 状态转移表），用于让 AI 在写代码/做计划时直接 grep 定位
+- **init/plan/start/fast 步骤**：偏重 AI 视角的 14 项必含元素（H2 摘要 + 锚点表 + API 速查表 + 状态转移表），用于让 AI 在写代码/做计划时直接 grep 定位
 - **log 步骤**：偏重人/AI 双视角的故障现象索引表 + 故障排查表 + 状态转移表，用于日志根因分析时直接对照
 - **readme 步骤**：偏重人视角的 00_overview 6 项必含元素（新手导览 + 全栈图 + 角色路径），用于生成交付报告时引用
 
@@ -579,7 +595,7 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 
 ### 检索结果缓存（5 分钟 TTL，可选 token 优化）
 
-> **目的**：5 分钟内连续触发同一入口（init/log/plan/run/fast）+ 相同关键词的检索时，跳过 LLM 精读打分，直接复用上次结果。**单工单节省 0.5-2K token**（仅命中场景，多入口连续触发时）。
+> **目的**：5 分钟内连续触发同一入口（init/log/plan/start/fast）+ 相同关键词的检索时，跳过 LLM 精读打分，直接复用上次结果。**单工单节省 0.5-2K token**（仅命中场景，多入口连续触发时）。
 >
 > **完全可选**：以下规则让 AI 自主遵循即可，**不强制 icode-skill 命令实施**（避免破坏现有命令链路）。Claude 等 LLM 看到本段会自然在连续调用间检查缓存。
 

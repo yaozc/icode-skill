@@ -2,10 +2,10 @@
 
 > **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
 
-**命令**: `$icodex plan <需求>`；也可由 `$icodex start <需求>` / `$icodex run <需求>` 编排调用
+**命令**: `$icodex plan <需求>`；也可由唯一全流程入口 `$icodex start <需求>` 编排调用
 **产出**: `{ICODE_OUT_DIR}/01_plan.md`
 **会话**: 主会话
-**Codex 发布键**: 使用 `publish-artifact --key plan --name 01_plan.md`；只有发布和 `validate` 成功才追加 step `1`。单独调用 `plan` 随后停止；由 `start` 或 `run` 编排时继续步骤2。
+**Codex 发布键**: 使用 `publish-artifact --key plan --name 01_plan.md`；只有发布和 `validate` 成功才追加 step `1`。单独调用 `plan` 随后停止；由 `start` 编排时继续步骤2。
 
 ## 本步骤 L1/L2 检查项声明
 
@@ -76,6 +76,12 @@
 
 ## 执行步骤
 
+0. **`start` 无参数中断恢复判定**（优先于步骤1的目录创建/入口态复用）：
+   - 仅当命令是无参数 `$icodex start` 时检查最新工单；带需求参数的 `start` 按步骤1规则创建或复用入口态工单，`plan` 不使用本恢复分支。
+   - 最新工单必须包含 `.ico_metadata.json`，属于 staged 主流程，`status != completed`，且已有 `01_plan.md`；否则不得把已完成工单或普通 `plan` 调用误当成续跑。
+   - 先执行 `python3 ~/.codex/skills/icodex/tools/icode_state.py validate --run-dir <最新工单目录>`，并校验 `completed_steps` 是有序前缀、已完成步骤的 artifact 均存在、状态与转换门禁一致。任一 L1 校验失败立即停止，不得猜测或跳步。
+   - 校验通过后复用该目录，按 `completed_steps` 计算下一未完成步骤。若步骤1已经完成，直接转入下方第8项的**统一分派规则**，不得重写 `01_plan.md` 或固定回到步骤2；若步骤1尚未完成，则继续执行本文件。
+
 1. **目录管理 + 需求来源决策**（必须严格按以下顺序；完整目录管理脚本见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)——**必须先 Read 该文件完整内容**（含 ticket_id 生成/索引写入/metadata 模板，不得凭概述执行））：
 
    a. 检查最新 `.ai/icode/icode_N/` 目录是否满足"入口态复用条件"：有 `.ico_metadata.json` + `00_init.md`，且**无 `01_plan.md`**（status 为 `init_in_progress` 或 `log_done`，即 init/log 产出 00_init.md 但未进步骤1）。**注**：log 目录除 00_init.md 外还有 `log_analysis.md`，仍满足复用条件。
@@ -84,14 +90,14 @@
       - **Read 该目录下的 `00_init.md`**，将其内容作为本次步骤1的**主要需求输入**（init 产出的是需求初稿；log 产出的是根因转成的修复需求）
       - 若目录含 `log_analysis.md`（即来自 `$icodex log`），**Read 其「核心结论 + 修复设计 + 4 维度验证清单」章节作背景参考**——步骤1计划应基于该根因展开修复方案，**必须把 `log_analysis.md` §7 设计态的 4 维度验证清单固化到 `01_plan.md` 的「修复方案设计」段**（详见下方章节 4.5）；在 ADR/风险评估里呼应根因证据
       - **4 维度清单读取强制**：无论 init 工单（`00_init.md` §7）还是 log 工单（`00_init.md` §5 + `log_analysis.md` §7），步骤1必须 Read 并固化——**未固化 = 设计遗漏 = 04_code 末尾 "Code Review Fix" 复检必失败**
-      - 若 `$icodex start` / `$icodex run` / `$icodex plan` 命令行同时携带了需求字符串，仅作为**补充上下文**（次优先级），不覆盖 `00_init.md`
+      - 若 `$icodex start` / `$icodex plan` 命令行同时携带了需求字符串，仅作为**补充上下文**（次优先级），不覆盖 `00_init.md`
       - 在 `01_plan.md` 的"需求描述"章节中明确标注：本计划基于 `00_init.md` 展开（若来自 log，标注"基于根因报告 log_analysis.md 的修复需求"），并引用其关键章节
    c. **不满足复用条件**：执行常规「创建新目录」逻辑，确定 `ICODE_OUT_DIR`，需求输入采用命令行参数
 
 2. **历史检索复用**（目录管理之后、强制思考之前，全局索引存在时必须执行，详见 SKILL.md「历史检索复用」段）。**置于目录管理之后**：此时需求来源已确定（复用情况已读 `00_init.md`，常规新建情况用命令行参数），可用完整需求做相关性判断：
    - Read `~/.codex/icode_data/index.json`（不存在则跳过检索）
    - **两段式检索**：段一从本次需求提炼关键词集，与各 ticket `keywords` 做 Jaccard 粗筛取 ≤10 候选（零 token，可复活预扫后排除剩余 stale/当前 `ticket_id`）；段二只把候选 `keywords + requirement_points` 喂主代理精读打分选 top-N 命中（N 由梯度决定，明确无关则 0 条）。**排除当前 `ticket_id`**，不自我参考——当前 ticket_id 读「最新 `.ai/icode/icode_N` 目录的 `.ico_metadata.json`」的 `ticket_id` 字段；**常规新建目录首跑时目录刚创建、尚未入索引，无需排除**；复用步骤0目录时 metadata 已有 ticket_id，按值排除
-   - **`$icodex plan`/`$icodex start`/`$icodex run` 注入分支**：命中工单经段二精读+过时校验后，**按 `verdict` 分流注入**（字段缺失视为 `unknown`，详见 SKILL.md「注入形式·按 verdict 分流」）：
+   - **`$icodex plan`/`$icodex start` 注入分支**：命中工单经段二精读+过时校验后，**按 `verdict` 分流注入**（字段缺失视为 `unknown`，详见 SKILL.md「注入形式·按 verdict 分流」）：
      - `verified`/`unknown`（含旧工单）：定点读其 `01_plan.md` 的 ADR 章节 + 风险评估章节（**不读全文**，≤1K token/条）；**`unknown` 额外扩读 `00_init.md` 末轮对话摘要**（≤0.3K，捞最终结论/证伪信号）+ 思考块「历史参考」走对抗质疑三问 + ⚠️未验证警告（[../references/thinking_detail.md](../references/thinking_detail.md)「历史参考小节」）--旧工单防误导主防线，不依赖标注
      - `disproved`（`verdict_review_needed=false`）：**不读 ADR**（避免错误方向被借鉴），改读 `verdict_reason`（作可验证断言）+ `correct_direction` 作避坑参考（≤0.7K/条）；**强制 Grep/Read 验证证伪前提是否仍成立**（详见 [../references/thinking_detail.md](../references/thinking_detail.md)「历史参考小节」）；`correct_direction` 缺失则降级读 ADR + ⛔ 警告，提示用户 `$icodex status --verdict` 补标
      - `disproved`/`superseded`（`verdict_review_needed=true`，证伪前提依赖已变化）：**降级对抗质疑**--不硬反转，走 unknown A 层（扩读末轮+三问）+ 证伪前提+依赖变化提示（详见 SKILL.md「注入形式·按 verdict 分流」），让新需求重新评估前提是否仍成立
@@ -379,14 +385,15 @@ sys.exit(1 if missing else 0)
 
 - 退出码 0 → 通过（引用已全部记录，或计划完全未引用）；非 0 → 补写 `limit_refs` 再重跑
 
-8. 如果是 `$icodex start` 或 `$icodex run`（同义全流程模式）：
+8. 如果是 `$icodex start`（唯一全流程模式）：
 
-   - **立即继续执行步骤2**（不要等待用户确认）。**过渡提示不得写死轮数**——只输出 `▶ 步骤1 完成，进入步骤2 审查`，**不要**自行加"（3轮）""（默认3轮）"等轮数说明；轮数与延长机制由步骤2 启动时自行输出（见 [02_review.md](02_review.md)）
-   - 如果会话断开后恢复，读取 `.ico_metadata.json` 的 `completed_steps`，从最后一个完成步骤的下一步继续。
-   - **续跑判定规则**：以 `completed_steps` 中**编号 1~6 范围内最大的已完成步骤**为基准推进下一步。`"0"` 和 `"log"` 仅作为"已走过步骤0/log入口"的标记，**不影响**推进逻辑。例：
+   - **统一分派规则**：任何 `start` 串联或续跑都先读取已校验的 `.ico_metadata.json`，以 `completed_steps` 中**编号 1~6 范围内最大的连续已完成步骤**为基准，令 `NEXT_STEP=该步骤+1`；没有已完成的 1~6 步时 `NEXT_STEP=1`。`"0"` 和 `"log"` 仅作为"已走过步骤0/log入口"的标记，**不影响**推进逻辑。例：
      - `["0"]`/`["log"]` → 下一步是步骤1
      - `["0","1"]` 或 `["1"]` 或 `["log","1"]` → 下一步是步骤2
      - `["0","1","2"]` 或 `["1","2"]` → 下一步是步骤3
+   - 本轮刚完成步骤1时，输出 `▶ 步骤1 完成，进入步骤2 审查`；从中断恢复时，输出 `▶ 恢复工单，从步骤{NEXT_STEP}继续`。**过渡提示不得写死轮数**，轮数与延长机制由目标步骤自行输出。
+   - 若 `NEXT_STEP` 不在 1~6，或与 `status` / artifact 转换门禁不一致，按 L1 停止，不得猜测、回退或跳步。
+   - 通过目标步骤的转换点门禁后，按 `NEXT_STEP` Read 并立即执行对应文件：`1 → 01_plan.md`、`2 → 02_review.md`、`3 → 03_merge.md`、`4 → 04_code.md`、`5 → 05_deepcheck.md`、`6 → 06_audit.md`；不要等待用户再次确认。
 ## 决策锚点（步骤1 完成后写）
 
 步骤1 写完 `01_plan.md` + metadata 后，若 `metadata.anchors_enabled != false`，刷新 `.decision_anchors.json`：刷新 `requirement_digest` + `key_decisions`（ADR 摘要）+ `design_4dims`（plan §4.5 4 维度设计态）。详见 [references/decision_anchors.md](../references/decision_anchors.md)。

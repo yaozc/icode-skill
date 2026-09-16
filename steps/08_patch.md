@@ -10,8 +10,8 @@
 
 | 级别 | 检查项 | 触发后行为 |
 |---|---|---|
-| **L1·致命** | 无最新工单目录（`.ai/icode/icode_N/` 不存在或 metadata 缺失） | 报错退出，提示先 `$icodex init` / `$icodex start`（`run` 同义）创建工单 |
-| **L1·致命** | 最新工单处于入口态（`init_in_progress` / `log_done`，无 `01_plan.md`） | 报错退出，提示先 `$icodex plan` 或 `$icodex start`（`run` 同义）进入主流程（patch 只作用于已有主流程产物的工单） |
+| **L1·致命** | 无最新工单目录（`.ai/icode/icode_N/` 不存在或 metadata 缺失） | 报错退出，提示先 `$icodex init` / `$icodex start` 创建工单 |
+| **L1·致命** | 最新工单处于入口态（`init_in_progress` / `log_done`，无 `01_plan.md`） | 报错退出，提示先 `$icodex plan` 或 `$icodex start` 进入主流程（patch 只作用于已有主流程产物的工单） |
 | **L2·关键** | 阶段4 复检发现新引入问题且无法当场修复 | 警告 + 记入 metadata（`patch_history` 末条 `status="issues"`）+ 流程继续（user 可再跑 `$icodex patch` 处理） |
 
 ## 定位
@@ -26,7 +26,7 @@
 **不使用 patch 的场景**（走既有机制）：
 - 步骤 2/5 中断态（`review_in_progress` / `deepcheck_in_progress`）→ 重跑 `$icodex review` / `$icodex deepcheck` 续跑（断点续跑机制）
 - 步骤 4 编译失败（`code_compile_failed=true`）→ 重跑 `$icodex code` 整体续跑
-- 全新的、与当前工单无关的需求 → `$icodex init` / `$icodex start`（`run` 同义）新建工单
+- 全新的、与当前工单无关的需求 → `$icodex init` / `$icodex start` 新建工单
 
 **对状态机的影响**：patch **不改变** `status` 和 `completed_steps`（completed 保持 completed，中途状态保持原状态）。patch 是横向追加，不是纵向推进——靠 `patch_count` / `patch_history` 字段记录（见「强制操作」段），主流程推进逻辑（以 `completed_steps` 最大编号推进）完全不受影响。
 
@@ -65,7 +65,7 @@
 
 ```bash
 LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n | tail -1)
-# 无 LAST → 报错退出，提示先 $icodex init|run 创建工单
+# 无 LAST → 报错退出，提示先 $icodex init|start 创建工单
 # 有 LAST → ICODE_OUT_DIR=".ai/icode/icode_${LAST}"
 ```
 
@@ -73,7 +73,7 @@ LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n
 
 1. `{ICODE_OUT_DIR}/.ico_metadata.json` 存在，否则报错退出（非 icode 工单目录）
 2. 读 `status` 字段：
-   - `init_in_progress` / `log_done`（入口态，无 `01_plan.md`）→ **报错退出**，提示先 `$icodex plan` 或 `$icodex start`（`run` 同义）
+   - `init_in_progress` / `log_done`（入口态，无 `01_plan.md`）→ **报错退出**，提示先 `$icodex plan` 或 `$icodex start`
    - `review_in_progress` / `deepcheck_in_progress` → **柔性提示**"当前有未完成的主流程步骤（步骤 2/5 中断态），建议先重跑 `$icodex review` / `$icodex deepcheck` 续跑"，**不阻断**，用户明确要 patch 则继续
    - 其余状态（`plan_done` 及以后 / `completed`）→ 直接进入执行流程
 3. 确定本次 `N`（**双源取大，防编号冲突**）：

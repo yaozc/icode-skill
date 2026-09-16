@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 `codex` 分支提供可持久化、可多轮、零回写目标工单的 `$icodex crosscheck`，并让 `$icodex start` 与 `$icodex run` 等价地自动串联步骤 1→6。
+**Goal:** 在 `codex` 分支提供可持久化、可多轮、零回写目标工单的 `$icodex crosscheck`，并让唯一的 `$icodex start` 入口自动串联步骤 1→6。
 
-**Architecture:** 以现有 `tools/icode_state.py` 作为 Codex 工单身份与 metadata 校验真源，新增只读 ticket resolver；从上游移植 crosscheck、inspection worklist 与 schema，但将全部控制路径改成 `.ai/icode`，并排除这些控制文件对 Git/源码快照的影响。命令路由仍由 Markdown skill 合同驱动，`start` 和 `run` 共用 `steps/run.md`，`plan` 独立停在步骤 1。
+**Architecture:** 以现有 `tools/icode_state.py` 作为 Codex 工单身份与 metadata 校验真源，新增只读 ticket resolver；从上游移植 crosscheck、inspection worklist 与 schema，但将全部控制路径改成 `.ai/icode`，并排除这些控制文件对 Git/源码快照的影响。命令路由仍由 Markdown skill 合同驱动，`start` 与 `plan` 都进入 `steps/01_plan.md`，由命令语义决定自动串联或在步骤 1 停止；不引入上游不存在的 `run` 命令。
 
 **Tech Stack:** Python 3 标准库、JSON Schema draft-07、pytest/unittest、POSIX shell、Markdown contract lint。
 
@@ -14,7 +14,7 @@
 - `.icode_output/` 与 `~/.claude/icode_data/` 仅作明确的 legacy 只读兼容源，不得成为新 crosscheck 的读写目标。
 - `$icodex-review` 保持一次性、完全无写入；本计划不修改 `external-review` 分支。
 - Crosscheck 只能写 `.ai/icode/.crosscheck/icode_N/`，不得写目标工单、源码、索引、anchors、patch history 或 verification records。
-- `$icodex start` 与 `$icodex run` 行为完全一致并自动串联 1→6；`$icodex plan` 只执行步骤 1。
+- `$icodex start` 是唯一自动串联 1→6 的入口；`$icodex plan` 只执行步骤 1；仓库不得暴露 `$icodex run`。
 - 所有持久化工单都必须通过 `tools/icode_state.py` 校验；身份歧义、路径逃逸、输入漂移和 schema 不一致均 fail-closed。
 - 不引入 `icode_control.py`、Agent Runtime、UI 或新第三方依赖。
 
@@ -374,12 +374,12 @@ Expected: PASS.
 
 **Files:**
 - Modify: `SKILL.md`
-- Modify: `steps/run.md`
 - Modify: `steps/01_plan.md`
 - Modify: `steps/help.md`
 - Modify: `steps/00_init.md`
 - Modify: `steps/log.md`
 - Modify: `steps/08_patch.md`
+- Delete: `steps/run.md`
 - Modify: `references/dir_and_metadata.md`
 - Modify: `references/anti_laziness.md`
 - Modify: `README.md`
@@ -388,53 +388,59 @@ Expected: PASS.
 - Modify: `tests/test_codex_contract.py`
 
 **Interfaces:**
-- Produces: `start` and `run` both route to `steps/run.md` and resume/execute steps 1→6.
+- Produces: `start` routes to `steps/01_plan.md` and resumes/executes steps 1→6.
 - Preserves: `plan` routes to `steps/01_plan.md` and stops after step 1; `fast` is unchanged.
+- Removes: the non-upstream `$icodex run` command and `steps/run.md`.
 
-- [ ] **Step 1: Add failing route parity assertions**
+- [ ] **Step 1: Add failing strict-route assertions**
 
-Add tests that reject every old start-as-plan statement in active docs and require route parity:
+Add tests that reject every old start-as-plan statement and every `$icodex run` occurrence in active docs:
 
 ```python
-def test_start_and_run_share_full_chain_route(self) -> None:
-    self.assertEqual(COMMAND_ROUTES["start"], "steps/run.md")
-    self.assertEqual(COMMAND_ROUTES["run"], "steps/run.md")
+def test_start_is_the_only_full_chain_route(self) -> None:
+    self.assertEqual(COMMAND_ROUTES["start"], "steps/01_plan.md")
+    self.assertNotIn("run", COMMAND_ROUTES)
+    self.assertFalse((ROOT / "steps/run.md").exists())
     skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-    self.assertIn("`$icodex start` 与 `$icodex run`", skill)
+    self.assertNotIn("$icodex run", skill)
     self.assertNotIn("start` 永远只是 `$icodex plan`", skill)
 ```
 
-Add a repository text assertion over the listed active files that fails on `start 是 plan`、`start.*plan 的兼容别名`、`start.*步骤1后停止`.
+Add a repository text assertion over active Markdown that fails on `$icodex run`、`start 是 plan`、`start.*plan 的兼容别名`、`start.*步骤1后停止`.
 
 - [ ] **Step 2: Run contract tests to prove RED**
 
 Run: `python3 -m pytest tests/test_codex_contract.py -q`
 
-Expected: FAIL on the old route and documentation.
+Expected: FAIL on the old route, `steps/run.md`, and compatibility wording.
 
 - [ ] **Step 3: Change the canonical route and orchestration wording**
 
-Set both routes to `steps/run.md`; make the run step command line explicitly accept both names:
+Route `start` directly to `steps/01_plan.md` and delete `steps/run.md`. The plan step distinguishes the two commands:
 
 ```markdown
-**命令**：`$icodex start [需求]` / `$icodex run [需求]`
+**命令**：`$icodex plan [需求]`；也可由唯一全流程入口 `$icodex start [需求]` 编排调用
 
-`start` 是上游一致的标准全流程入口，`run` 是 Codex 兼容别名；两者创建/复用同一工单并严格执行 01→06。`plan` 不路由到本文件。
+`plan` 完成步骤 1 后停止；`start` 校验转换门禁后继续 02→06。
 ```
 
-Every transition retains `icode_state.py validate`, artifact existence, status, `code_files`, L1 stopping, and resume-from-`completed_steps` behavior.
+Every transition retains `icode_state.py validate`, artifact existence, status, `code_files`, L1 stopping, and resume-from-`completed_steps` behavior. A no-argument `start` resumes only the latest incomplete staged run; it must not silently reuse a completed run.
 
 - [ ] **Step 4: Update all user-facing entry and recovery text**
 
-Change init/log/patch prompts, history-injection command lists, workload recommendations, README command tables, and examples so full-chain recommendations prefer `start` and may mention `run` as an alias. Keep all plan-only examples on `$icodex plan`; do not replace `plan` with start.
+Change init/log/patch prompts, history-injection command lists, workload recommendations, README command tables, and examples so full-chain recommendations use only `start`. Keep all plan-only examples on `$icodex plan`; do not replace `plan` with start.
 
 - [ ] **Step 5: Update linter invariants and verify no stale semantics remain**
 
 Replace the old literal checks with:
 
 ```python
-if COMMAND_ROUTES["start"] != COMMAND_ROUTES["run"]:
-    errors.append("start and run must share steps/run.md")
+if COMMAND_ROUTES["start"] != "steps/01_plan.md":
+    errors.append("start must route to steps/01_plan.md")
+if "run" in COMMAND_ROUTES or (ROOT / "steps/run.md").exists():
+    errors.append("removed run command must not return")
+if "`$icodex start` 是唯一标准全流程入口" not in skill:
+    errors.append("start must remain the only full-chain entry")
 if "`$icodex plan` 只执行步骤 1" not in skill:
     errors.append("plan must remain the single-step entry")
 ```
@@ -445,16 +451,95 @@ Run:
 python3 -m pytest tests/test_codex_contract.py -q
 python3 tools/lint_codex_contract.py .
 rg -n 'start.*plan.*(别名|暂停)|start.*步骤1后停止' SKILL.md README*.md steps references
+rg -n '\$icodex run\b' SKILL.md README*.md steps references
 ```
 
-Expected: tests/lint PASS; `rg` returns no stale start-as-plan statements.
+Expected: tests/lint PASS; both `rg` commands return no stale command statements.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add SKILL.md README.md README.zh-CN.md steps/run.md steps/01_plan.md steps/help.md steps/00_init.md steps/log.md steps/08_patch.md references/dir_and_metadata.md references/anti_laziness.md tools/lint_codex_contract.py tests/test_codex_contract.py
+git add SKILL.md README.md README.zh-CN.md steps/01_plan.md steps/help.md steps/00_init.md steps/log.md steps/08_patch.md references/dir_and_metadata.md references/anti_laziness.md tools/lint_codex_contract.py tests/test_codex_contract.py
 git commit -m "feat: restore start as the full staged workflow"
 ```
+
+### Task 5.1: Apply review hardening to crosscheck lifecycle
+
+**Files:**
+- Modify: `tools/icode_crosscheck.py`
+- Modify: `tests/test_crosscheck.py`
+
+**Interfaces:**
+- Rejects: a raw target directory that is a symlink or differs from the manifest's frozen canonical path.
+- Ignores: `.ico.lock`, `.index.lock`, and `.migration.lock` in target snapshots.
+- Preserves: completed-round derived reports while a later round is in progress.
+
+- [ ] **Step 1: Add regressions for symlink redirection, lock churn, and in-progress validation**
+
+Each test must fail on the reviewed implementation before production changes.
+
+- [ ] **Step 2: Harden the target boundary**
+
+Check `Path(ticket_dir).expanduser().is_symlink()` before `.resolve()`. After validation, require the canonical directory to equal manifest `target.ticket_dir` exactly in both `finish` and `validate`.
+
+- [ ] **Step 3: Align transient files with Codex runtime**
+
+Set the transient target set to `.ico.lock`, `.index.lock`, and `.migration.lock`; do not retain Claude-only lock names.
+
+- [ ] **Step 4: Refresh derived outputs after lifecycle mutations**
+
+After `start`, `freeze`, and stale-state writes, refresh derived outputs whenever the manifest contains at least one completed round. `finish` continues writing the same derived outputs on successful completion.
+
+- [ ] **Step 5: Run focused tests**
+
+```bash
+python3 -m pytest tests/test_crosscheck.py -q
+```
+
+Expected: PASS, including all three new regressions.
+
+### Task 5.2: Close second-review resume and identity gaps
+
+**Files:**
+- Modify: `steps/01_plan.md`
+- Modify: `SKILL.md`
+- Modify: `references/dir_and_metadata.md`
+- Modify: `tools/icode_crosscheck.py`
+- Modify: `tools/lint_codex_contract.py`
+- Modify: `tests/test_codex_contract.py`
+- Modify: `tests/test_crosscheck.py`
+
+**Interfaces:**
+- Uses: installed state validator at `~/.codex/skills/icodex/tools/icode_state.py` from a user project working directory.
+- Produces: one explicit `start` dispatcher that advances to the first incomplete step instead of always entering step 2.
+- Produces: one complete three-state directory decision shared by `SKILL.md` and `references/dir_and_metadata.md`.
+- Rejects: resuming an existing crosscheck container when the resolved canonical ticket directory differs from the manifest's frozen `target.ticket_dir`.
+
+- [x] **Step 1: Add failing contract and symlink-resume regressions**
+
+Assert the installed validator path, explicit next-step dispatch contract, complete `REUSE=0/1/2` directory rules, and exact manifest target binding during `start` resume. Run the focused tests and confirm they fail on the reviewed implementation.
+
+- [x] **Step 2: Unify start resume dispatch**
+
+Replace the repository-relative validator command with the installed skill path. Route resumed runs through a single `NEXT_STEP` calculation; only a freshly completed step 1 emits the step-1 transition message, while resumed runs announce and enter their actual first incomplete step.
+
+- [x] **Step 3: Make the directory truth source complete**
+
+Mirror `COMMAND`, `HAS_REQUIREMENT`, `status`, and all three `REUSE` states in the shared reference. Guard `REUSE=0` so no-argument invocations fail before creating a directory.
+
+- [x] **Step 4: Bind resumed crosscheck containers to the exact ticket directory**
+
+After a matching container is found, compare its frozen canonical `target.ticket_dir` with the newly resolved canonical target before reading or mutating any round state. Reject a mismatch with `crosscheck_manifest_identity`.
+
+- [x] **Step 5: Run focused and full verification**
+
+```bash
+python3 -m pytest tests/test_codex_contract.py tests/test_crosscheck.py -q
+python3 tools/lint_codex_contract.py .
+python3 -m pytest tests -q
+```
+
+Expected: all tests and lint PASS; the new regressions fail if any one of the four protections is removed.
 
 ### Task 6: Full regression, boundary audit, and handoff
 

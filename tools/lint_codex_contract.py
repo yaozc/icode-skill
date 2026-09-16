@@ -38,14 +38,13 @@ COMMAND_ROUTES = {
     "init": "steps/00_init.md",
     "log": "steps/log.md",
     "plan": "steps/01_plan.md",
-    "start": "steps/run.md",
+    "start": "steps/01_plan.md",
     "review": "steps/02_review.md",
     "merge": "steps/03_merge.md",
     "code": "steps/04_code.md",
     "deepcheck": "steps/05_deepcheck.md",
     "audit": "steps/06_audit.md",
     "crosscheck": "steps/crosscheck.md",
-    "run": "steps/run.md",
     "fast": "steps/fast.md",
     "patch": "steps/08_patch.md",
     "doc": "steps/doc.md",
@@ -68,6 +67,7 @@ STALE_START_TEXT = (
     "`$icodex plan` 与 `$icodex start` 都只执行步骤1",
     "`$icodex plan` and `$icodex start` execute only step 1",
 )
+STALE_RUN_COMMAND = re.compile(r"\$icodex\s+run\b")
 
 
 def _matches(path: str, patterns: Sequence[str]) -> bool:
@@ -144,6 +144,8 @@ def _commands_in_help(root: Path) -> set[str]:
 def lint_routes(root: Path) -> List[str]:
     errors: List[str] = []
     skill = (root / "SKILL.md").read_text(encoding="utf-8")
+    plan_step = (root / "steps/01_plan.md").read_text(encoding="utf-8")
+    directory_rules = (root / "references/dir_and_metadata.md").read_text(encoding="utf-8")
     if not re.search(r"^name:\s*icodex\s*$", skill, re.MULTILINE):
         errors.append("SKILL.md:2: frontmatter name must be icodex")
     for command, target in COMMAND_ROUTES.items():
@@ -158,18 +160,33 @@ def lint_routes(root: Path) -> List[str]:
             "steps/help.md: command set differs from routes; "
             f"missing={sorted(expected - help_commands)} extra={sorted(help_commands - expected)}"
         )
-    if COMMAND_ROUTES["start"] != COMMAND_ROUTES["run"] or COMMAND_ROUTES["start"] != "steps/run.md":
-        errors.append("SKILL.md: start and run must share steps/run.md")
+    if COMMAND_ROUTES["start"] != "steps/01_plan.md":
+        errors.append("SKILL.md: start must use steps/01_plan.md as the full-chain entry")
+    if "run" in COMMAND_ROUTES:
+        errors.append("SKILL.md: run must not be exposed as a command")
+    if (root / "steps" / "run.md").exists():
+        errors.append("steps/run.md: removed run route file must not exist")
     if COMMAND_ROUTES["plan"] != "steps/01_plan.md":
         errors.append("SKILL.md: plan must remain the single-step route")
-    if "`$icodex start` 是标准全流程入口" not in skill:
-        errors.append("SKILL.md: start must be documented as the standard full chain")
+    if "`$icodex start` 是唯一标准全流程入口" not in skill:
+        errors.append("SKILL.md: start must be documented as the only standard full chain")
     if "`$icodex plan` 只执行步骤 1 后暂停" not in skill:
         errors.append("SKILL.md: plan must be documented as step 1 only")
+    if "~/.codex/skills/icodex/tools/icode_state.py validate" not in plan_step:
+        errors.append("steps/01_plan.md: resume validation must use the installed icodex helper")
+    if "python3 tools/icode_state.py validate" in plan_step:
+        errors.append("steps/01_plan.md: repository-relative resume validator is invalid in user projects")
+    if "统一分派规则" not in plan_step or "立即继续执行步骤2" in plan_step:
+        errors.append("steps/01_plan.md: start resume must dispatch to the actual next incomplete step")
+    for marker in ("COMMAND=start|plan", "HAS_REQUIREMENT=1", "REUSE=1", "无参数不得创建新目录"):
+        if marker not in directory_rules:
+            errors.append(f"references/dir_and_metadata.md: incomplete directory decision contract: {marker}")
     for path in active_files(root):
         if path.suffix != ".md":
             continue
         text = path.read_text(encoding="utf-8")
+        if STALE_RUN_COMMAND.search(text):
+            errors.append(f"{path.relative_to(root).as_posix()}: removed $icodex run command is still documented")
         for stale in STALE_START_TEXT:
             if stale in text:
                 errors.append(f"{path.relative_to(root).as_posix()}: stale start-as-plan statement: {stale}")

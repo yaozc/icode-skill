@@ -19,7 +19,7 @@
 ## 关键约定（必读）
 
 - **只读**：不写 metadata、不写 index.json、不写工程内任何文件。**禁止**任何 `--write` 之类的破坏性扩展
-- **不创建工单目录**：与 `$icodex run` / `$icodex init` / `$icodex log` 区别（那些是"创建/复用"，list 是"查找"）
+- **不创建工单目录**：与 `$icodex start` / `$icodex init` / `$icodex log` 区别（那些是"创建/复用"，list 是"查找"）
 - **不参与步骤1~6 推进**：与 `$icodex plan` / `$icodex review` / `$icodex merge` 等区别（那些是"推进流程"，list 是"查询"）
 - **不修改全局索引**：与 `--verdict` / `--scan-verdict` 区别（那些是"标注"，list 是"只读浏览"）
 
@@ -37,7 +37,7 @@
    - `--include-stale`：包含 stale 工单（默认排除）
 2. **读取全局索引**：`json.load` 全量解析上述合并视图的 `tickets` 数组（**禁止按行截断**）
 3. **空索引处理**：
-   - 文件不存在 → 提示"无全局索引，请先跑 `$icodex run` 或 `$icodex init` 创建工单"后退出
+   - 文件不存在 → 提示"无全局索引，请先跑 `$icodex start` 或 `$icodex init` 创建工单"后退出
    - `tickets=[]` → 提示"无工单记录"后退出
 4. **逐条过滤**（AND 关系，所有条件同时满足才保留）：
    - **关键词过滤**：在 `ticket_id` / `project_path` / `requirement_summary` / `keywords` 中大小写不敏感扫子串（关键词用空格分词后所有 token 都需命中，AND 关系）
@@ -103,7 +103,7 @@
 
 | 场景 | 行为 |
 |------|------|
-| 全局索引文件不存在 | 提示"无全局索引，请先跑 `$icodex run` 或 `$icodex init` 创建工单"后退出，不报错 |
+| 全局索引文件不存在 | 提示"无全局索引，请先跑 `$icodex start` 或 `$icodex init` 创建工单"后退出，不报错 |
 | 索引为空（`tickets=[]`） | 提示"无工单记录"后退出 |
 | 关键词无匹配 | 提示"无匹配工单（索引共 N 条，尝试其他关键词或去掉过滤条件）" |
 | 旧 metadata 无 `workload_estimate` | WORKLOAD 列显示 `-`，不报错（向后兼容） |
@@ -125,7 +125,7 @@
 ## 与 `$icodex status` 的协作
 
 - 用户从 `$icodex list` 看到感兴趣的 ticket_id → 用 `$icodex status --verdict {ticket_id} ...` 标注
-- 用户从 `$icodex list` 看到要继续推进的工单 → 用对应工程的 `$icodex run` / `$icodex plan`（**仍需在工程目录下运行**，list 不支持跳转）
+- 用户从 `$icodex list` 看到要继续推进的工单 → 用对应工程的 `$icodex start` / `$icodex plan`（**仍需在工程目录下运行**，list 不支持跳转）
 - 用户想批量扫证伪信号 → `$icodex status --scan-verdict`（跨工程批量治理）
 
 ## 性能

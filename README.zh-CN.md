@@ -38,7 +38,7 @@ bash ~/.codex/skills/icodex/mcp/install-codex.sh
 01 计划 → 02 审查 → 03 定稿 → 04 编码 → 05 深检 → 06 终审
 ```
 
-`$icodex start` 是自动串联 staged 1→6 的标准入口，`$icodex run` 是行为完全一致的兼容别名。
+`$icodex start` 是自动串联 staged 1→6 的唯一标准入口。
 
 `$icodex plan` 只执行步骤1并暂停；`$icodex fast` 是精简串联。
 
@@ -57,7 +57,6 @@ bash ~/.codex/skills/icodex/mcp/install-codex.sh
 | `$icodex deepcheck` | staged 步骤5 |
 | `$icodex audit` | staged 步骤6 |
 | `$icodex crosscheck [目标]` | 对 completed 工单做持久化多轮复评；目标保持只读 |
-| `$icodex run [需求]` | `start` 的兼容别名，自动执行 staged 1→6 |
 | `$icodex fast [需求]` | 精简 staged 流程 |
 | `$icodex patch [变更]` | 在既有工单上追加验证过的补丁 |
 | `$icodex doc [描述]` | 工程/模块知识库 |

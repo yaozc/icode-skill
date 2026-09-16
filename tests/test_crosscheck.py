@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -317,6 +318,22 @@ def test_crosscheck_outputs_do_not_make_finish_stale(workspace):
     assert finished["state"] == "completed"
 
 
+def test_codex_lock_churn_does_not_make_finish_stale(workspace):
+    root, ticket, env = workspace
+    lock = ticket / ".ico.lock"
+    lock.write_text("owner-a\n", encoding="utf-8")
+    started = run_tool(env, "start", "--workspace", root, "--ticket", "demo-1")
+    directory = Path(started["crosscheck_dir"])
+    write_fresh(directory / "crosscheck_round_1.fresh.json", fresh_payload(1), env)
+    run_tool(env, "freeze", "--dir", directory, "--round", "1")
+    write_json(directory / "crosscheck_round_1.json", fresh_payload(1))
+
+    lock.write_text("owner-b\n", encoding="utf-8")
+    finished = run_tool(env, "finish", "--dir", directory, "--round", "1")
+
+    assert finished["state"] == "completed"
+
+
 def test_no_argument_never_guesses_latest(workspace):
     root, _ticket, env = workspace
     failed = run_tool(env, "start", "--workspace", root, expected=1)
@@ -405,6 +422,21 @@ def test_finish_idempotently_repairs_missing_derived_reports(workspace):
     assert (directory / "findings.json").is_file()
     assert (directory / "crosscheck_report.md").is_file()
     run_tool(env, "validate", "--dir", directory)
+
+
+def test_validate_accepts_container_while_next_round_is_in_progress(workspace):
+    root, _ticket, env = workspace
+    started = run_tool(env, "start", "--workspace", root, "--ticket", "demo-1")
+    directory = Path(started["crosscheck_dir"])
+    write_fresh(directory / "crosscheck_round_1.fresh.json", fresh_payload(1), env)
+    run_tool(env, "freeze", "--dir", directory, "--round", "1")
+    write_json(directory / "crosscheck_round_1.json", fresh_payload(1))
+    run_tool(env, "finish", "--dir", directory, "--round", "1")
+
+    run_tool(env, "start", "--workspace", root, "--ticket", "demo-1")
+    validated = run_tool(env, "validate", "--dir", directory)
+    assert validated["rounds"] == 2
+    assert validated["completed_rounds"] == 1
 
 
 def test_history_compare_skips_stale_rounds(workspace):
@@ -508,3 +540,31 @@ def test_manifest_paths_and_container_symlinks_fail_closed(workspace):
     alias.symlink_to(directory, target_is_directory=True)
     denied_alias = run_tool(env, "validate", "--dir", alias, expected=1)
     assert denied_alias["gate_id"] == "crosscheck_symlink"
+
+
+def test_manifest_target_cannot_be_redirected_by_symlink(workspace):
+    root, ticket, env = workspace
+    started = run_tool(env, "start", "--workspace", root, "--ticket", "demo-1")
+    directory = Path(started["crosscheck_dir"])
+    replacement = ticket.parent / "icode_2"
+    shutil.copytree(ticket, replacement)
+    shutil.rmtree(ticket)
+    ticket.symlink_to(replacement, target_is_directory=True)
+
+    denied = run_tool(env, "validate", "--dir", directory, expected=1)
+    assert denied["gate_id"] == "target_symlink"
+
+
+def test_start_resume_rejects_nested_target_path_redirected_by_symlink(workspace):
+    root, ticket, env = workspace
+    started = run_tool(env, "start", "--workspace", root, "--ticket", "demo-1")
+    manifest_path = Path(started["crosscheck_dir"]) / "crosscheck_manifest.json"
+    manifest_before = manifest_path.read_bytes()
+    replacement = ticket.parent / "icode_2"
+    shutil.copytree(ticket, replacement)
+    shutil.rmtree(ticket)
+    ticket.symlink_to(replacement, target_is_directory=True)
+
+    denied = run_tool(env, "start", "--workspace", root, ticket / "01_plan.md", expected=1)
+    assert denied["gate_id"] == "crosscheck_manifest_identity"
+    assert manifest_path.read_bytes() == manifest_before

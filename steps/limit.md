@@ -7,7 +7,7 @@
 - 主存：`~/.codex/icode_data/limits/<project_id>.md`（全局，跨 checkout 共享）
 - 覆盖：`<project_root>/.ai/icode/limit.local/<project_id>.md`（单 checkout，自动 gitignore）
 **会话**: 主会话
-**定位**: **项目约束红线生成与维护，独立步骤**。不创建 `.ai/icode/icode_N/`、不写 `.ico_metadata.json`、不更新工单 `completed_steps`/`status`。产物供 `$icodex plan`/`run`/`fast` 启动时**作为硬基线引用**（plan §3 架构设计/§4 ADR/§6 异常处理须呼应 limit 条目）；**亦供 `$icodex log` 根因分析时作为对照清单**（log 步骤4 limit 红线检查点读取，逐条对照根因假设是否违反约定红线）。
+**定位**: **项目约束红线生成与维护，独立步骤**。不创建 `.ai/icode/icode_N/`、不写 `.ico_metadata.json`、不更新工单 `completed_steps`/`status`。产物供 `$icodex plan`/`start`/`fast` 启动时**作为硬基线引用**（plan §3 架构设计/§4 ADR/§6 异常处理须呼应 limit 条目）；**亦供 `$icodex log` 根因分析时作为对照清单**（log 步骤4 limit 红线检查点读取，逐条对照根因假设是否违反约定红线）。
 
 读取约束时使用 `~/.codex/skills/icodex/tools/icode_state.py merged-files --kind limits`，Codex 同 key 优先；追加或覆盖只写 Codex 主存与当前 checkout local 文件，绝不修改 Claude legacy 限制文件。
 
@@ -250,7 +250,7 @@ LOCAL_FILE="$LOCAL_DIR/$PROJECT_ID.md"
 
 ## 衔接与可重复
 
-- **plan 消费**：`$icodex plan`/`run`/`fast` 启动时自动检测 main + local，柔性提示或读取作为硬基线
+- **plan 消费**：`$icodex plan`/`start`/`fast` 启动时自动检测 main + local，柔性提示或读取作为硬基线
 - **可重复**：多次 `$icodex limit <...>` 持续追加，编号自动递增
 - **手动编辑**：用户可直接编辑 main/local 文件（约定文件，非 AI 独占），AI 追加时按编号续接
 

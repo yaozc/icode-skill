@@ -5,7 +5,7 @@
 **命令**: `$icodex doc [自然语言]`
 **产出**: `~/.codex/icode_data/project_docs/<project_id>/<branch>/*.md`（分支子目录隔离，**切换分支跑 doc 不互相覆盖**；章节自带身份证）
 **会话**: 主会话
-**定位**: **工程级知识库生成与维护，独立步骤**。不创建 `.ai/icode/icode_N/`、不写 `.ico_metadata.json`、不更新工单 `completed_steps`/`status`。知识库供 `$icodex init`/`log`/`plan`/`run`/`fast` 启动时**段零检索**自动注入。
+**定位**: **工程级知识库生成与维护，独立步骤**。不创建 `.ai/icode/icode_N/`、不写 `.ico_metadata.json`、不更新工单 `completed_steps`/`status`。知识库供 `$icodex init`/`log`/`plan`/`start`/`fast` 启动时**段零检索**自动注入。
 
 读取已有工程/模块文档时使用 `~/.codex/skills/icodex/tools/icode_state.py merged-files --kind project_docs|module_docs`，Codex 同 key 优先；所有新增、增量、stale 和元数据更新只写 `~/.codex/icode_data/`。Claude legacy 文件只可作为参考，若同 key 已有 Codex 文件不得混写或覆盖 legacy。
 
@@ -424,7 +424,7 @@ find "${GIT_ROOT}" -maxdepth 3 -name "<module_name>" -type d
 
 ## 衔接与可重复
 
-- **段零消费**：`$icodex init`/`log`/`plan`/`run`/`fast` 启动时段零自动检索（见 [dir_and_metadata.md](../references/dir_and_metadata.md)「段零·工程文档检索」段）；**doc 自身不写 `_inject_cache.json`**（工单目录缓存，doc 不创建工单）
+- **段零消费**：`$icodex init`/`log`/`plan`/`start`/`fast` 启动时段零自动检索（见 [dir_and_metadata.md](../references/dir_and_metadata.md)「段零·工程文档检索」段）；**doc 自身不写 `_inject_cache.json`**（工单目录缓存，doc 不创建工单）
 - **可重复**：多次 `$icodex doc` 覆盖更新，手动编辑受确认门保护
 ## MCP 推荐（强证据二元化）
 | MCP | 推荐级别 | 用途 |

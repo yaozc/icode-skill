@@ -109,7 +109,7 @@
 > **spawn 等待规格**（引用 [references/adversarial.md](../references/adversarial.md)「显式等待 + 超时机制」段）：spawn 3 质疑者必须**显式等 verdict**——同步 `Agent` spawn（`run_in_background: false`）或异步 + `TaskOutput` 等结果，**禁止 spawn 后不等待直接进入下一步**；超时 `TIMEOUT_SECONDS = 120`（可由 metadata.task_timeout_seconds 覆盖），超时触发重试 1 次（换措辞 + 可换 subagent_type 兜底），二次仍超时走 `[未验证-子代理对抗失败]`。**禁止**未等待就标 `[未验证-子代理对抗失败]`——该标签留给「确认失败」的子代理，不得给「仍在跑/返回晚」的子代理（2026-07-29 实测踩坑）。判定状态四态枚举（`sync_ok` / `timeout_retry_used` / `still_failed_after_retry` / `env_no_spawn`）必须写入 `adversarial_verification` 字段便于审计。
 > **子代理失败处理**（实测痛点：质疑者偶尔只返回开场白/被截断）：**禁止改由主代理自演裁决**。失败时按 adversarial.md「子代理失败处理」重试 2 次（含 1 次换 subagent_type）→仍失败诚实降级为 `[未验证-子代理对抗失败]` 计入 `pending_verification`，绝不伪造 `confirmed`。主代理 Read/Grep 实证铁证不算自演（属事实核查），判断性结论才必须独立 spawn。
 
-> **log 阶段对抗验证结论复用**（针对方式D log→run 工单）：如果当前工单来自 `$icodex log` 入口（`completed_steps` 含 `"log"`），log 阶段已对根因做对抗验证（3 质疑者独立 spawn），步骤2 **可复用**该结论，不需重新 spawn 3 质疑者对抗根因。但**仍需**对"步骤1 计划本身"（9 章节结构、ADR 合理性、错误处理充分性等）做 3 轮审查（不依赖对抗验证）。复用的具体方式：把 log_analysis.md 第 6 章「对抗分析记录」作为已确认的根因引用，在 review_round_*.json 中标注 "log_phase_adversarial=reused" 字段。
+> **log 阶段对抗验证结论复用**（针对方式D log→start 工单）：如果当前工单来自 `$icodex log` 入口（`completed_steps` 含 `"log"`），log 阶段已对根因做对抗验证（3 质疑者独立 spawn），步骤2 **可复用**该结论，不需重新 spawn 3 质疑者对抗根因。但**仍需**对"步骤1 计划本身"（9 章节结构、ADR 合理性、错误处理充分性等）做 3 轮审查（不依赖对抗验证）。复用的具体方式：把 log_analysis.md 第 6 章「对抗分析记录」作为已确认的根因引用，在 review_round_*.json 中标注 "log_phase_adversarial=reused" 字段。
 
 **输入契约**（喂质疑者）：`01_plan.md` 路径 + 相关代码文件路径 + **`rg -in '<需求关键词>'` 命中的非计划文件**（质疑者看不到重叠文件就永远不会质疑必要性，grep 命中文件必须喂入——主代理自己都不知道已有等价实现时，只有重叠文件能让质疑者发现它）+ 待验证 issue 清单（含 `id`/`affected_sections`/`suggestion`/`rejection_risk`/`evidence_pointer`）。
 

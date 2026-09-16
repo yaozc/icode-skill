@@ -3,7 +3,7 @@
 > 本文件是 icode 所有步骤共享的「强制思考前置」**核心规则**，每步必读。
 > 各步骤子项详见 [thinking_detail.md](thinking_detail.md)「各步骤思考子项」段，按需 Read 自身步骤对应小节（各 step 文件本已声明本步骤子项，主要作为速查）。
 >
-> 历史参考小节（init/plan/log/run 检索命中时）按 verdict 分流标注在 [thinking_detail.md](thinking_detail.md)「历史参考小节」段。
+> 历史参考小节（init/plan/log/start 检索命中时）按 verdict 分流标注在 [thinking_detail.md](thinking_detail.md)「历史参考小节」段。
 
 ## 强证据化总览
 

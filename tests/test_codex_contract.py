@@ -39,18 +39,32 @@ class BoundaryTests(unittest.TestCase):
 
 
 class RepositoryContractTests(unittest.TestCase):
-    def test_start_and_run_share_full_chain_route(self) -> None:
+    def test_start_is_the_only_full_chain_route(self) -> None:
         root = Path(__file__).resolve().parents[1]
         skill = (root / "SKILL.md").read_text(encoding="utf-8")
-        run_step = (root / "steps" / "run.md").read_text(encoding="utf-8")
         plan_step = (root / "steps" / "01_plan.md").read_text(encoding="utf-8")
-        self.assertEqual(COMMAND_ROUTES["start"], "steps/run.md")
-        self.assertEqual(COMMAND_ROUTES["start"], COMMAND_ROUTES["run"])
+        directory_rules = (root / "references" / "dir_and_metadata.md").read_text(encoding="utf-8")
+        self.assertEqual(COMMAND_ROUTES["start"], "steps/01_plan.md")
+        self.assertNotIn("run", COMMAND_ROUTES)
         self.assertEqual(COMMAND_ROUTES["plan"], "steps/01_plan.md")
-        self.assertIn("`$icodex start` 是标准全流程入口", skill)
+        self.assertFalse((root / "steps" / "run.md").exists())
+        self.assertIn("`$icodex start` 是唯一标准全流程入口", skill)
         self.assertIn("`$icodex plan` 只执行步骤 1 后暂停", skill)
-        self.assertIn("行为完全一致", run_step)
+        self.assertNotIn("$icodex run", skill)
+        self.assertIn("无参数时恢复最新未完成", skill)
         self.assertIn("单独调用 `plan` 随后停止", plan_step)
+        self.assertIn("~/.codex/skills/icodex/tools/icode_state.py validate", plan_step)
+        self.assertNotIn("python3 tools/icode_state.py validate", plan_step)
+        self.assertIn("统一分派规则", plan_step)
+        self.assertNotIn("立即继续执行步骤2", plan_step)
+        self.assertIn("COMMAND=start|plan", directory_rules)
+        self.assertIn("HAS_REQUIREMENT=1", directory_rules)
+        self.assertIn("REUSE=1", directory_rules)
+        resume_binding = 'if [ "$REUSE" = "1" ]; then\n  ICODE_OUT_DIR="$CAND"\nfi'
+        self.assertIn(resume_binding, skill)
+        self.assertIn(resume_binding, directory_rules)
+        self.assertIn('if [ "$HAS_REQUIREMENT" = "0" ]; then', directory_rules)
+        self.assertIn("无参数不得创建新目录", directory_rules)
 
     def test_crosscheck_is_persistent_but_target_read_only(self) -> None:
         root = Path(__file__).resolve().parents[1]
