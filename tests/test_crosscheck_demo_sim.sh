@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+TMP_ROOT="$(mktemp -d)"
+trap 'rm -rf "$TMP_ROOT"' EXIT
+cp -a "$ROOT/demo" "$TMP_ROOT/demo"
+
+HOME="$TMP_ROOT/home" PYTHONDONTWRITEBYTECODE=1 python3 - "$ROOT" "$TMP_ROOT/demo" <<'PY'
+import hashlib
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+root = pathlib.Path(sys.argv[1]).resolve()
+demo = pathlib.Path(sys.argv[2]).resolve()
+tool = root / "tools/icode_crosscheck.py"
+ticket = demo / ".ai/icode/icode_4"
+ticket.mkdir(parents=True)
+artifacts = {
+    "requirement": "00_requirements.md",
+    "root_cause": None,
+    "plan": "01_plan.md",
+    "plan_review": "02_plan_review.md",
+    "final_plan": "03_plan_final.md",
+    "implementation": "04_code_review_fix.md",
+    "deepcheck": "05_deepcheck.md",
+    "audit": "06_audit.md",
+    "patches": None,
+    "delivery_report": None,
+    "delivery_brief": None,
+}
+for relative in (value for value in artifacts.values() if value):
+    (ticket / relative).write_text(f"# {relative}\n\nDemo evidence.\n", encoding="utf-8")
+(ticket / ".ico_metadata.json").write_text(json.dumps({
+    "ticket_id": "demo-4",
+    "status": "completed",
+    "artifact_layout": "staged",
+    "artifact_map": artifacts,
+    "current_phase": None,
+    "completed_phases": [],
+    "completed_steps": ["0", "1", "2", "3", "4", "5", "6"],
+    "code_files": ["calc.c", "calc.h", "main.c"],
+    "patch_count": 0,
+    "patch_history": [],
+    "delivery_report_generated": False,
+}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+index = pathlib.Path(os.environ["HOME"]) / ".codex/icode_data/index.json"
+index.parent.mkdir(parents=True)
+index.write_text(json.dumps({"schema_version": 1, "tickets": [{
+    "ticket_id": "demo-4",
+    "project_path": str(demo),
+    "out_dir": ".ai/icode/icode_4",
+    "status": "completed",
+}]}) + "\n", encoding="utf-8")
+subprocess.run(["git", "init", "-q", str(demo)], check=True)
+(demo / ".gitignore").write_text(".ai/icode/\n*.o\ncalc_demo\n.all_tests_final/\n.ui_runtime_sim*/\n*.tmp\n", encoding="utf-8")
+subprocess.run(["git", "-C", str(demo), "add", "calc.c", "calc.h", "main.c", "Makefile"], check=True)
+subprocess.run(["git", "-C", str(demo), "add", ".gitignore"], check=True)
+subprocess.run(["git", "-C", str(demo), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                "commit", "-qm", "isolated demo source baseline"], check=True)
+
+def digest_tree(path):
+    digest = hashlib.sha256()
+    for item in sorted(path.rglob("*")):
+        if item.is_file() and not item.is_symlink():
+            digest.update(str(item.relative_to(path)).encode())
+            digest.update(item.read_bytes())
+    return digest.hexdigest()
+
+def run(*args, expected=0):
+    proc = subprocess.run(
+        [sys.executable, str(tool), *map(str, args)], cwd=root,
+        text=True, capture_output=True, check=False,
+    )
+    assert proc.returncode == expected, proc.stdout + proc.stderr
+    return json.loads(proc.stdout)
+
+def payload(number, status="new"):
+    return {
+        "schema_version": 1,
+        "target_ticket_id": "demo-4",
+        "round": number,
+        "reviewed_at": f"2026-09-14T09:{number:02d}:00+08:00",
+        "verdict": "pass_with_suggestions",
+        "evidence_boundary": "demo Codex 工单静态模拟；未执行实机验证",
+        "summary": "设计与代码链路可读，建议补充一个边界说明",
+        "findings": [{
+            "finding_id": "DEMO-CC-1",
+            "title": "补充边界说明",
+            "severity": "suggestion",
+            "status": status,
+            "category": "documentation",
+            "evidence": ["03_plan_final.md"],
+            "analysis": "边界可进一步显式化",
+            "recommendation": "在后续 patch 中按需补充，不自动修改",
+            "requires_change": False,
+            "locations": [],
+            "evidence_boundary": "仅设计文档建议，未声称源码存在确认缺陷",
+        }],
+    }
+
+target_before = digest_tree(ticket)
+index_before = index.read_bytes()
+
+def read_worklist(directory, number):
+    report = json.loads((directory / f"crosscheck_round_{number}.worklist.json").read_text())
+    for unit in report["units"]:
+        for entry in unit["files"]:
+            data = (demo / entry["path"]).read_bytes()
+            assert hashlib.sha256(data).hexdigest() == entry["sha256"]
+            run("inspection", "--dir", directory, "--round", number, "--phase", "read", "--path", entry["path"])
+
+# Round 1: native Codex completed ticket, explicit artifact path, full success.
+started = run("start", "--workspace", demo, ticket / "03_plan_final.md")
+directory = pathlib.Path(started["crosscheck_dir"])
+assert directory.parent == demo / ".ai/icode/.crosscheck"
+(directory / "crosscheck_round_1.fresh.json").write_text(
+    json.dumps(payload(1), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+)
+read_worklist(directory, 1)
+run("freeze", "--dir", directory, "--round", 1)
+(directory / "crosscheck_round_1.json").write_text(
+    json.dumps(payload(1), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+)
+run("finish", "--dir", directory, "--round", 1)
+assert digest_tree(ticket) == target_before
+assert index.read_bytes() == index_before
+
+# Round 2: modify the copied ticket during review; finish must preserve stale_input.
+run("start", "--workspace", demo, "--ticket", "demo-4")
+(directory / "crosscheck_round_2.fresh.json").write_text(
+    json.dumps(payload(2), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+)
+read_worklist(directory, 2)
+run("freeze", "--dir", directory, "--round", 2)
+(directory / "crosscheck_round_2.json").write_text(
+    json.dumps(payload(2, "still_present"), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+)
+(ticket / "03_plan_final.md").write_text(
+    (ticket / "03_plan_final.md").read_text(encoding="utf-8") + "\nDemo drift.\n",
+    encoding="utf-8",
+)
+stale_baseline = digest_tree(ticket)
+stale = run("finish", "--dir", directory, "--round", 2, expected=1)
+assert stale["state"] == "stale_input"
+assert digest_tree(ticket) == stale_baseline
+
+# Round 3: new stable review compares against the most recent completed round (Round 1).
+third = run("start", "--workspace", demo, "--ticket", "demo-4")
+assert third["round"] == 3
+(directory / "crosscheck_round_3.fresh.json").write_text(
+    json.dumps(payload(3), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+)
+read_worklist(directory, 3)
+frozen = run("freeze", "--dir", directory, "--round", 3)
+assert frozen["previous_round"].endswith("crosscheck_round_1.json")
+(directory / "crosscheck_round_3.json").write_text(
+    json.dumps(payload(3, "still_present"), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+)
+run("finish", "--dir", directory, "--round", 3)
+validated = run("validate", "--dir", directory)
+assert validated["rounds"] == 3 and validated["completed_rounds"] == 2
+assert not list(directory.rglob(".ico_metadata.json"))
+assert index.read_bytes() == index_before
+print("PASS demo Codex multi-round/stale/resume/zero-write simulation")
+PY
