@@ -1,4 +1,6 @@
 # 步骤 8（独立步骤）— 追加修改 patch
+> **业务流程合同前置**：先读取 [workflow_contract.md](../references/workflow_contract.md)；新票默认 workflow_contract_version=1，旧票执行新版先 configure-workflow 显式迁移。每次推进前读取 workflow-plan；重大增量 record-delta 在原票回步骤1，更新计划后 accept-replan 再执行2→6；未决 semantic_decisions 阻断实现，生命周期预期缺失阻断编码。verification-pending 只读显示分层债务；completed 不代表 delivery_verdict=verified。
+
 
 > **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
 
@@ -300,3 +302,5 @@ LAST=$(ls -d .ai/icode/icode_* 2>/dev/null | grep -oP '(?<=icode_)\d+' | sort -n
 **与「patch 会话语义」的配合**：一次显式调用后的所有追问归入同一 Patch N 段（N 不增）；只有再次显式调用才开新段。区分原则：**段 = 显式调用次数**，**轮次 = 会话追问次数**（轮次记在段内，不体现在段编号上）。
 
 **交付报告联动**：若该工单已生成过交付报告（`07_readme.md` 产物），本次 patch 涉及功能/修复范围变化时，提示用户"补丁后建议重新 `$icodex readme` 刷新交付报告 + 跨领域简报"（不自动执行，用户决定）。
+
+实施前先读取 workflow-plan，重大需求不得进入四段式实施。诊断预留必须 reserve-patch --intent analysis_only，发布 --patch-number 并 finalize analysis_only；已有预留续跑也重新验 gate。

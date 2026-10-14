@@ -3,7 +3,7 @@
 # sync-to-global.sh —— 镜像同步 dev_repo → ~/.codex/skills/icodex/
 #
 # 关键机制:
-#   rsync --filter=':- .gitignore' 自动应用工程顶层 .gitignore 规则
+#   rsync --exclude-from 应用工程顶层 .gitignore 规则
 #   确保 mcp/*/config.json 等用户本地运行时配置不被 --delete 误删
 #
 # 用法:
@@ -25,12 +25,13 @@ GLOBAL_DIR="${GLOBAL_DIR:-$HOME/.codex/skills/icodex}"
 
 # 参数解析
 MODE="dry-run"
+DELETE_ENABLED=true
 RSYNC_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --apply)        MODE="apply" ;;
     --dry-run)      MODE="dry-run" ;;
-    --no-delete)    RSYNC_ARGS+=(--no-delete) ;;
+    --no-delete)    DELETE_ENABLED=false ;;
     -h|--help)
       sed -n '2,20p' "$0"
       exit 0
@@ -42,6 +43,9 @@ for arg in "$@"; do
       ;;
   esac
 done
+if [ "$DELETE_ENABLED" = true ]; then
+  RSYNC_ARGS+=(--delete)
+fi
 
 # 前置检查
 if ! command -v rsync >/dev/null 2>&1; then
@@ -50,7 +54,7 @@ if ! command -v rsync >/dev/null 2>&1; then
 fi
 
 if [ ! -f "$DEV_REPO/.gitignore" ]; then
-  echo "❌ $DEV_REPO/.gitignore 不存在,无法应用 --filter=':- .gitignore'" >&2
+  echo "❌ $DEV_REPO/.gitignore 不存在,无法应用同步排除规则" >&2
   exit 1
 fi
 
@@ -69,15 +73,16 @@ else
 fi
 
 # 核心命令
-# --filter=':- .gitignore'  : rsync 自动读 dev_repo 顶层 .gitignore 并应用排除规则
+# --exclude-from            : 显式向两端传递顶层排除规则；openrsync 的目录合并过滤
+#                            只排除源端时，--delete 仍会删除目标端运行时配置。
 # --exclude                 : 额外硬排除开发仓库本地产物 (防止 .gitignore 漏配)
 # --delete                  : 镜像同步语义——删除目标端 dev_repo 已不存在的文件
 #                            (dev repo 删除的文件会同步删除; --no-delete 可关闭)
 #                            被 .gitignore 排除的 mcp/*/config.json 等用户配置不受影响
 # Bash 3.2 在 set -u 下展开空数组会报 unbound variable；条件展开保持零参数。
 # worktree 的 .git 是普通文件，普通 checkout 的 .git 是目录；不带尾斜杠同时保护两种形态。
-rsync -avc --delete ${RSYNC_ARGS[@]+"${RSYNC_ARGS[@]}"} \
-  --filter=':- .gitignore' \
+rsync -avc ${RSYNC_ARGS[@]+"${RSYNC_ARGS[@]}"} \
+  --exclude-from="$DEV_REPO/.gitignore" \
   --exclude='.git' \
   --exclude='.codex/' \
   --exclude='demo/' \

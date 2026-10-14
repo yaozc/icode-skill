@@ -1,7 +1,7 @@
 # ============================================================
 # 顶层 .gitignore —— 单一来源，覆盖全工程
 # 整合原因：原 mcp/*/.gitignore 7 个文件内容 100% 重复
-#          + 防止 rsync --delete 误删 mcp/*/config.json 等用户本地配置
+#          + 作为 rsync --exclude-from 的两端保护规则，避免 --delete 误删配置
 # ============================================================
 
 # --- 1. 本地开发产物（demo/ 临时输出）---
@@ -14,6 +14,14 @@
 /demo/log/
 /demo/.serena/
 /optimization_*.md
+# 工单、私密资料和测试缓存不进入分发载荷，也保护目标端同类本地数据。
+/.ai/
+/.pytest_cache/
+/docs/private/
+/docs/local/
+__pycache__/
+*.pyc
+*.pyo
 
 # --- 2. tools/tb：个人鉴权凭证与本地真实配置 ---
 # (同事各自用 tb_cookie.py 生成，勿提交)

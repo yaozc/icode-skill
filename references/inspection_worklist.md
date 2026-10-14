@@ -4,7 +4,7 @@
 
 ## 范围与关联审查
 
-`metadata.code_files` 是必审种子，不是影响面穷尽证明。先 Read 定稿/patch，按符号检索调用方、实现/头文件、测试与配置消费者，以可重复的 `--related <项目根相对路径>` 纳入真实关联文件。默认在种子父目录内枚举受影响 Git 仓 staged/unstaged/untracked 差异，联审同名头文件/实现/test；跨目录显式关联也必审。范围外改动列 exclusions，不吸收其它工单；扩大 Git 边界用可重复 `--scope <相对目录>`。
+`metadata.code_files` 是必审种子，不是影响面穷尽证明。先 Read 定稿/patch，按符号检索调用方、实现/头文件、测试与配置消费者，以可重复的 `--related <项目根相对路径>` 纳入真实关联文件。Crosscheck 默认在子目录种子的父目录内枚举受影响 Git 仓 staged/unstaged/untracked 差异，联审同名头文件/实现/test；根目录种子使用文件本身作为 scope，避免 `build.sh` 等文件把大仓全部纳入枚举。根文件的调用方、测试与配置消费者须显式关联；跨目录显式关联也必审。范围外改动列 exclusions，不吸收其它工单；扩大 Git 边界用可重复 `--scope <相对目录>`，`--scope .` 表示整个仓库。已有轮次恢复沿用原清单 scope，不重写历史声明。独立 `build_worklist` API 保留种子父目录默认值。
 
 已知工单/上游基线时必须用 `--baselines-json '{"<仓库相对根>":"<真实ref>"}'`（根仓键 `.`），不得把默认 HEAD 冒充工单原基线。错误 ref 不回退；多仓独立解析，删除文件读取基线原文并标记 deleted。无 Git、不可读/binary/过大文件、预算或超时均记录 partial/unobserved，默认最多 200 文件、每文件 1MiB。LIMIT 优先，rules 是检查提示、不是已执行 lint。
 
@@ -17,6 +17,8 @@
 本版本只把该工作清单接入独立 `crosscheck`。正式工单的 code、deepcheck 和 audit 继续执行各自步骤文件中的现有检查，不写入第二套 worklist，也不调用 Claude 控制面。后续若要扩展到正式工单，必须先为 `icode_state.py` 设计同等级的原子写入与 attempt 身份合同；不得直接复用 crosscheck 隔离目录或绕开 metadata 校验。
 
 Crosscheck 清单遗漏时保持 `coverage_status=partial|degraded` 和 `unobserved=[{"path":"<遗漏范围>","debt_reason":"<原因>"}]`，或明确全局 `debt_reason`，不允许声称“全审完成”。身份、路径和版本违规不能降级为债务。
+
+即使已枚举的单元全部实读，预算截断产生的覆盖债务仍只允许 blocked 终结；不能据此给出 pass 或其它非 blocked 结论。
 
 ## Finding 定位与版本
 

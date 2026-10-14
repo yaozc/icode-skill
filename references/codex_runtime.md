@@ -1,4 +1,6 @@
 # Codex 运行时契约
+> **业务流程合同前置**：先读取 [workflow_contract.md](workflow_contract.md)；新票默认 workflow_contract_version=1，旧票执行新版先 configure-workflow 显式迁移。每次推进前读取 workflow-plan；重大增量 record-delta 在原票回步骤1，更新计划后 accept-replan 再执行2→6；未决 semantic_decisions 阻断实现，生命周期预期缺失阻断编码。verification-pending 只读显示分层债务；completed 不代表 delivery_verdict=verified。
+
 
 本文件是所有活动步骤的持久化真源；与旧步骤文字冲突时以这里和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
 
@@ -40,6 +42,12 @@ python3 ~/.codex/skills/icodex/tools/icode_state.py validate --run-dir "${ICODE_
 - concise：`completed_phases` 是 `diagnose,plan,implement,self_review,audit,verify` 的精确前缀；`current_phase` 是下一阶段；完整时 `status=completed` 且 `current_phase=null`。
 - staged：`completed_steps` 可由互斥的 `0` 或 `log` 开头，之后是 `1,2,3,4,5,6` 的精确前缀；状态必须与前缀匹配。
 - 任意乱序、重复、跳号、状态不匹配、必需映射缺失或映射越界都停止写回。
+
+## fast 风险执行合同
+
+fast、新风险与升级后的恢复必须读取 [fast_risk.md](fast_risk.md)。风险评估经 `assess-fast-risk` 原子落盘，`workflow-plan` 只读返回实际模式与下一步；身份、路径和状态门禁仍优先，不能绕过 validate。requested_mode 只用于解释最初请求，metadata.mode 与 effective_mode 决定实际动作。
+
+晚升级可以在同工单保留旧状态快照后回到 plan_done，补跑完整 review→merge→code→deepcheck→audit。full 重跑发布不同内容时 helper 使用 full/ 修订路径，旧文件保留；所有前置检查、Read、修改及发布必须解析 artifact_map，不能按固定文件名读取上一版 fast 产物。源码不会回滚，完整 code 阶段核对当前实现并补齐必要修改。风险接受 override 不属于本移植。
 
 ## 合并读取与迁移
 

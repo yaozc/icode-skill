@@ -6,6 +6,8 @@ from tools.lint_codex_contract import (
     COMMAND_ROUTES,
     MCP_THREE_STATE_TRUTH_SOURCES,
     lint_active_boundaries,
+    lint_fast_risk_contract,
+    lint_workflow_contract,
     lint_mcp_fallback_contract,
     lint_repo,
 )
@@ -58,6 +60,42 @@ class BoundaryTests(unittest.TestCase):
 
 
 class RepositoryContractTests(unittest.TestCase):
+    def test_workflow_hook_cannot_disappear_from_patch(self) -> None:
+        import shutil
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        repository = Path(__file__).resolve().parents[1]
+        for relative in ("SKILL.md", "references/codex_runtime.md", "references/dir_and_metadata.md",
+                         "references/workflow_contract.md", "steps/verify.md", "steps/fast.md", "steps/01_plan.md",
+                         "steps/02_review.md", "steps/03_merge.md", "steps/04_code.md", "steps/05_deepcheck.md",
+                         "steps/06_audit.md", "steps/08_patch.md", "steps/status.md"):
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(repository / relative, path)
+        self.assertEqual(lint_workflow_contract(root), [])
+        path = root / "steps/08_patch.md"
+        path.write_text(path.read_text().replace("workflow-plan", "old-dispatch"))
+        self.assertTrue(lint_workflow_contract(root))
+
+    def test_risk_hook_cannot_disappear_from_a_downstream_step(self) -> None:
+        import shutil
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        repository = Path(__file__).resolve().parents[1]
+        for relative in ("SKILL.md", "steps/fast.md", "steps/01_plan.md", "steps/02_review.md",
+                         "steps/03_merge.md", "steps/04_code.md", "steps/05_deepcheck.md", "steps/06_audit.md",
+                         "references/dir_and_metadata.md", "references/codex_runtime.md", "references/fast_risk.md"):
+            destination = root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(repository / relative, destination)
+        self.assertEqual(lint_fast_risk_contract(root), [])
+        deepcheck = root / "steps/05_deepcheck.md"
+        deepcheck.write_text(deepcheck.read_text().replace("workflow-plan", "missing-hook"))
+        errors = lint_fast_risk_contract(root)
+        self.assertTrue(any("steps/05_deepcheck.md" in error for error in errors))
+
     def test_mcp_fallback_contract_is_host_neutral_and_three_state(self) -> None:
         root = Path(__file__).resolve().parents[1]
         self.assertEqual(lint_mcp_fallback_contract(root), [])

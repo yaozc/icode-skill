@@ -1,4 +1,6 @@
 # 步骤 1 — 拟定正式项目计划
+> **业务流程合同前置**：先读取 [workflow_contract.md](../references/workflow_contract.md)；新票默认 workflow_contract_version=1，旧票执行新版先 configure-workflow 显式迁移。每次推进前读取 workflow-plan；重大增量 record-delta 在原票回步骤1，更新计划后 accept-replan 再执行2→6；未决 semantic_decisions 阻断实现，生命周期预期缺失阻断编码。verification-pending 只读显示分层债务；completed 不代表 delivery_verdict=verified。
+
 
 > **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
 
@@ -6,6 +8,8 @@
 **产出**: `{ICODE_OUT_DIR}/01_plan.md`
 **会话**: 主会话
 **Codex 发布键**: 使用 `publish-artifact --key plan --name 01_plan.md`；只有发布和 `validate` 成功才追加 step `1`。单独调用 `plan` 随后停止；由 `start` 编排时继续步骤2。
+
+> **fast 入口与恢复**：由 fast 编排的新工单 seed 必须使用传入的 mode=fast、workflow_kind=staged_fast、max_rounds=1；下方普通 plan 的 full 默认值不覆盖 fast 上下文。复用已有 metadata 时不重置模式。计划发布后及 start 恢复原 fast 工单时，读取 [fast_risk.md](../references/fast_risk.md)，评估并调用 `assess-fast-risk` 和 `workflow-plan`；模式/分派以 helper 结果为准，继续同一 ICODE_OUT_DIR。
 
 ## 本步骤 L1/L2 检查项声明
 
@@ -387,6 +391,7 @@ sys.exit(1 if missing else 0)
 
 8. 如果是 `$icodex start`（唯一全流程模式）：
 
+   - 恢复 requested_mode=fast 或旧 mode=fast 工单时，先补风险评估并运行 `workflow-plan`；若升级导致同工单回流，重新 Read metadata，以工具返回的 next_step 和实际 mode 分派，不能使用评估前的 completed_steps。风险 helper 不新建工单。
    - **统一分派规则**：任何 `start` 串联或续跑都先读取已校验的 `.ico_metadata.json`，以 `completed_steps` 中**编号 1~6 范围内最大的连续已完成步骤**为基准，令 `NEXT_STEP=该步骤+1`；没有已完成的 1~6 步时 `NEXT_STEP=1`。`"0"` 和 `"log"` 仅作为"已走过步骤0/log入口"的标记，**不影响**推进逻辑。例：
      - `["0"]`/`["log"]` → 下一步是步骤1
      - `["0","1"]` 或 `["1"]` 或 `["log","1"]` → 下一步是步骤2

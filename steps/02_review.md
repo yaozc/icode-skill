@@ -1,4 +1,6 @@
 # 步骤 2 — 多轮专项审查
+> **业务流程合同前置**：先读取 [workflow_contract.md](../references/workflow_contract.md)；新票默认 workflow_contract_version=1，旧票执行新版先 configure-workflow 显式迁移。每次推进前读取 workflow-plan；重大增量 record-delta 在原票回步骤1，更新计划后 accept-replan 再执行2→6；未决 semantic_decisions 阻断实现，生命周期预期缺失阻断编码。verification-pending 只读显示分层债务；completed 不代表 delivery_verdict=verified。
+
 
 > **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
 
@@ -6,6 +8,8 @@
 **产出**: `{ICODE_OUT_DIR}/02_review.md`
 **会话**: 主会话
 **Codex 发布键**: 最终 `02_review.md` 使用 `plan_review`；round JSON 仅为附属证据。发布和 `validate` 成功后才追加 step `2`。
+
+> **fast 风险前置（步骤2）**：若 metadata.mode=fast 或 risk_profile.requested_mode=fast，必须先读取 [fast_risk.md](../references/fast_risk.md)，按当前需求/计划/实现证据重新评估，调用 `assess-fast-risk` 和 `workflow-plan`，再重新 Read metadata。风险命中时实际 mode=full，不能依据最初 fast 请求跳过完整动作。若此次评估回流到步骤2，或升级后的 next_step 尚不是本步骤，立即按 next_step 调用对应步骤，不沿旧变量继续；不要新建工单。全部前置检查和产物 Read 通过 artifact_map 找当前文件，旧固定文件只作历史。
 
 ## 本步骤 L1/L2 检查项声明
 

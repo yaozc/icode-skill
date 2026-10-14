@@ -19,7 +19,8 @@ $icodex code                   仅步骤4
 $icodex deepcheck              仅步骤5
 $icodex audit                  仅步骤6
 $icodex crosscheck [目标]      completed 工单持久化多轮复评；目标零回写
-$icodex fast [需求]            精简 staged 全流程
+$icodex fast [需求]            低风险精简 staged 全流程；风险命中在原工单自动升级完整流程
+$icodex verify [选项]          分层验证债务、计划、执行前上下文或证据登记
 $icodex patch [问题]           既有工单追加修改
 $icodex doc [自然语言]         工程/模块知识库
 $icodex limit [自然语言]       项目约束红线

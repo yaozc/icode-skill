@@ -4,6 +4,8 @@ ICode is a Codex skill for root-cause-first software delivery. It combines a con
 
 This port is based on [`ayukyo/icode-skill`](https://github.com/ayukyo/icode-skill) v2.17.
 
+Compatible fixes through upstream `main@5be9dee` are selectively ported for large-repository crosschecks, Windows I/O and locks, and safe synchronization. The [port record](docs/superpowers/specs/2026-10-14-main-codex-selective-port-design.md) documents the selection and Codex adaptations; the v2.17 workflow and Codex storage contracts remain in place.
+
 ## Install
 
 Clone or synchronize the repository to:
@@ -40,6 +42,8 @@ Use explicit commands for staged mode:
 
 `$icodex start` is the standard automatic staged 1→6 chain. `$icodex plan` executes only step 1 and then pauses. `$icodex fast` is the reduced staged chain.
 
+`$icodex fast` assesses the [nine business risk flags](references/fast_risk.md). Any trigger upgrades the same ticket to the complete staged workflow, with multiple review rounds, adversarial review, and Reverse/Fixed/Free deep checks. Low-risk work stays fast. Resume interrupted tickets with `$icodex start` without arguments; late risk discovery repeats full review while preserving existing source and historical artifacts.
+
 ## Commands
 
 | Command | Purpose |
@@ -55,7 +59,8 @@ Use explicit commands for staged mode:
 | `$icodex deepcheck` | Staged step 5 |
 | `$icodex audit` | Staged step 6 |
 | `$icodex crosscheck [target]` | Persistent multi-round review of a completed run; target remains read-only |
-| `$icodex fast [requirement]` | Reduced staged workflow |
+| `$icodex verify [options]` | Read verification debt/context or explicitly record actual evidence; completion and verification are separate |
+| `$icodex fast [requirement]` | Reduced for low risk; risk triggers upgrade the same ticket to the complete staged workflow |
 | `$icodex patch [change]` | Append a verified patch to an existing run |
 | `$icodex doc [request]` | Project/module knowledge base |
 | `$icodex limit [request]` | Project constraints and red lines |
@@ -87,8 +92,10 @@ See [SKILL.md](SKILL.md) for routing and [the Codex runtime contract](references
 
 ## Verification
 
+Install `pytest` in your test environment before running the suite.
+
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 -m pytest -q tests
 bash tests/test_mcp_codex_install.sh
 python3 tools/lint_codex_contract.py .
 ```

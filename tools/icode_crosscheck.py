@@ -8,8 +8,16 @@
 
 import argparse
 import contextlib
-import fcntl
+try:
+    import fcntl as _fcntl_mod
+except ImportError:
+    _fcntl_mod = None
+try:
+    import msvcrt as _msvcrt_mod
+except ImportError:
+    _msvcrt_mod = None
 import hashlib
+import io
 import importlib.util
 import json
 import os
@@ -104,11 +112,13 @@ def atomic_write(path, data):
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
-        directory_fd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+        # Windows 不支持打开目录做 fsync；文件本身已同步并原子发布。
+        if os.name != "nt":
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(temporary)
@@ -126,12 +136,33 @@ class DirectoryLock:
 
     def __enter__(self):
         self.stream = self.path.open("a+", encoding="utf-8")
-        fcntl.flock(self.stream.fileno(), fcntl.LOCK_EX)
+        try:
+            if _fcntl_mod is not None:
+                _fcntl_mod.flock(self.stream.fileno(), _fcntl_mod.LOCK_EX)
+            elif _msvcrt_mod is not None:
+                self.stream.seek(0, 2)
+                if self.stream.tell() < 1:
+                    self.stream.write("\0")
+                    self.stream.flush()
+                self.stream.seek(0)
+                # Windows 原生锁使用同一字节，LK_LOCK 的重试次数由系统限制。
+                _msvcrt_mod.locking(self.stream.fileno(), _msvcrt_mod.LK_LOCK, 1)
+            else:
+                raise CrosscheckError("No supported platform lock", gate_id="crosscheck_lock")
+        except BaseException:
+            self.stream.close()
+            raise
         return self
 
     def __exit__(self, exc_type, exc, traceback):
-        fcntl.flock(self.stream.fileno(), fcntl.LOCK_UN)
-        self.stream.close()
+        try:
+            if _fcntl_mod is not None:
+                _fcntl_mod.flock(self.stream.fileno(), _fcntl_mod.LOCK_UN)
+            elif _msvcrt_mod is not None:
+                self.stream.seek(0)
+                _msvcrt_mod.locking(self.stream.fileno(), _msvcrt_mod.LK_UNLCK, 1)
+        finally:
+            self.stream.close()
 
 
 def path_within(path, root):
@@ -656,7 +687,10 @@ def cmd_start(args):
                 helper = inspection_module()
                 report = helper.build_worklist(code_root_for(metadata, Path(target["project_root"])),
                     normalize_code_files(metadata), step="crosscheck", ticket_id=target["ticket_id"],
-                    attempt=f"crosscheck-{current['round']}", related=args.related, scopes=args.scope,
+                    attempt=f"crosscheck-{current['round']}", related=args.related,
+                    # 根文件不能默认扩成整个仓库；子目录保持现有关联联审。
+                    scopes=args.scope or sorted({p if Path(p).parent == Path(".")
+                        else Path(p).parent.as_posix() for p in normalize_code_files(metadata)}),
                     baselines=requested_baselines)
                 atomic_write_json(worklist, report)
             else:
@@ -1172,4 +1206,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # 原生 CLI 使用 UTF-8；作为模块导入时不修改宿主输出流。
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8")
     sys.exit(main())

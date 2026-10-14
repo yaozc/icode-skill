@@ -1,10 +1,14 @@
 # 命令 fast — 精简全流程（plan → review(1轮无对抗) → merge → code → deepcheck(Reverse 单阶段) → audit）
+> **业务流程合同前置**：先读取 [workflow_contract.md](../references/workflow_contract.md)；新票默认 workflow_contract_version=1，旧票执行新版先 configure-workflow 显式迁移。每次推进前读取 workflow-plan；重大增量 record-delta 在原票回步骤1，更新计划后 accept-replan 再执行2→6；未决 semantic_decisions 阻断实现，生命周期预期缺失阻断编码。verification-pending 只读显示分层债务；completed 不代表 delivery_verdict=verified。
+
 
 > **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
 
 **命令**: `$icodex fast <需求>`
 **目标**: 保留全流程 6 步结构，每步只跑最关键的最小动作，链路耗时约为全流程的 65%
 **会话**: 主会话
+
+> **风险自动升级（最高优先级）**：执行前必须读取 [fast_risk.md](../references/fast_risk.md)。本文件的精简行为只适用于 `risk_profile.effective_mode=fast`。命中任一风险自动升级为 start 等价的 staged 完整流程，继续原 ticket_id/ICODE_OUT_DIR，不重新调用带需求的 start 或创建新工单。下游使用工具写回的实际 `metadata.mode`，不能依据 `requested_mode=fast` 跳过对抗或 Fixed/Free。
 
 ## 与全流程（`$icodex start`）的差异
 
@@ -26,7 +30,7 @@
 - 改动边界清晰、不涉及架构变更或新协议引入
 - 紧急修复、对交付速度敏感
 
-**不适用场景**（建议回退到 `$icodex start` 全流程）：跨模块重构、新架构引入、安全敏感模块改动、跨协议/跨仓集成、需要对抗验证防确认偏误的场景。
+**自动升级场景**：跨模块重构、新架构引入、安全边界、跨协议/跨仓集成，以及 [fast_risk.md](../references/fast_risk.md) 的任一九类风险命中；原工单自动改为 full 并执行完整流程。
 
 ## 执行流程
 
@@ -53,9 +57,9 @@ fi
 > **历史检索 + 段零工程文档检索**：委托给串联执行的 [01_plan.md](01_plan.md) 步骤2（plan 步骤2，非 icode 步骤4），fast 不单独检索。原因：slice 与 plan 完全相同（历史 `adr_risks` / 段零 `section:<file>`），`_inject_cache.json` 按 `(source, ref_id, slice)` 去重兜底，fast 单独检索是冗余动作（检索白跑，注入被 plan 截胡），与 fast 省 token 目标矛盾。详见 [SKILL.md](../SKILL.md)「历史检索复用」段。
 
 > **段零只读当前分支子目录是反交叉污染设计，不要误读为"被覆盖"**：详见 [steps/doc.md](doc.md) 顶部「⚠️ 多分支设计·反偷懒强约束」段（`dir_and_metadata.md:496`「DOC_DIR 分支过滤」），跨分支不交叉读是为防止跨分支借鉴失真；用户反馈"看不到其他分支文档"时**默认不是 bug**，应先 `ls project_docs/<id>/` 看是否有多分支子目录再判。
-### 2. 创建 metadata
+### 2. 创建 metadata 与评估风险
 
-`$icodex fast` 新建目录时，`.ico_metadata.json` 写入：
+`$icodex fast` 新建目录时，下面是计划完成后的 metadata seed；经 `publish-artifact --key plan --metadata-seed` 发布，不直接 Write metadata。计划步骤必须保留 fast 入口传入的 mode/max_rounds，不将示例 full 默认值覆盖到此 seed：
 
 ```json
 {
@@ -78,21 +82,23 @@ fi
 - `mode`：工单模式，`"fast"` / `"full"`（默认 `"full"`）
 - `max_rounds`：步骤2 软上限，fast 固定为 1（full 默认 3）
 
-复用入口态目录时，沿用现有 metadata，只追加/更新 `mode="fast"`、`max_rounds=1`。
+首次复用入口态目录时，以 `update-metadata` 设置 `mode="fast"`、`workflow_kind="staged_fast"`、`max_rounds=1`；已评估或升级的工单不得重设为 fast。计划发布后，代理写完整九项 risk_flags/evidence 评估，调用已安装 helper `assess-fast-risk --run-dir ... --assessment-json ...`，再调用 `workflow-plan --run-dir ...`。`risk_profile` 保存 requested_mode/effective_mode/triggers/risk_flags/evidence，由 helper 独占更新。任一失败停止执行，不按无风险猜测推进。
 
 ### 3. 入口警告
 
-启动时打印（**不阻塞**）：
+仅在工具返回实际 fast 时打印（**不阻塞**）：
 
 ```
 ⚠️ $icodex fast 模式：
    - 步骤2 review 固定 1 轮无对抗验证
    - 步骤5 deepcheck 只跑 Reverse 阶段（跳过 Fixed/Free）
    - 依赖 plan+1 轮 review+Reverse 单阶段+audit 四道关卡
-   - 复杂需求（跨模块/新架构/安全敏感）建议改用 $icodex start 全流程
+   - 后续发现复杂业务或新风险时，将在原工单自动升级完整流程
 ```
 
 ### 4. 串联执行
+
+**每次转换、恢复或执行中发现新风险**：重新评估并运行 `assess-fast-risk`，随后 `workflow-plan`；重新 Read metadata，以返回的 `next_step` 分派。实际 full 时，review 使用返回的 review_max_rounds 并开启对抗，deepcheck 使用 reverse/fixed/free。实际 fast 才执行下表精简动作。首次晚升级可能回到 next_step=2，必须完整重跑后续步骤，不能继续使用评估前的 NEXT_STEP、计数器或已完成 fast 前缀。完整说明见 [fast_risk.md](../references/fast_risk.md)。
 
 按以下顺序调用对应步骤文件：
 
@@ -121,13 +127,13 @@ fi
 
 ## 中断续跑
 
-复用现有 metadata 续跑机制。fast 模式下 `completed_steps` 预期：`["1","2","3","4","5","6"]`。
+中断后使用无参 `$icodex start` 恢复最新未完成 staged 工单，校验并绑定原 ICODE_OUT_DIR。对 requested_mode=fast 或旧 metadata.mode=fast 的工单先补齐风险评估并运行 workflow-plan，按实际模式和 next_step 继续。不得重新初始化 mode=fast、创建新目录或用旧 fast 审查抵充 full。单步 review/deepcheck 同样执行风险前置。
 
-续跑判定（找 1~6 范围最大已完成步骤推进）天然兼容：每步都会落盘 `status` 与对应计数器，中断后重启可从断点恢复。
+低风险不改变已完成前缀；已升级工单不会因恢复或后续低风险评估反复回流。升级后完整走完时 completed_steps 仍为 1→6 有序前缀，可保留 0/log 入口标记。
 
 ## 与 full 模式的切换
 
-- **fast → full 升级**：**允许**。用户能在 fast 工单上单独跑 `$icodex review N` 或 `$icodex deepcheck` 补全剩余步骤。**单步命令仍读 `mode` 字段，但用户用参数 N 显式表达升级意图时，参数优先级最高**（详见 [references/dir_and_metadata.md](../references/dir_and_metadata.md)「步骤2/5 读 mode 字段的契约」段）。已走完 fast 的工单再跑 `$icodex review 5` 会被识别为 `status=completed` 重新审查（按步骤 2.3 规则），不破坏数据。
+- **fast → full 升级**：风险命中自动在原工单升级，review/deepcheck 单步入口也必须执行风险检查。低风险 fast 上用户显式调用 `$icodex review N` 的单步审查增强仍保留；不能用该局部增强声称整条流程已升级 full。
 - **full → fast 降级**：**不允许**（单步命令不强制按 fast 模式执行；用户若想走 fast 应改用 `$icodex fast` 重启链路）。
 - **同一工单跨模式混跑**：未限制，`completed_steps` 与 `status` 反映实际走过的步骤。
 

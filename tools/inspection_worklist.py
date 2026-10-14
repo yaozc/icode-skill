@@ -12,6 +12,8 @@ import selectors
 import stat
 import subprocess
 import time
+from queue import Empty, Full, Queue
+from threading import Event, Thread
 
 
 PHASES = {"code": ["code_review"], "deepcheck": ["reverse", "fixed", "free"],
@@ -62,7 +64,7 @@ def _path(root, raw, *, directory=False):
     if not isinstance(raw, str) or not raw or "\x00" in raw or "\\" in raw:
         raise InspectionError("path must be a nonempty relative POSIX string")
     p = Path(raw)
-    if p.is_absolute() or ".." in raw.split("/"):
+    if raw.startswith("/") or p.is_absolute() or ".." in raw.split("/"):
         raise InspectionError(f"unsafe path: {raw}")
     if _is_control_path(p):
         raise InspectionError(f"blocked private/control path: {raw}")
@@ -84,6 +86,76 @@ def _paths(root, values, *, directory=False):
     return sorted({_path(root, x, directory=directory) for x in values})
 
 
+def _git_pipe(proc, limit, deadline):
+    """Windows 匿名管道不支持 select；有界队列保持输出与超时预算。"""
+
+    chunks = Queue(maxsize=2)
+    stop = Event()
+    reader_error = []
+
+    def read_chunks():
+        try:
+            while not stop.is_set():
+                chunk = proc.stdout.read(65536)
+                if not chunk:
+                    break
+                while not stop.is_set():
+                    try:
+                        chunks.put(chunk, timeout=0.05)
+                        break
+                    except Full:
+                        continue
+        except OSError as exc:
+            reader_error.append(exc)
+        finally:
+            while not stop.is_set():
+                try:
+                    chunks.put(None, timeout=0.05)
+                    break
+                except Full:
+                    continue
+
+    reader = Thread(target=read_chunks, name="icode-git-pipe", daemon=True)
+    reader.start()
+    data, truncated = bytearray(), False
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise InspectionError("git timeout")
+            try:
+                chunk = chunks.get(timeout=min(0.05, remaining))
+            except Empty:
+                if not reader.is_alive():
+                    break
+                continue
+            if chunk is None:
+                break
+            data.extend(chunk)
+            if len(data) > limit:
+                truncated = True
+                proc.kill()
+                break
+        if proc.poll() is None:
+            proc.wait(timeout=max(0.01, deadline - time.monotonic()))
+        if reader_error and not truncated:
+            raise InspectionError(f"git pipe unavailable: {reader_error[0]}")
+        return bytes(data[:limit]), truncated
+    finally:
+        stop.set()
+        if proc.poll() is None:
+            proc.kill()
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            proc.stdout.close()
+        except OSError:
+            pass
+        reader.join(timeout=1)
+
+
 def _git(repo, args, limit=8192):
     """Bound both stdout memory and elapsed time, even for ls-files/git show."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
@@ -92,6 +164,11 @@ def _git(repo, args, limit=8192):
                "-c", "core.hooksPath=/dev/null", "-C", str(repo), *args]
     try:
         with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env) as proc:
+            if os.name == "nt":
+                data, truncated = _git_pipe(proc, limit, time.monotonic() + 5)
+                if proc.returncode and not truncated:
+                    raise InspectionError(f"git failed: {args[0]}")
+                return data, truncated
             with selectors.DefaultSelector() as selector:
                 selector.register(proc.stdout, selectors.EVENT_READ)
                 data, deadline, truncated = bytearray(), time.monotonic() + 5, False
@@ -187,7 +264,7 @@ def build_worklist(workspace, code_files, *, step, ticket_id, attempt, mode="ful
     if not seeds:
         raise InspectionError("code_files must contain mandatory seeds")
     related = _paths(root, [] if related is None else related)
-    scopes = _paths(root, sorted({str(Path(s).parent) for s in seeds}) if scopes is None else scopes, directory=True)
+    scopes = _paths(root, sorted({Path(s).parent.as_posix() for s in seeds}) if scopes is None else scopes, directory=True)
     if not scopes or any(not _inside(s, scopes) for s in seeds):
         raise InspectionError("scopes must contain all code_files")
     if baselines is not None and not isinstance(baselines, dict):
@@ -229,7 +306,7 @@ def build_worklist(workspace, code_files, *, step, ticket_id, attempt, mode="ful
         baseline = oid.decode("ascii").strip()
         report["resolved_baselines"][label] = baseline
         diff = ["diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", baseline, "--"]
-        local_scopes = [os.path.relpath(root / s, repo) for s in scopes if _inside(s, [label]) or _inside(label, [s])]
+        local_scopes = [Path(os.path.relpath(root / s, repo)).as_posix() for s in scopes if _inside(s, [label]) or _inside(label, [s])]
         local_scopes = [s if not s.startswith("..") else "." for s in local_scopes]
         # Literal user scopes, plus fixed exclusions, keep ticket sidecars out
         # of enumeration itself (not merely filtered after consuming budgets).
@@ -238,7 +315,7 @@ def build_worklist(workspace, code_files, *, step, ticket_id, attempt, mode="ful
         pathspecs = [f":(literal){s}" for s in local_scopes] + excluded_specs
         changed = set(names(repo, diff + pathspecs)) if local_scopes else set()
         untracked = set(names(repo, ["ls-files", "--others", "--exclude-standard", "-z", "--", *pathspecs])) if local_scopes else set()
-        association_scopes = sorted(set(local_scopes) | {os.path.relpath((root / p).parent, repo)
+        association_scopes = sorted(set(local_scopes) | {Path(os.path.relpath((root / p).parent, repo)).as_posix()
             for p in related if _repo(root, p) == repo})
         association_specs = [f":(literal){s}" for s in association_scopes] + excluded_specs
         scoped = set(names(repo, ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", *association_specs]))

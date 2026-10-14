@@ -1,4 +1,6 @@
 # 步骤 6 — 终极终审 + 出具报告 + 统一修复
+> **业务流程合同前置**：先读取 [workflow_contract.md](../references/workflow_contract.md)；新票默认 workflow_contract_version=1，旧票执行新版先 configure-workflow 显式迁移。每次推进前读取 workflow-plan；重大增量 record-delta 在原票回步骤1，更新计划后 accept-replan 再执行2→6；未决 semantic_decisions 阻断实现，生命周期预期缺失阻断编码。verification-pending 只读显示分层债务；completed 不代表 delivery_verdict=verified。
+
 
 > **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
 
@@ -6,6 +8,8 @@
 **产出**: `{ICODE_OUT_DIR}/06_audit.md`（含修复日志段）+ 回写 `{ICODE_OUT_DIR}/03_plan_final.md` 的「实现偏差备忘」段（6.2 第5步）
 **会话**: 主会话
 **Codex 发布键**: 最终 `06_audit.md` 使用 `audit`；审计修复、最新验证、发布与 `validate` 全部成功后才追加 step `6` 并设置 `status=completed`。
+
+> **fast 风险前置（步骤6）**：若 metadata.mode=fast 或 risk_profile.requested_mode=fast，必须先读取 [fast_risk.md](../references/fast_risk.md)，按当前需求/计划/实现证据重新评估，调用 `assess-fast-risk` 和 `workflow-plan`，再重新 Read metadata。风险命中时实际 mode=full，不能依据最初 fast 请求跳过完整动作。若此次评估回流到步骤2，或升级后的 next_step 尚不是本步骤，立即按 next_step 调用对应步骤，不沿旧变量继续；不要新建工单。全部前置检查和产物 Read 通过 artifact_map 找当前文件，旧固定文件只作历史。
 
 ## 本步骤 L1/L2 检查项声明
 
@@ -314,3 +318,5 @@ sys.exit(1 if (missing or (st not in valid) or not (m.get('code_files') or [])) 
 | context7 | ⚪ | 本步骤不推荐 |
 
 **强制约束**：🟢/🟢*/⚪ 语义 + 双保险机制（执行步骤内嵌 + thinking_core gate）详见 [SKILL.md「MCP 调用覆盖强制化」](../SKILL.md) + [references/mcp_per_step.md「双保险机制」](../references/mcp_per_step.md)；本步骤表内的 🟢/🟢* 标注按上方真源判定。
+
+终审收口：运行 verification-pending，将当前 delivery_verdict 与缺证单元写入报告。不得使用 update-metadata 伪造 verified，也不得为清债关闭 required；审查假设和验证债务分别报告。

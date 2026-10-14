@@ -161,6 +161,44 @@ def test_new_round_requires_independent_worklist(workspace):
     assert failed["gate_id"] == "inspection_worklist"
 
 
+def test_root_seed_avoids_repository_wide_default_scope(workspace):
+    root, ticket, env = workspace
+    (root / "build.sh").write_text("#!/bin/sh\nexit 0\n")
+    for index in range(220):
+        path = root / "unrelated" / f"file_{index}.c"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("int unrelated;\n")
+    metadata = json.loads((ticket / ".ico_metadata.json").read_text())
+    metadata["code_files"].append("build.sh")
+    write_json(ticket / ".ico_metadata.json", metadata)
+    started = run_tool(env, "start", "--workspace", root, "--ticket", "demo-1")
+    report = json.loads(Path(started["inspection_worklist"]).read_text())
+    assert report["scopes"] == ["build.sh", "src"]
+    assert report["coverage_status"] == "complete_within_scope"
+    assert {entry["path"] for unit in report["units"] for entry in unit["files"]} == {"build.sh", "src/feature.c"}
+    assert run_tool(env, "start", "--workspace", root, "--ticket", "demo-1")["resumed"]
+    denied = run_tool(env, "start", "--workspace", root, "--ticket", "demo-1", "--scope", ".", expected=1)
+    assert denied["gate_id"] == "inspection_worklist"
+
+
+def test_explicit_repository_scope_keeps_budget_debt_fail_closed(workspace):
+    root, _, env = workspace
+    for index in range(220):
+        (root / f"file_{index}.c").write_text("int unrelated;\n")
+    subprocess.run(["git", "-C", str(root), "add", "file_*.c"], check=True)
+    subprocess.run(["git", "-C", str(root), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                    "commit", "-qm", "unrelated tracked fixture files"], check=True)
+    started = run_tool(env, "start", "--workspace", root, "--ticket", "demo-1", "--scope", ".")
+    report = json.loads(Path(started["inspection_worklist"]).read_text())
+    assert report["scopes"] == ["."] and report["unobserved"]
+    directory = Path(started["crosscheck_dir"])
+    fresh = fresh_payload(1)
+    fresh.update(verdict="pass", findings=[])
+    write_fresh(directory / "crosscheck_round_1.fresh.json", fresh, env)
+    denied = run_tool(env, "freeze", "--dir", directory, "--round", "1", expected=1)
+    assert denied["gate_id"] == "inspection_worklist"
+
+
 def test_related_source_drift_reenters_a_new_round(workspace):
     root, _, env = workspace
     header = root / "src/feature.h"

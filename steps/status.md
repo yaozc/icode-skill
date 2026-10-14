@@ -1,4 +1,6 @@
 # $icodex status - 工单状态查询 + verdict 标注
+> **业务流程合同前置**：先读取 [workflow_contract.md](../references/workflow_contract.md)；新票默认 workflow_contract_version=1，旧票执行新版先 configure-workflow 显式迁移。每次推进前读取 workflow-plan；重大增量 record-delta 在原票回步骤1，更新计划后 accept-replan 再执行2→6；未决 semantic_decisions 阻断实现，生命周期预期缺失阻断编码。verification-pending 只读显示分层债务；completed 不代表 delivery_verdict=verified。
+
 
 > **Codex 持久化前置**：执行本步骤前必须完整读取 [references/codex_runtime.md](../references/codex_runtime.md)；路径、状态、锁、合并读取、迁移和 artifact_map 与旧文字冲突时以该文件和 `~/.codex/skills/icodex/tools/icode_state.py` 为准。
 
@@ -18,6 +20,8 @@
 **Codex 强制覆盖**：默认查询和 `list` 都从 `~/.codex/skills/icodex/tools/icode_state.py merged-index` 取得合并视图。`--validate` 直接调用 `~/.codex/skills/icodex/tools/icode_state.py validate`，不得使用本文件后部的固定文件清单替代 `artifact_map` 校验。若 `--verdict` 命中 `source=claude` 或 `legacy:*` 展示 ID，先执行 legacy migration，再只修改迁移后的 metadata 与 Codex index；禁止向 legacy 源写 verdict。索引与 metadata 更新分别持有 `.index.lock` 和 `.ico.lock`，固定先 index 后 run。
 
 ## 模式一：默认只读查询（`$icodex status`）
+
+模式显示同时报告实际 metadata.mode 和 risk_profile.requested_mode/effective_mode/triggers（存在时），例如“请求 fast，风险升级 full”。查询不调用 assess-fast-risk，不写回评估或改变工单状态。
 
 1. 执行目录管理中的「检测最新目录」逻辑，确定 `ICODE_OUT_DIR`
 2. 读取 `.ico_metadata.json`
@@ -181,3 +185,5 @@ sys.exit(1 if (missing or bad or empty_cf) else 0)
 默认只读模式仅用 sequential-thinking；`--scan-verdict` 批量扫描时用 cheap-research `extract`（结构化提取证伪信号，🟢*）；其余 4 个 MCP 不推荐。
 
 **强制约束**：🟢/🟢*/⚪ 语义 + 双保险机制（执行步骤内嵌 + thinking_core gate）详见 [SKILL.md「MCP 调用覆盖强制化」](../SKILL.md) + [references/mcp_per_step.md「双保险机制」](../references/mcp_per_step.md)；本步骤表内的 🟢/🟢* 标注按上方真源判定。
+
+状态查询必须调用 verification-pending 只读展示实现与验证的分别结论；--validate 同时校验新版合同，不修改任何状态。

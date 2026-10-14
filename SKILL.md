@@ -2,6 +2,8 @@
 name: icodex
 description: Use for non-trivial implementation, bug fixing, risky refactors, root-cause-first diagnosis, same-model self review, audit, verification, persistent crosscheck, or the staged ICode v2.17 workflow and its auxiliary commands.
 ---
+> **业务流程合同前置**：先读取 [workflow_contract.md](references/workflow_contract.md)；新票默认 workflow_contract_version=1，旧票执行新版先 configure-workflow 显式迁移。每次推进前读取 workflow-plan；重大增量 record-delta 在原票回步骤1，更新计划后 accept-replan 再执行2→6；未决 semantic_decisions 阻断实现，生命周期预期缺失阻断编码。verification-pending 只读显示分层债务；completed 不代表 delivery_verdict=verified。
+
 
 **版本**: v2.17.0
 
@@ -14,6 +16,7 @@ description: Use for non-trivial implementation, bug fixing, risky refactors, ro
 - **Codex full mode**：用户直接以 `$icodex <任务>` 请求非平凡开发且未指定下方子命令时使用。按 Diagnose → Plan → Implement → Senior Reviewer self-review → Principal Engineer audit → Verify 在同一任务内连续执行，只在确需用户决策时暂停；产物使用 `RCA.md`、`PLAN.md`、`IMPLEMENT.md`、`SELF_REVIEW.md`、`AUDIT.md`。
 - **staged mode**：用户指定 `init|log|plan|start|review|merge|code|deepcheck|audit|fast|crosscheck` 时使用 v2.17 编号步骤或其独立辅助流程。`$icodex start` 是唯一标准全流程入口，自动恢复并串联步骤 1→6。任一 L1/状态门禁失败时立即停止。
 - **单步计划**：`$icodex plan` 只执行步骤 1 后暂停；需要继续时显式调用下一单步命令或改用全流程入口。
+- **fast 风险自动升级**：代理按 [references/fast_risk.md](references/fast_risk.md) 评估九类业务风险，调用 `assess-fast-risk`；命中任一风险自动在同一 ticket_id/工单目录升级为 start 等价的 staged 完整流程。risk_profile.requested_mode 保留原请求，effective_mode 与 metadata.mode/workflow_kind 同步。每次转换和恢复运行 `workflow-plan`，不得用旧 fast 参数跳过多轮对抗或 Fixed/Free。晚升级须补跑完整审查，不新建工单。
 - **复核边界**：`$icodex crosscheck` 会在 `.ai/icode/.crosscheck/` 持久化可多轮的只读复评记录，但不修改目标工单或源码；独立 `$icodex-review` 仍是零写入的外部复核，只在响应中返回报告。需要异模型或独立终审时，完成本地验证后把产物目录、diff 和验证结果交给 `$icodex-review`，不得把本 skill 的 self-review/audit/crosscheck 冒充外部复核。
 
 full mode 必须先证明根因再修改：记录症状/复现、观察、多个合理假设、反证、根因与置信度；实现后以 Senior Reviewer 视角检查逻辑、边界、状态机、并发、生命周期、架构和回归，再以 Principal Engineer 视角假设实现错误并逆向攻击，修完所有有效发现后重新验证。复杂风险检查读取 [references/domain-checklists.md](references/domain-checklists.md)。
@@ -68,7 +71,7 @@ python3 ~/.codex/skills/icodex/tools/icode_state.py validate --run-dir "${ICODE_
 | `[入口]` `$icodex log [零散信息...]` | **可选入口（日志根因分析）**：把"设备/服务日志+模糊症状"转为有对抗验证的根因报告，自动转修复需求 `00_init.md` 衔接步骤1。先基线检查（git diff/链路图）再日志侦察，对抗分析防确认偏误。**领域无关，每次调用都新建目录**（详见 [steps/log.md](steps/log.md)） | ✅ 每次都新建 |
 | `[入口]` `$icodex init [<粗略需求>]` | **可选步骤0**：多轮对话产出 `00_init.md`（需求初稿，含链路图：before/after + 改动点，每轮动态更新）。**每次调用都新建目录，不复用、不续聊**（详见 [steps/00_init.md](steps/00_init.md)） | ✅ 每次都新建 |
 | `[流程]` `$icodex start <需求>` | **完整 staged 全流程**：唯一标准入口；创建/复用目录并从下一未完成步骤自动串联至步骤6。步骤2 review 默认 3 轮 + 对抗验证，步骤5 deepcheck 三阶段循环（**复用规则见下**） | ✅ 创建新目录 / 复用 |
-| `[流程]` `$icodex fast <需求>` | **精简全流程（fast 模式）**：plan → review(1轮无对抗) → merge → code → deepcheck(Reverse 单阶段) → audit。耗时约为全流程 65%，产物结构与 full 对齐（详见 [steps/fast.md](steps/fast.md)）。入口打印警告、用户自负其责 | ✅ 创建新目录 / 复用 |
+| `[流程]` `$icodex fast <需求>` | 低风险时精简全流程；九类风险任一命中自动在原工单升级 start 等价的完整 staged 流程，执行多轮对抗与三阶段深检（详见 [steps/fast.md](steps/fast.md)） | ✅ 创建新目录 / 复用 |
 | `[流程]` `$icodex plan <需求>` | **仅步骤1**：拟定项目计划并暂停（**复用规则见下**） | ✅ 创建新目录 / 复用 |
 
 > **步骤0 init 状态转换时机**（避免状态机歧义）：
@@ -86,6 +89,7 @@ python3 ~/.codex/skills/icodex/tools/icode_state.py validate --run-dir "${ICODE_
 | `[流程]` `$icodex code` | **仅步骤4**：落地编码实施（含**末尾 1.5 子段"Code Review Fix" 4 维度复检**——核对实施是否与计划设计的 4 维度一致。复检失败轻/重度分流回代码修复或重设计，不强制阻断；详见 [steps/04_code.md](steps/04_code.md)） | 用最新目录 |
 | `[流程]` `$icodex deepcheck` | **仅步骤5**：三阶段递进复检（Reverse → Fixed → Free）。`mode=="fast"` 时只跑 Reverse 阶段 | 用最新目录 |
 | `[流程]` `$icodex audit` | **仅步骤6**：终极终审 + 统一修复（产出 `{ICODE_OUT_DIR}/06_audit.md`） | 用最新目录 |
+| `[独立]` `$icodex verify [--pending \| --plan \| --context \| --record <JSON>]` | 验证债务与执行前上下文只读查询；显式登记真实运行证据（详见 [steps/verify.md](steps/verify.md)） | 既有工单 |
 | `[独立]` `$icodex crosscheck [--ticket <id> \| 工单路径]` | **已完成工单独立复评**：fresh-before-history、多轮追加、输入漂移检测；只写 `.ai/icode/.crosscheck/`，目标工单与源码零回写（详见 [steps/crosscheck.md](steps/crosscheck.md)） | 否（只建隔离复评容器） |
 | `[流程]` `$icodex readme` | **可选步骤7**：一次性生成两份——**交付报告**（**给自己看**：完整技术档案，自包含，智能识别功能/查BUG模板）+ **跨领域简报**（`_brief.md`，**给其它模块研发/测试/产品看**：含必要改动/修复代码，主要问题/需求/时间点/链路/修复，较简略）。步骤6完成后手动触发 | 用最新目录 |
 | `[独立]` `$icodex patch [问题或新需求...]` | **追加修改（独立步骤）**：主流程完成后（`completed`）或中途（步骤1~5任一状态）继续修改既有工单——测试发现问题 / 后续新需求，在既有工单上打补丁。**轻量四段式**（重审现状 → 增量计划 → 最小实施 → 反向复检，含**分析验证型分支**：纯分析无代码修改时豁免实施/编译、改「结论验证」，但**端到端代码追溯/证据方法可靠性/链路完整性结论验证不豁免），**不靠会话记忆靠磁盘产物重载上下文**（治"越问上下文越爆炸"）。产物 `08_patch.md` 追加式（每次**显式调用**追加 Patch N 段；**会话内追问/补充归入当前 Patch N，不新增段**）。**不改变 status/completed_steps**（completed 保持 completed），靠 `patch_count`/`patch_history` 记录；可选 `--listen`（自动监听）/ `--test`（显式触发验证）→ 阶段 4「1.5 实机部署验证」（连设备部署 + 持续轮询 + 实时链路分析；`--listen` 告知触发即监听、用户随时操作被捕获，`--test` 空转停下确认用户已操作再继续）；无 flag 跳过实机验证（详见 [steps/08_patch.md](steps/08_patch.md)） | 用最新目录 |
@@ -162,7 +166,7 @@ $icodex fast 给工具模块增加 clamp 函数                  # 一键串联�
 #    - 步骤2 review 固定 1 轮无对抗验证
 #    - 步骤5 deepcheck 只跑 Reverse 阶段（跳过 Fixed/Free）
 #    - 依赖 plan+1 轮 review+Reverse 单阶段+audit 四道关卡
-#    - 复杂需求（跨模块/新架构/安全敏感）建议改用 $icodex start 全流程
+#    - 复杂需求命中风险时在原工单自动升级 start 等价的完整流程
 # 产物：01_plan.md, 02_review.md, 03_plan_final.md, 04_code_review_fix.md, 05_deepcheck.md, 06_audit.md（与 full 模式结构对齐）
 ```
 
@@ -389,6 +393,7 @@ ICODE_OUT_DIR=".ai/icode/icode_${LAST}"
 - `code_review_fix_with_issues`（新增，可选，默认 `false`）：步骤4末尾 1.5「Code Review Fix」4 维度复检未通过标记（同事提示词 4 维度闭环在 04_code 末尾的工程化复检）。`true` 时步骤5/6 入口输出警告，audit 终审会看到此标记——**不阻断流程**，仅作可见性提示，让后续 reviewer/历史检索知道本工单 4 维度复检未通过。**字段缺失视为 `false`（向后兼容旧 metadata）**
 - `test_cmd`/`test_outcome`/`test_failures`/`test_timeout`（测试集成字段）：`test_cmd`=探测/配置的测试命令字符串（null=无测试套件，步骤4 自动探测 Makefile/package.json/pytest.ini/go.mod/CMakeLists.txt/Cargo.toml/pom.xml）；`test_outcome`=枚举 `pass`/`fail`/`skipped`（默认 `skipped`）；`test_failures`=bool（步骤4 测试 3 次重试仍失败置 true，L3 警告不阻断，与 `code_compile_failed` 同级）；`test_timeout`=int 秒（默认 120）。借鉴 aider `auto_test` 机制（一手验证 Aider-AI/aider base_coder.py:1616），icode 增加自动探测。详见 [steps/04_code.md](steps/04_code.md)「编译验证 + 测试验证」段。**字段缺失视为 null/skipped/false/120（向后兼容旧 metadata）**
 - `mode`（新增，可选，默认 `"full"`）：工单模式。`"full"` = `$icodex start` 全流程（步骤2 默认 3 轮 + 对抗，步骤5 三阶段循环）；`"fast"` = `$icodex fast` 精简全流程（步骤2 固定 1 轮无对抗，步骤5 只跑 Reverse）。**字段缺失视为 `"full"`（向后兼容旧 metadata）**。详见 [steps/fast.md](steps/fast.md)
+- `risk_profile`：fast 语义风险合同，含 requested_mode/effective_mode/triggers/risk_flags/evidence/override。由 `icode_state.py assess-fast-risk` 原子维护，实际 mode 与 effective_mode 一致；历史命中不自动清除，override 固定 false。旧 fast 缺此字段可只读查询，执行前必须补评估。晚升级保存 upgrade_snapshot 并在原工单补跑2→6，详见 [references/fast_risk.md](references/fast_risk.md)。
 - `max_rounds`（新增，可选，默认 3）：步骤2 review 软上限轮数。`mode="full"` 时由 `$icodex review N` 参数决定（默认 3）；`mode="fast"` 时**自动串联下强制为 1**，但**单步命令（`$icodex review N`）在 fast 工单上调用时 N 优先级最高**——用户用参数 N 显式表达 fast→full 升级意图时，按 N 轮跑（详见 [references/dir_and_metadata.md](references/dir_and_metadata.md)「步骤2/5 读 mode 字段的契约」段）。**字段缺失视为 3**
 
 - `fix_tiers`（新增，可选，默认 `null`）：修复方案三档分级（反偷懒第 26 条）。`{"A": ["A1..."], "B": ["B1..."], "C": ["C1..."]}` 供 review/code/audit 核对实施范围。**由步骤1 plan §4.5 落盘**（每档 1-2 条一句话摘要），步骤2/4/6 核对实施范围时读取；字段缺失视为 `null`，从 `03_plan_final.md` §4.5 文本读（向后兼容旧 metadata）
@@ -457,6 +462,8 @@ python3 -c "import json,sys; d=json.load(open('{ICODE_OUT_DIR}/.ico_metadata.jso
 ### 全流程串联规则
 
 `$icodex start` 执行任一步骤后如果会话断开，无参数重新调用时必须复用最新未完成 staged 工单，读取并校验 `.ico_metadata.json` 的 `completed_steps`，从最后一个完成步骤的下一步继续。不可跳过未完成的步骤。
+
+若该工单最初请求 fast，先按 [references/fast_risk.md](references/fast_risk.md) 重新评估，运行 `assess-fast-risk` 和 `workflow-plan`，再以返回的 next_step、实际模式与最新 metadata 恢复。首次晚升级可回到完整 review；后续恢复不会重置升级或重复回流。不能用旧变量或旧 fast 产物绕过这一分派。
 
 **续跑判定规则**：以 `completed_steps` 中**编号 1~6 范围内最大的已完成步骤**为基准推进下一步。`"0"` 和 `"log"` 仅作为"已走过步骤0/log入口"的标记，**不影响**推进逻辑。例：`["0"]`/`["log"]` → 下一步是步骤1；`["0","1"]`/`["log","1"]` → 下一步是步骤2。
 

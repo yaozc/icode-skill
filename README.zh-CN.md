@@ -4,6 +4,8 @@ ICode 是一个“先定位根因，再实施修改”的 Codex 技能。它把 
 
 本移植基于 [`ayukyo/icode-skill`](https://github.com/ayukyo/icode-skill) v2.17。
 
+已选择性导入上游 `main@5be9dee` 中的大仓复评、Windows I/O 与文件锁、同步保护修复。[移植记录](docs/superpowers/specs/2026-10-14-main-codex-selective-port-design.md)说明导入范围和 Codex 适配；工作流仍遵循 v2.17 与 Codex 存储契约。
+
 ## 安装
 
 把仓库克隆或同步到：
@@ -42,6 +44,8 @@ bash ~/.codex/skills/icodex/mcp/install-codex.sh
 
 `$icodex plan` 只执行步骤1并暂停；`$icodex fast` 是精简串联。
 
+`$icodex fast` 会按 [风险规则](references/fast_risk.md) 自动评估业务复杂度；九类风险任一命中，在同一工单升级为 start 等价的完整 staged 流程，恢复多轮对抗与 Reverse/Fixed/Free 深检。低风险保持精简模式；中断后使用无参 `$icodex start` 恢复原工单。运行中晚发现风险会补跑完整审查，保留已实现源码和旧产物。
+
 ## 命令
 
 | 命令 | 用途 |
@@ -57,7 +61,8 @@ bash ~/.codex/skills/icodex/mcp/install-codex.sh
 | `$icodex deepcheck` | staged 步骤5 |
 | `$icodex audit` | staged 步骤6 |
 | `$icodex crosscheck [目标]` | 对 completed 工单做持久化多轮复评；目标保持只读 |
-| `$icodex fast [需求]` | 精简 staged 流程 |
+| `$icodex verify [选项]` | 查看分层验证债务/计划/执行前上下文或显式登记真实证据；实现完成与验证通过分开 |
+| `$icodex fast [需求]` | 低风险精简；风险命中在原工单自动升级完整 staged 流程 |
 | `$icodex patch [变更]` | 在既有工单上追加验证过的补丁 |
 | `$icodex doc [描述]` | 工程/模块知识库 |
 | `$icodex limit [描述]` | 项目约束红线 |
@@ -89,8 +94,10 @@ bash ~/.codex/skills/icodex/mcp/install-codex.sh
 
 ## 验证
 
+先在测试环境安装 `pytest`，再执行完整测试。
+
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 -m pytest -q tests
 bash tests/test_mcp_codex_install.sh
 python3 tools/lint_codex_contract.py .
 ```

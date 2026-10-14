@@ -45,6 +45,7 @@ COMMAND_ROUTES = {
     "deepcheck": "steps/05_deepcheck.md",
     "audit": "steps/06_audit.md",
     "crosscheck": "steps/crosscheck.md",
+    "verify": "steps/verify.md",
     "fast": "steps/fast.md",
     "patch": "steps/08_patch.md",
     "doc": "steps/doc.md",
@@ -262,6 +263,30 @@ def lint_mcp_fallback_contract(root: Path) -> List[str]:
     return errors
 
 
+def lint_fast_risk_contract(root: Path) -> List[str]:
+    """防止文档只有升级声明，而实际步骤仍绕过风险分派。"""
+    errors: List[str] = []
+    surfaces = ("SKILL.md", "steps/fast.md", "steps/01_plan.md", "steps/02_review.md",
+                "steps/03_merge.md", "steps/04_code.md", "steps/05_deepcheck.md", "steps/06_audit.md",
+                "references/dir_and_metadata.md", "references/codex_runtime.md", "references/fast_risk.md")
+    for relative in surfaces:
+        path = root / relative
+        if not path.is_file():
+            errors.append(f"{relative}: missing fast risk contract")
+            continue
+        text = path.read_text(encoding="utf-8")
+        for marker in ("assess-fast-risk", "workflow-plan"):
+            if marker not in text:
+                errors.append(f"{relative}: missing fast risk execution hook: {marker}")
+    risk_reference = root / "references/fast_risk.md"
+    if risk_reference.is_file():
+        text = risk_reference.read_text(encoding="utf-8")
+        for marker in ("requested_mode", "effective_mode", "upgrade_snapshot", "artifact_map"):
+            if marker not in text:
+                errors.append(f"references/fast_risk.md: missing recovery boundary: {marker}")
+    return errors
+
+
 def lint_repo(root: Path) -> List[str]:
     return (
         lint_active_boundaries(root)
@@ -269,7 +294,38 @@ def lint_repo(root: Path) -> List[str]:
         + lint_routes(root)
         + lint_readme_parity(root)
         + lint_mcp_fallback_contract(root)
+        + lint_fast_risk_contract(root)
+        + lint_workflow_contract(root)
     )
+
+
+def lint_workflow_contract(root: Path) -> List[str]:
+    """所有实际推进入口必须消费业务 gate，而不只是帮助里列出能力。"""
+    errors: List[str] = []
+    surfaces = ("SKILL.md", "references/codex_runtime.md", "references/dir_and_metadata.md",
+                "steps/fast.md", "steps/01_plan.md", "steps/02_review.md", "steps/03_merge.md",
+                "steps/04_code.md", "steps/05_deepcheck.md", "steps/06_audit.md", "steps/08_patch.md", "steps/status.md")
+    for relative in surfaces:
+        path = root / relative
+        if not path.is_file():
+            errors.append(f"{relative}: missing workflow contract surface")
+            continue
+        content = path.read_text(encoding="utf-8")
+        for marker in ("workflow_contract.md", "workflow-plan", "verification-pending"):
+            if marker not in content:
+                errors.append(f"{relative}: missing workflow execution hook: {marker}")
+    for relative, markers in {
+        "references/workflow_contract.md": ("record-decision", "record-delta", "accept-replan", "verification-context", "analysis_only"),
+        "steps/verify.md": ("verification-pending", "verification-plan", "verification-context", "record-verification"),
+    }.items():
+        path = root / relative
+        if not path.is_file():
+            errors.append(f"{relative}: missing workflow truth source")
+        else:
+            for marker in markers:
+                if marker not in path.read_text(encoding="utf-8"):
+                    errors.append(f"{relative}: missing workflow command: {marker}")
+    return errors
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

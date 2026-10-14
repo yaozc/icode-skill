@@ -1,4 +1,6 @@
 # 目录管理 + ticket_id + 索引写入 + metadata 模板（共享规则）
+> **业务流程合同前置**：先读取 [workflow_contract.md](workflow_contract.md)；新票默认 workflow_contract_version=1，旧票执行新版先 configure-workflow 显式迁移。每次推进前读取 workflow-plan；重大增量 record-delta 在原票回步骤1，更新计划后 accept-replan 再执行2→6；未决 semantic_decisions 阻断实现，生命周期预期缺失阻断编码。verification-pending 只读显示分层债务；completed 不代表 delivery_verdict=verified。
+
 
 > 本文件汇集 icode "创建工单目录 / 生成 ticket_id / 写全局索引 / metadata 模板" 的共享规则。入口命令（init/log）和步骤1在创建工单时引用本文件，不重复定义。
 
@@ -354,6 +356,8 @@ test -d "{project_path}" || {  # 工程根目录已删除/移动
 - `"full"`：全流程模式（`$icodex start`），步骤2 review 默认 3 轮 + 对抗，步骤5 deepcheck 三阶段循环
 - `"fast"`：精简模式（`$icodex fast`），步骤2 review 固定 1 轮无对抗，步骤5 deepcheck 只跑 Reverse
 - **字段缺失**视为 `"full"`（向后兼容旧 metadata）
+
+**fast 风险自动升级**：完整合同见 [fast_risk.md](fast_risk.md)。requested_mode 保留原请求，effective_mode/metadata.mode/workflow_kind 为实际模式。风险由代理按真实业务/代码证据评估，`assess-fast-risk` 锁内原子更新，`workflow-plan` 返回下一步与审查/深检动作。九类风险任一命中自动 full；不降级、不使用 override。每次恢复/转换先重新评估，晚升级在原 ticket_id/目录回到 plan_done 补跑完整 review→audit，保存旧产物和 upgrade_snapshot，不创建新工单。缺 risk_profile 的历史 fast 必须先补评估才能执行。
 
 **`max_rounds` 字段**（新增，可选）：
 

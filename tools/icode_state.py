@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -18,6 +19,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+try:
+    from . import workflow_contract as contract
+except ImportError:
+    # crosscheck 按文件动态加载此模块，没有包上下文或稳定的 cwd。
+    import importlib.util
+    _contract_spec = importlib.util.spec_from_file_location("icode_workflow_contract", Path(__file__).with_name("workflow_contract.py"))
+    contract = importlib.util.module_from_spec(_contract_spec)
+    _contract_spec.loader.exec_module(contract)
 
 ARTIFACT_KEYS: Tuple[str, ...] = (
     "requirement",
@@ -43,6 +52,13 @@ FULL_PHASES: Tuple[str, ...] = (
 )
 
 STAGED_STEPS: Tuple[str, ...] = ("1", "2", "3", "4", "5", "6")
+
+# 与 main 的风险词表保持一致；布尔判断由代理根据需求和代码证据完成。
+FAST_RISK_TRIGGERS: Tuple[str, ...] = (
+    "cross_component", "persistent_identity_change", "dependency_migration",
+    "async_observer_or_cache", "restart_replay_semantics", "external_consumer_change",
+    "real_env_verification", "unresolved_semantic_decision", "major_requirement_delta",
+)
 
 CODEX_RUN_RE = re.compile(r"^icode_([1-9][0-9]*)$")
 
@@ -178,6 +194,68 @@ def _validate_staged_prefix(completed_steps: Any) -> bool:
     if any(step in ("0", "log") for step in steps):
         return False
     return steps == list(STAGED_STEPS[: len(steps)])
+
+
+def _validate_risk_assessment(assessment: Any) -> None:
+    if not isinstance(assessment, dict):
+        raise ValueError("risk assessment must be an object")
+    for field in ("risk_flags", "evidence"):
+        value = assessment.get(field)
+        if not isinstance(value, dict) or set(value) != set(FAST_RISK_TRIGGERS):
+            raise ValueError(f"risk assessment {field} must contain exactly the nine risk flags")
+    if any(type(value) is not bool for value in assessment["risk_flags"].values()):
+        raise ValueError("risk assessment flags must be booleans")
+    if any(not isinstance(value, str) or not value.strip() for value in assessment["evidence"].values()):
+        raise ValueError("risk assessment evidence must explain every risk flag")
+
+
+def _risk_profile_errors(metadata: Mapping[str, Any]) -> List[str]:
+    profile = metadata.get("risk_profile")
+    if profile is None:
+        return []  # 历史工单可读；执行 fast 时由 workflow-plan 强制补评估。
+    try:
+        _validate_risk_assessment(profile)
+    except ValueError as error:
+        return [f"risk_profile: {error}"]
+    errors = []
+    if type(profile.get("schema_version")) is not int or profile["schema_version"] != 1:
+        errors.append("risk_profile.schema_version must be 1")
+    requested, effective = profile.get("requested_mode"), profile.get("effective_mode")
+    if requested not in ("fast", "full") or effective not in ("fast", "full"):
+        errors.append("risk_profile modes must be fast or full")
+    triggers = sorted(key for key, value in profile["risk_flags"].items() if value)
+    if profile.get("triggers") != triggers:
+        errors.append("risk_profile.triggers must match the assessed risk flags")
+    if profile.get("override") is not False:
+        errors.append("risk_profile.override must be false; risky fast execution is not supported")
+    if (triggers or requested == "full") and effective != "full":
+        errors.append("risk_profile requires full mode")
+    if metadata.get("artifact_layout") != "staged":
+        errors.append("risk_profile requires staged layout")
+    if metadata.get("mode") != effective or metadata.get("workflow_kind") != "staged_" + str(effective):
+        errors.append("risk_profile effective mode must match mode and workflow_kind")
+    rounds = metadata.get("max_rounds")
+    if type(rounds) is not int or rounds < (3 if effective == "full" else 1):
+        errors.append("risk_profile requires full review rounds >= 3 or positive fast review rounds")
+    if "upgraded_at" in profile and (requested != "fast" or effective != "full"
+                                    or not isinstance(profile["upgraded_at"], str) or not profile["upgraded_at"]):
+        errors.append("risk_profile upgraded ticket must remain full")
+    if "replay_from_step" in profile:
+        snapshot = profile.get("upgrade_snapshot")
+        if (type(profile["replay_from_step"]) is not int or profile["replay_from_step"] != 2
+                or not isinstance(snapshot, dict) or not isinstance(snapshot.get("artifact_map"), dict)
+                or set(snapshot["artifact_map"]) != set(ARTIFACT_KEYS)
+                or not _validate_staged_prefix(snapshot.get("completed_steps")) or snapshot.get("mode") != "fast"
+                or not isinstance(profile.get("upgraded_at"), str) or not profile["upgraded_at"]):
+            errors.append("risk_profile replay requires a valid upgrade snapshot")
+        else:
+            current_map = metadata.get("artifact_map") if isinstance(metadata.get("artifact_map"), dict) else {}
+            completed = metadata.get("completed_steps") if isinstance(metadata.get("completed_steps"), list) else []
+            for number, key in enumerate(("plan_review", "final_plan", "implementation", "deepcheck", "audit"), 2):
+                old = snapshot["artifact_map"].get(key)
+                if str(number) in completed and old and current_map.get(key) == old:
+                    errors.append(f"risk_profile full replay requires newly published {key}")
+    return errors
 
 
 def validate_metadata(metadata: Mapping[str, Any], run_dir: Path) -> List[str]:
@@ -321,6 +399,22 @@ def validate_metadata(metadata: Mapping[str, Any], run_dir: Path) -> List[str]:
                 if not artifact_map.get(key):
                     errors.append(f"artifact_map.{key} is required after staged step {step}")
 
+    return errors + _risk_profile_errors(metadata) + contract.schema_errors(metadata)
+
+
+def _execution_metadata_errors(metadata: Mapping[str, Any], run_dir: Path) -> List[str]:
+    """仅允许新版票的未发布预留暂态继续记事实；最终校验仍使用严格合同。"""
+    errors = validate_metadata(metadata, run_dir)
+    history = metadata.get("patch_history")
+    count = metadata.get("patch_count")
+    pending = (metadata.get("workflow_contract_version") == 1 and type(count) is int and count > 0
+               and isinstance(history, list) and len(history) == count
+               and all(isinstance(item, dict) and type(item.get("number")) is int
+                       and item["number"] == n and item.get("status") == "in_progress"
+                       and item.get("intent") in ("implementation", "analysis_only")
+                       for n, item in enumerate(history, 1)))
+    if pending:
+        errors = [e for e in errors if e != "artifact_map.patches is required when patch_count > 0"]
     return errors
 
 
@@ -484,6 +578,7 @@ def publish_artifact(
     source: Path,
     relative_name: str,
     metadata_seed: Optional[Mapping[str, Any]] = None,
+    patch_number: Optional[int] = None,
 ) -> Path:
     """Publish a verified file, then atomically expose it through artifact_map."""
 
@@ -519,10 +614,38 @@ def publish_artifact(
             metadata.setdefault("patch_count", 0)
             metadata.setdefault("patch_history", [])
             metadata.setdefault("code_files", [])
+            contract.initialize(metadata)
         artifact_map = metadata.get("artifact_map")
         if not isinstance(artifact_map, dict) or key not in artifact_map:
             raise ValueError("metadata does not contain the stable artifact map")
 
+        stage = {"plan": "plan", "plan_review": "review", "final_plan": "plan",
+                 "implementation": "code", "deepcheck": "code", "audit": "code", "patches": "patch"}.get(key)
+        if key == "patches" and patch_number is not None:
+            reservations = [p for p in metadata.get("patch_history", []) if p.get("number") == patch_number]
+            if len(reservations) != 1 or reservations[0].get("status") != "in_progress":
+                raise ValueError("patch publication requires an active reservation")
+            if reservations[0].get("intent") == "analysis_only":
+                stage = "diagnosis"
+        if stage:
+            reasons = contract.gate(metadata, stage)
+            if reasons:
+                raise ValueError("workflow blocked: " + "; ".join(reasons))
+        replan = metadata.get("replan_state")
+        if replan and key in contract.STEP_KEYS:
+            # 每次重计划使用独立代际路径，旧 full/fast 文件全部留作历史。
+            target = _safe_relative_target(run_dir, f"replan/{replan['revision']}/{key}-{_sha256_file(source)}.md")
+
+        profile = metadata.get("risk_profile") or {}
+        risk_errors = _risk_profile_errors(metadata) + contract.schema_errors(metadata)
+        if risk_errors:
+            raise ValueError("metadata validation failed: " + "; ".join(risk_errors))
+        if (not replan and profile.get("replay_from_step") == 2
+                and key in ("plan_review", "final_plan", "implementation", "deepcheck", "audit")
+                and target.is_file() and not target.is_symlink()):
+            # 即使定稿内容不变，也另行发布 full 轮次，不能把旧 fast 映射直接算作完成。
+            generation = hashlib.sha256(profile["upgraded_at"].encode("utf-8")).hexdigest()[:16]
+            target = _safe_relative_target(run_dir, f"full/{generation}/{key}-{_sha256_file(source)}.md")
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
             if not target.is_file() or target.is_symlink():
@@ -554,7 +677,7 @@ def publish_artifact(
 
         metadata["artifact_map"] = dict(artifact_map)
         metadata["artifact_map"][key] = str(target.relative_to(run_dir.resolve()))
-        errors = validate_metadata(metadata, run_dir)
+        errors = _execution_metadata_errors(metadata, run_dir)
         unrelated = [error for error in errors if not error.startswith(f"artifact_map.{key} ")]
         if unrelated:
             raise ValueError("metadata validation failed: " + "; ".join(unrelated))
@@ -562,13 +685,18 @@ def publish_artifact(
     return target
 
 
-def reserve_patch_number(run_dir: Path) -> int:
+def reserve_patch_number(run_dir: Path, intent: str = "implementation") -> int:
     """Atomically reserve a unique patch number for one run."""
 
+    if intent not in ("implementation", "analysis_only"):
+        raise ValueError("patch intent must be implementation or analysis_only")
     run_dir = Path(run_dir)
     metadata_path = run_dir / ".ico_metadata.json"
     with PortableFileLock(run_dir / ".ico.lock"):
         metadata = _read_json(metadata_path)
+        reasons = contract.gate(metadata, "diagnosis" if intent == "analysis_only" else "patch")
+        if reasons:
+            raise ValueError("workflow blocked: " + "; ".join(reasons))
         patch_count = metadata.get("patch_count", 0)
         patch_history = metadata.get("patch_history", [])
         if not isinstance(patch_count, int) or isinstance(patch_count, bool) or patch_count < 0:
@@ -581,6 +709,7 @@ def reserve_patch_number(run_dir: Path) -> int:
             {
                 "number": number,
                 "status": "in_progress",
+                "intent": intent,
                 "reserved_at": datetime.now(timezone.utc).isoformat(),
             }
         ]
@@ -606,6 +735,11 @@ def finalize_patch(run_dir: Path, number: int, status: str, summary: str = "") -
         if len(matches) != 1:
             raise ValueError(f"patch reservation {number} was not found exactly once")
         entry = dict(history[matches[0]])
+        if entry.get("intent") == "analysis_only" and status != "analysis_only":
+            raise ValueError("analysis_only reservation cannot finalize implementation")
+        reasons = contract.gate(metadata, "diagnosis" if entry.get("intent") == "analysis_only" else "patch")
+        if reasons:
+            raise ValueError("workflow blocked: " + "; ".join(reasons))
         if entry.get("status") not in ("in_progress", status):
             raise ValueError(f"patch {number} is already finalized as {entry.get('status')}")
         if not metadata.get("artifact_map", {}).get("patches"):
@@ -632,17 +766,154 @@ def update_metadata(run_dir: Path, updates: Mapping[str, Any]) -> Dict[str, Any]
 
     run_dir = Path(run_dir)
     metadata_path = run_dir / ".ico_metadata.json"
-    forbidden = {"artifact_map", "patch_count", "patch_history"}.intersection(updates)
+    forbidden = {"artifact_map", "patch_count", "patch_history", "risk_profile", *contract.FIELDS}.intersection(updates)
     if forbidden:
         raise ValueError("dedicated commands must update: " + ", ".join(sorted(forbidden)))
     with PortableFileLock(run_dir / ".ico.lock"):
         metadata = _read_json(metadata_path)
+        old = copy.deepcopy(metadata)
         metadata.update(dict(updates))
-        errors = validate_metadata(metadata, run_dir)
+        if any(metadata.get(k) != old.get(k) for k in ("status", "completed_steps", "completed_phases", "current_phase")):
+            stage = "code" if metadata.get("status") in ("code_in_progress", "code_done", "deepcheck_in_progress", "deepcheck_done", "completed") else "plan"
+            if metadata.get("artifact_layout") == "concise":
+                stage = "code" if "implement" in metadata.get("completed_phases", []) or metadata.get("current_phase") == "implement" else "plan"
+            reasons = contract.gate(metadata, stage)
+            if (metadata.get("replan_state") or {}).get("pending"):
+                reasons.append("pending replan must be accepted before state transition")
+            if reasons:
+                raise ValueError("workflow blocked: " + "; ".join(reasons))
+        errors = (validate_metadata(metadata, run_dir) if updates.get("status") == "completed"
+                  else _execution_metadata_errors(metadata, run_dir))
         if errors:
             raise ValueError("metadata validation failed: " + "; ".join(errors))
         _atomic_write_json(metadata_path, metadata)
         return metadata
+
+
+def assess_fast_risk(run_dir: Path, assessment: Mapping[str, Any]) -> Dict[str, Any]:
+    """在原工单内确定性升级；后续低风险评估不撤销已经命中的风险。"""
+    _validate_risk_assessment(assessment)
+    run_dir = Path(run_dir)
+    path = run_dir / ".ico_metadata.json"
+    with PortableFileLock(run_dir / ".ico.lock"):
+        metadata = _read_json(path)
+        errors = _execution_metadata_errors(metadata, run_dir)
+        if errors:
+            raise ValueError("metadata validation failed: " + "; ".join(errors))
+        if metadata.get("artifact_layout") != "staged" or metadata.get("mode", "full") not in ("fast", "full"):
+            raise ValueError("risk assessment requires a staged fast/full ticket")
+        if type(metadata.get("max_rounds", 3)) is not int or metadata.get("max_rounds", 3) < 1:
+            raise ValueError("risk assessment requires positive integer max_rounds")
+        previous = metadata.get("risk_profile") or {}
+        requested = previous.get("requested_mode", (metadata.get("replan_state") or {}).get("requested_mode", metadata.get("mode", "full")))
+        flags, evidence = {}, {}
+        for flag in FAST_RISK_TRIGGERS:
+            prior_hit = previous.get("risk_flags", {}).get(flag, False)
+            flags[flag] = prior_hit or assessment["risk_flags"][flag]
+            evidence[flag] = (previous["evidence"][flag] if prior_hit and not assessment["risk_flags"][flag]
+                              else assessment["evidence"][flag])
+        if metadata.get("replan_state"):
+            flags["major_requirement_delta"] = True
+            evidence["major_requirement_delta"] = next(d["evidence"] for d in reversed(metadata["requirement_deltas"]) if d["severity"] == "major")
+        effective = "full" if requested == "full" or any(flags.values()) or previous.get("effective_mode") == "full" else "fast"
+        profile = dict(previous, schema_version=1, requested_mode=requested,
+                       effective_mode=effective, risk_flags=flags, evidence=evidence,
+                       triggers=sorted(key for key, value in flags.items() if value), override=False)
+        first_upgrade = metadata.get("mode") == "fast" and effective == "full"
+        if first_upgrade:
+            profile["upgraded_at"] = datetime.now(timezone.utc).isoformat()
+            if "2" in metadata["completed_steps"] or metadata["status"] == "review_in_progress":
+                profile["upgrade_snapshot"] = copy.deepcopy({key: metadata.get(key) for key in
+                    ("status", "completed_steps", "artifact_map", "mode", "workflow_kind", "max_rounds", "pending_verification")})
+                profile["replay_from_step"] = 2
+                # 保留源码和产物，回到完整 review，防止旧 fast 结果被计为 full。
+                metadata["completed_steps"] = [step for step in metadata["completed_steps"] if step in ("0", "log", "1")]
+                metadata.update(status="plan_done", total_rounds=0, clean_rounds=0,
+                                extended_rounds=0,
+                                deepcheck_phase="reverse", deepcheck_clean_rounds=0,
+                                delivery_report_generated=False)
+        metadata.update(mode=effective, workflow_kind="staged_" + effective,
+                        max_rounds=max(3, metadata.get("max_rounds", 3)) if effective == "full" else 1,
+                        risk_profile=profile)
+        contract.sync_risk(metadata)
+        errors = _execution_metadata_errors(metadata, run_dir)
+        if errors:
+            raise ValueError("metadata validation failed: " + "; ".join(errors))
+        if metadata != _read_json(path):
+            _atomic_write_json(path, metadata)
+        return metadata
+
+
+def workflow_plan(run_dir: Path) -> Dict[str, Any]:
+    """只读解析实际模式和下一个未完成步骤，供 fast/start/单步恢复共用。"""
+    metadata = _read_json(Path(run_dir) / ".ico_metadata.json")
+    errors = _execution_metadata_errors(metadata, Path(run_dir))
+    if errors:
+        raise ValueError("metadata validation failed: " + "; ".join(errors))
+    if metadata["artifact_layout"] == "concise":
+        done = len(metadata["completed_phases"])
+        phase = metadata.get("current_phase")
+        return {"ticket_id": metadata.get("ticket_id"), "run_dir": str(Path(run_dir).resolve()),
+                "effective_mode": "full", "next_step": None, "next_phase": phase,
+                "remaining_phases": list(FULL_PHASES[done:]), "replan_pending": False,
+                "blocking_reasons": contract.gate(metadata, "code" if phase in ("implement", "self_review", "audit", "verify") else "plan")}
+    profile = metadata.get("risk_profile") or {}
+    mode = metadata.get("mode", "full")
+    if mode == "fast" and not profile:
+        raise ValueError("fast risk assessment is required before workflow execution")
+    if mode not in ("fast", "full"):
+        raise ValueError("invalid workflow mode")
+    done = len([step for step in metadata["completed_steps"] if step in STAGED_STEPS])
+    replan_pending = bool((metadata.get("replan_state") or {}).get("pending"))
+    next_step = 1 if replan_pending else done + 1 if done < 6 else None
+    return {"ticket_id": metadata.get("ticket_id"), "run_dir": str(Path(run_dir).resolve()),
+            "requested_mode": profile.get("requested_mode", (metadata.get("replan_state") or {}).get("requested_mode", mode)), "effective_mode": mode,
+            "triggers": profile.get("triggers", ["major_requirement_delta"] if metadata.get("replan_state") else []), "next_step": next_step,
+            "remaining_steps": list(range(next_step, 7)) if next_step else [],
+            "blocking_reasons": contract.gate(metadata, "plan" if next_step in (1, 2, 3) else "code"),
+            "replan_pending": replan_pending,
+            "review_max_rounds": metadata.get("max_rounds", 3) if mode == "full" else 1,
+            "review_adversarial": mode == "full",
+            "deepcheck_phases": ["reverse", "fixed", "free"] if mode == "full" else ["reverse"]}
+
+
+def workflow_change(run_dir: Path, action: str, payload: Mapping[str, Any]) -> Dict[str, Any]:
+    """专用合同事务：同工单锁、校验、原子写入；不会执行验证命令。"""
+    run_dir = Path(run_dir)
+    path = run_dir / ".ico_metadata.json"
+    with PortableFileLock(run_dir / ".ico.lock"):
+        metadata = _read_json(path)
+        prior = copy.deepcopy(metadata)
+        contract.apply(metadata, run_dir, action, payload)
+        if action == "record-delta" and payload.get("severity") == "major" and metadata != prior and metadata.get("risk_profile"):
+            profile = metadata["risk_profile"]
+            profile["effective_mode"] = "full"
+            profile["risk_flags"]["major_requirement_delta"] = True
+            profile["evidence"]["major_requirement_delta"] = payload.get("evidence", "requirement delta")
+            profile["triggers"] = sorted(k for k, v in profile["risk_flags"].items() if v)
+            if prior.get("mode") == "fast":
+                profile["upgraded_at"] = datetime.now(timezone.utc).isoformat()
+        errors = _execution_metadata_errors(metadata, run_dir)
+        if errors:
+            raise ValueError("metadata validation failed: " + "; ".join(errors))
+        if metadata != prior:
+            _atomic_write_json(path, metadata)
+        return metadata
+
+
+def verification_query(run_dir: Path, action: str = "verification-pending") -> Dict[str, Any]:
+    """只读查看当前候选或债务计划；无锁文件和状态写入副作用。"""
+    run_dir = Path(run_dir)
+    metadata = _read_json(run_dir / ".ico_metadata.json")
+    errors = _execution_metadata_errors(metadata, run_dir)
+    if errors:
+        raise ValueError("metadata validation failed: " + "; ".join(errors))
+    if action == "verification-context":
+        return contract.context(metadata, run_dir)
+    result = contract.pending(metadata, run_dir)
+    if action == "verification-plan":
+        result["instructions"] = "先定义缺失需求，再保存 verification-context，执行各待验证单元并记录真实证据；不自动执行外部操作。"
+    return result
 
 
 def upsert_index_entry(codex_root: Path, entry: Mapping[str, Any]) -> Dict[str, Any]:
@@ -1046,8 +1317,10 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
     publish_parser.add_argument("--source", required=True, type=Path)
     publish_parser.add_argument("--name", required=True)
     publish_parser.add_argument("--metadata-seed", type=Path)
+    publish_parser.add_argument("--patch-number", type=int)
     reserve_parser = subparsers.add_parser("reserve-patch", help="reserve a patch number")
     reserve_parser.add_argument("--run-dir", required=True, type=Path)
+    reserve_parser.add_argument("--intent", choices=("implementation", "analysis_only"), default="implementation")
     finalize_parser = subparsers.add_parser("finalize-patch", help="finalize a published patch")
     finalize_parser.add_argument("--run-dir", required=True, type=Path)
     finalize_parser.add_argument("--number", required=True, type=int)
@@ -1056,6 +1329,19 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
     update_parser = subparsers.add_parser("update-metadata", help="apply a validated metadata transition")
     update_parser.add_argument("--run-dir", required=True, type=Path)
     update_parser.add_argument("--patch-json", required=True, type=Path)
+    risk_parser = subparsers.add_parser("assess-fast-risk", help="assess risk and upgrade the same staged ticket")
+    risk_parser.add_argument("--run-dir", required=True, type=Path)
+    risk_parser.add_argument("--assessment-json", required=True, type=Path)
+    workflow_parser = subparsers.add_parser("workflow-plan", help="read the effective mode and next workflow step")
+    workflow_parser.add_argument("--run-dir", required=True, type=Path)
+    for command in ("configure-workflow", "record-decision", "record-delta", "accept-replan", "record-verification"):
+        sub = subparsers.add_parser(command, help="apply a dedicated workflow contract transition")
+        sub.add_argument("--run-dir", required=True, type=Path)
+        if command != "accept-replan":
+            sub.add_argument("--input-json", required=True, type=Path)
+    for command in ("verification-context", "verification-pending", "verification-plan"):
+        sub = subparsers.add_parser(command, help="read workflow verification context/debt without writes")
+        sub.add_argument("--run-dir", required=True, type=Path)
     upsert_parser = subparsers.add_parser("upsert-index", help="atomically upsert one Codex index entry")
     upsert_parser.add_argument("--codex-root", required=True, type=Path)
     upsert_parser.add_argument("--entry-json", required=True, type=Path)
@@ -1083,16 +1369,38 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
         return 1 if errors else 0
     if args.command == "publish-artifact":
         seed = _read_json(args.metadata_seed) if args.metadata_seed else None
-        print(publish_artifact(args.run_dir, args.key, args.source, args.name, seed))
+        print(publish_artifact(args.run_dir, args.key, args.source, args.name, seed, args.patch_number))
         return 0
     if args.command == "reserve-patch":
-        print(reserve_patch_number(args.run_dir))
+        print(reserve_patch_number(args.run_dir, args.intent))
         return 0
     if args.command == "finalize-patch":
         print(json.dumps(finalize_patch(args.run_dir, args.number, args.status, args.summary), ensure_ascii=False))
         return 0
     if args.command == "update-metadata":
         print(json.dumps(update_metadata(args.run_dir, _read_json(args.patch_json)), ensure_ascii=False, indent=2))
+        return 0
+    if args.command in ("configure-workflow", "record-decision", "record-delta", "accept-replan", "record-verification",
+                        "verification-context", "verification-pending", "verification-plan"):
+        try:
+            if args.command.startswith("verification-"):
+                result = verification_query(args.run_dir, args.command)
+            else:
+                result = workflow_change(args.run_dir, args.command,
+                    {} if args.command == "accept-replan" else _read_json(args.input_json))
+        except (OSError, ValueError, TypeError) as error:
+            print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
+            return 1
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command in ("assess-fast-risk", "workflow-plan"):
+        try:
+            result = (assess_fast_risk(args.run_dir, _read_json(args.assessment_json))
+                      if args.command == "assess-fast-risk" else workflow_plan(args.run_dir))
+        except (OSError, ValueError) as error:
+            print(json.dumps({"ok": False, "error": str(error)}, ensure_ascii=False))
+            return 1
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.command == "upsert-index":
         print(json.dumps(upsert_index_entry(args.codex_root, _read_json(args.entry_json)), ensure_ascii=False, indent=2))
