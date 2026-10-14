@@ -1,0 +1,5 @@
+# 本地工单和检查缓存不属于技能发布内容。
+.ai/
+__pycache__/
+*.pyc
+.pytest_cache/

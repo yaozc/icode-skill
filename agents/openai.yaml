@@ -1,4 +1,4 @@
 interface:
   display_name: "ICODEX Review"
-  short_description: "Read-only v2.17 external final review"
-  default_prompt: "Use $icodex-review to read the ICode v2.17 metadata/artifact_map, current git diff, and verification evidence without modifying files."
+  short_description: "Read-only scope, workflow and evidence review"
+  default_prompt: "Use $icodex-review and references/workflow-contract.md to inspect the explicit dirty, commit or base-head scope, metadata/artifact_map, workflow contracts and current verification debt. Return the scoped report without modifying files or executing target code."

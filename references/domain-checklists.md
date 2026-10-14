@@ -40,10 +40,23 @@ Load only the sections relevant to the current task.
 
 ## ICode Artifact and Metadata Contract
 
+- Read all rules in [workflow-contract.md](workflow-contract.md) before applying this engineering checklist.
 - The review identifies `artifact_layout` and resolves evidence through `artifact_map` before reading workflow artifacts.
 - Concise and staged layouts are not mixed: absent optional entry artifacts are reported as absent, not invented.
 - Metadata, mapped artifacts, patches, and verification evidence agree on the claimed workflow state.
-- Missing or invalid evidence is reported as an evidence gap; the reviewer does not repair metadata, rename artifacts, or create placeholders.
+- Missing essential evidence is a gap; invalid mappings or evidence contradicting claimed completion/verification are confirmed violations. The reviewer does not repair metadata, rename artifacts, or create placeholders.
+- Check exact completed prefixes and state consistency; a staged run claiming completed step `2` requires `plan_review`.
+- Assess actual `effective_mode`, risk evidence and current upgrade/replan mappings; old fast artifacts cannot satisfy full work.
+- Check `semantic_decisions`, `requirement_deltas` and `replan_state`, including diagnostic intent and preserved review hypotheses.
+
+## Lifecycle and Delivery Evidence
+
+- Check required `acceptance_contract` expectations for all 16 phase/consumer cells, then separately check lifecycle proof.
+- Use sparse `verification_contract.required_cells` and the latest matching `verification_runs` record, including environment and phase.
+- Bind execution-time baseline to the selected dirty/commit/base-head candidate and verify source, contract, revision, patch count and evidence hashes.
+- Host or simulated evidence cannot satisfy a physical requirement; required missing or stale evidence remains debt.
+- Keep workflow status, `delivery_verdict`, direction `verdict` and external review PASS separate. Confirmed violations take precedence over gaps; gaps alone require SKIPPED.
+- No-version legacy and explicit unsupported versions have different handling. Never repair or migrate either during review.
 
 ## Regression and Compatibility
 

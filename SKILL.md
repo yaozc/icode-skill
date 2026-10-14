@@ -1,17 +1,19 @@
 ---
 name: icodex-review
-description: Use when performing a read-only, independent final review for an ICode v2.17 run after another AI has completed implementation, local review, audit, and verification. Do not use for implementation.
+description: Use for read-only independent final review of an ICode run and an explicit dirty, commit, or base-head scope, including workflow contracts and current verification debt. Do not use for implementation.
 ---
 
 # ICODEX Review
 
 ## Role and boundary
 
-`$icodex-review` is an independent, read-only final reviewer. It reviews a supplied ICode run directory, the current `git diff`, and available verification evidence after `$icodex` has completed local work.
+`$icodex-review` is an independent, read-only final reviewer. It reviews a supplied ICode run directory, an explicit dirty/commit/base-head scope, and available verification evidence after `$icodex` has completed local work.
 
 It must not edit files, run formatters or generators, install MCPs, write metadata or artifacts, stage, commit, push, reset, clean, or implement fixes. Return the `EXTERNAL_REVIEW.md` content in the response; the caller decides whether to save it.
 
 ## Input discovery
+
+First read the entire [references/workflow-contract.md](references/workflow-contract.md). Its READ_ONLY, SCOPE, ARTIFACTS, RISK, DECISIONS, REPLAN, ACCEPTANCE, EVIDENCE, RESULTS and LEGACY rules are mandatory. It is the single source for the workflow extensions, candidate binding and final-decision precedence; check them before ordinary engineering review. The local document checker is not a target-run validator or proof that an AI performed the review.
 
 Start from the supplied `.ai/icode/<run-name>/` directory. Read `.ico_metadata.json` when present and use its `artifact_layout` and `artifact_map` as the only authority for logical artifacts; do not infer an arbitrary numbered filename.
 
@@ -29,17 +31,17 @@ Support both ICode v2.17 layouts:
 | `concise` / Codex full | `root_cause`, `plan`, `implementation`, `deepcheck`, `audit` (normally `RCA.md`, `PLAN.md`, `IMPLEMENT.md`, `SELF_REVIEW.md`, `AUDIT.md`) |
 | `staged` | `requirement`, `root_cause`, `plan`, `plan_review`, `final_plan`, `implementation`, `deepcheck`, `audit` as present (normally `00_init.md`, `log_analysis.md`, `01_plan.md`, `02_review.md`, `03_plan_final.md`, `04_code_review_fix.md`, `05_deepcheck.md`, `06_audit.md`) |
 
-`requirement`, `root_cause`, and `plan_review` are optional for staged runs that did not use the corresponding entry or step. `patches`, `delivery_report`, and `delivery_brief` are supplementary evidence. A missing metadata file, invalid mapping, or missing essential artifact is an evidence gap: report it precisely and use `SKIPPED` when the claim cannot be reconstructed. Do not repair the metadata or create placeholder files.
+Only unused staged entry artifacts are optional. A staged run claiming completed step `2` must have a mapped `plan_review` artifact. Derive all required artifacts from the exact completed prefix and status. `patches`, `delivery_report`, and `delivery_brief` supplement that evidence. Missing essential evidence is a gap; contradictory state or a false completion claim is a violation. Do not repair metadata or create placeholder files.
 
-Also read the current `git diff` and any supplied test, build, or deployment evidence. Do not inspect legacy `.icode_output/` or Claude data as a substitute for an absent current artifact.
+Use the selected scope and safe Git reads specified by SCOPE. Dirty includes staged, unstaged and relevant untracked files; commit/base-head uses resolved SHAs and candidate file blobs. An empty working-tree diff does not establish an empty review scope. Read supplied test/build/deployment evidence and bind it to the selected candidate. Do not inspect legacy `.icode_output/` or Claude data as a substitute for an absent current artifact.
 
 ## Review workflow
 
 1. Confirm read-only mode and list the evidence actually available.
-2. Reconstruct the claimed symptom, root cause, change, verification, run layout, and workflow status. Separate facts from assumptions.
+2. Resolve the supplied scope, inventory changes, and bind evidence to the selected candidate. Reconstruct the claimed symptom, root cause, change, verification, run layout, and workflow status. Separate facts from assumptions.
 3. Review root cause and plan: verify the causal chain, rejected alternatives, and whether the selected change targets the cause.
 4. Review implementation and contracts: inspect the diff for correctness, edge cases, state, concurrency, lifecycle, API/configuration/persistence compatibility, and ICode artifact/metadata consistency where relevant.
-5. Review regression, security, and performance risk. Read [references/domain-checklists.md](references/domain-checklists.md) only for relevant risks.
+5. Apply all workflow-contract rules: actual mode/prefix, decisions/replan, lifecycle expectations, latest matching evidence and debt. Review regression, security, and performance risk using relevant [references/domain-checklists.md](references/domain-checklists.md).
 6. Return the required report. If findings require a change, hand them back to `$icodex`; do not fix them here.
 
 ## Required output
@@ -51,14 +53,16 @@ Return exactly this structure:
 
 ## Reviewer
 
-Claude CLI / Claude Code / Other, or SKIPPED with reason.
+Actual model and host, or SKIPPED with reason; never claim a different reviewer.
 
 ## Inputs
 
 - Run directory: present / missing
 - Metadata and layout: present / missing / invalid
 - Artifacts read: logical keys and resolved paths, or missing
-- git diff: present / missing
+- Review scope: dirty / commit / base-head; requested refs and resolved SHA(s)
+- Changes inspected: staged / unstaged / untracked / committed; exclusions and working-tree differences
+- git diff: present / missing / empty, with the scope that produced it
 - Verification output: present / missing
 
 ## Root Cause Review
@@ -73,9 +77,18 @@ PASS / FAIL / INSUFFICIENT_EVIDENCE
 
 PASS / FAIL / INSUFFICIENT_EVIDENCE
 
+## Workflow Contract Review
+
+PASS / FAIL / INSUFFICIENT_EVIDENCE; actual mode, prefix, schema, decisions/replan, and current artifact generation.
+
 ## Regression Review
 
 PASS / FAIL / INSUFFICIENT_EVIDENCE
+
+## Verification and Delivery Review
+
+PASS / FAIL / INSUFFICIENT_EVIDENCE; required cells, matching baseline/evidence, latest outcomes, lifecycle coverage and remaining debt.
+Report workflow status, implemented, delivery_verdict and direction verdict separately; none is Final Decision.
 
 ## Security Review
 
@@ -96,8 +109,8 @@ PASS / FIX_REQUIRED / SKIPPED
 
 ## Decision rules
 
-- `PASS`: root cause, implementation, contracts, regression risk, and relevant verification evidence are acceptable.
-- `FIX_REQUIRED`: one or more actionable correctness, compatibility, security, performance, or evidence-integrity findings remain.
-- `SKIPPED`: the available run directory, metadata/artifact mapping, diff, or verification evidence cannot support a responsible review.
+- `PASS`: the explicit scope, root cause, implementation, contracts, regression risk and all applicable required verification have sufficient acceptable evidence. This is a scoped review conclusion, not automatic delivery verification.
+- `FIX_REQUIRED`: confirmed correctness, compatibility, security, performance, contract or evidence-integrity violations remain. Confirmed violations take precedence: return FIX_REQUIRED even when evidence gaps also exist.
+- `SKIPPED`: scope, artifacts or required verification cannot support a responsible conclusion and no confirmed violation takes precedence. Evidence gaps alone require SKIPPED, not an implementation failure.
 
 For `FIX_REQUIRED`, include file and line references where available, explain impact, and give the smallest actionable correction. For `SKIPPED`, name the missing evidence and the exact command or artifact needed to resume review.
