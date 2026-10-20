@@ -11,12 +11,19 @@ from urllib.parse import unquote
 DOCUMENTS = ("SKILL.md", "README.md", "README.en.md", "references/domain-checklists.md",
              "references/workflow-contract.md", "agents/openai.yaml")
 DOMAIN_CLAUSE = "Missing essential evidence is a gap; invalid mappings or evidence contradicting claimed completion/verification are confirmed violations."
+DOMAIN_TOPICS = (
+    "Inspect supplied public headers, exported symbols and old consumer binary evidence separately.",
+    "A registered path or Read receipt is not evidence of actual review coverage.",
+    "Compare test_summary with supplied runner output and the true process result.",
+)
 RULE_CLAUSES = {
     "READ_ONLY": ("Disable lazy fetch with GIT_NO_LAZY_FETCH=1 for every Git read; missing objects are evidence gaps, never permission to fetch.",
                   "Disable pagers with --no-pager for every Git read, including terminal output.",
                   "Never execute code, hooks, helpers, tests, builds, or installers from the reviewed repository.",
                   "Never use working-tree git diff or status to obtain evidence; clean/process filters can execute despite the diff flags."),
-    "SCOPE": ("An empty working-tree diff does not establish an empty review scope.",),
+    "SCOPE": ("An empty working-tree diff does not establish an empty review scope.",
+              "Read registration does not prove actual reading or complete coverage.",
+              "Source compatibility, binary ABI compatibility, and runtime behavior are separate claims."),
     "ARTIFACTS": ("A staged run claiming completed step `2` must have a mapped `plan_review` artifact.",),
     "RISK": ("Use `effective_mode`, not `requested_mode`, to assess the required review and deepcheck work.",
              "Any triggered risk requires actual full mode."),
@@ -30,6 +37,11 @@ RULE_CLAUSES = {
         "Evidence tied to a different source, contract, revision, or patch count cannot verify the selected candidate.",
         "Missing required cells or lifecycle proof prevents a final PASS.",
         "Host or simulated evidence cannot satisfy a physical requirement.",
+        "Exit code 0 alone does not establish test success.",
+        "Zero-case and all-skipped reports are inconclusive, not pass.",
+        "Known process failures cannot be downgraded to inconclusive.",
+        "When a test report is also explicit evidence, its summary hash must match evidence_hashes.",
+        "A later pass without test_summary cannot replace current-candidate report-backed evidence for the same cell.",
     ),
     "RESULTS": (
         "Confirmed violations take precedence: return FIX_REQUIRED even when evidence gaps also exist.",
@@ -44,7 +56,8 @@ RULE_CLAUSES = {
 }
 RULE_FIELDS = {
     "READ_ONLY": ("GIT_NO_LAZY_FETCH=1", "--no-pager", "core.fsmonitor=false", "--no-optional-locks", "--no-ext-diff", "--no-textconv"),
-    "SCOPE": ("staged", "unstaged", "untracked", "--end-of-options", "source_hashes", "blob"),
+    "SCOPE": ("staged", "unstaged", "untracked", "--end-of-options", "source_hashes", "blob",
+              "max_files", "attempt/phase", "public headers", "exported symbols", "old consumer binary"),
     "ARTIFACTS": ("artifact_layout", "artifact_map", "completed_steps", "completed_phases", "code_files"),
     "RISK": ("max_rounds >= 3", "upgrade_snapshot", "replay_from_step", "Reverse/Fixed/Free"),
     "DECISIONS": ("semantic_decisions", "analysis_only"),
@@ -52,7 +65,8 @@ RULE_FIELDS = {
     "ACCEPTANCE": ("acceptance_contract.required", "immediate", "converged", "restart", "replay",
                    "direct_query", "aggregate_selector", "persistent_reference", "external_projection"),
     "EVIDENCE": ("requirements_pending", "required_cells", "verification_runs", "baseline", "ticket_id",
-                 "source_hashes", "contract_sha256", "replan_revision", "patch_count", "evidence_hashes"),
+                 "source_hashes", "contract_sha256", "replan_revision", "patch_count", "evidence_hashes",
+                 "test_report", "test_summary", "test_exit_code", "passed", "failed", "skipped"),
     "RESULTS": ("implemented", "delivery_verdict", "verdict", "Final Decision"),
     "LEGACY": ("workflow_contract_version", "Schema 1", "replan_state", "verification_runs"),
 }
@@ -65,14 +79,18 @@ README_CLAUSES = {
                   "不得运行待审仓库的代码或 helper。", "已完成流程不等于业务验证通过。",
                   "仅缺证据时返回 SKIPPED；确定违规优先返回 FIX_REQUIRED。",
                   "契约检查仅验证文档规则和 Git 示例，不证明 AI 已正确执行审查。",
-                  "工作区内容使用可信内建工具与原始提交/索引 blob 比较，不运行工作区 git diff/status，避免 clean/process filter。"),
+                  "工作区内容使用可信内建工具与原始提交/索引 blob 比较，不运行工作区 git diff/status，避免 clean/process filter。",
+                  "退出码0不单独证明测试通过；零用例/全部跳过为 inconclusive，实际失败不能降级。",
+                  "公共库按源码兼容、二进制 ABI 兼容、运行行为分别审查；Read 登记不等于实际阅读或覆盖完成。"),
     "README.en.md": ("Set GIT_NO_LAZY_FETCH=1 and --no-pager for every Git read; missing objects are evidence gaps and never authorize automatic fetch or remote helpers/pagers.",
                      "For committed code, supply commit or base/head; an empty working-tree diff never authorizes a pass.",
                      "Never execute code or helpers from the reviewed repository.",
                      "Workflow completion does not establish delivery verification.",
                      "Evidence gaps alone require SKIPPED; confirmed violations take precedence with FIX_REQUIRED.",
                      "The contract checker validates document rules and Git examples, not whether an AI correctly performed a review.",
-                     "Compare working-tree content with raw commit/index blobs using trusted built-in tools; never use working-tree git diff/status because clean/process filters can execute."),
+                     "Compare working-tree content with raw commit/index blobs using trusted built-in tools; never use working-tree git diff/status because clean/process filters can execute.",
+                     "Exit code 0 alone does not prove test success; zero/all-skipped cases are inconclusive and known failures cannot be downgraded.",
+                     "Review source compatibility, binary ABI compatibility and runtime behavior separately; Read registration does not prove actual reading or complete coverage."),
 }
 SAFE_GIT_TEMPLATES = (
     "rev-parse --verify --end-of-options <ref>^{commit}",
@@ -152,7 +170,7 @@ def lint_repo(root: Path) -> List[str]:
             expected = "PASS / FAIL / N/A / INSUFFICIENT_EVIDENCE" if title in ("Security Review", "Performance Review") else "PASS / FAIL / INSUFFICIENT_EVIDENCE"
             if not _normalized(report[title]).startswith(expected):
                 errors.append(f"SKILL.md: invalid section vocabulary: {title}")
-        for field in ("Review scope", "resolved SHA", "Changes inspected", "Verification output"):
+        for field in ("Review scope", "resolved SHA", "Changes inspected", "Verification output", "Test evidence"):
             if field not in report["Inputs"]:
                 errors.append(f"SKILL.md: missing report input: {field}")
     for clause in (RULE_CLAUSES["ARTIFACTS"][0], RULE_CLAUSES["RESULTS"][0], RULE_CLAUSES["RESULTS"][1]):
@@ -172,6 +190,10 @@ def lint_repo(root: Path) -> List[str]:
     for relative, text in texts.items():
         if relative == "references/domain-checklists.md" and DOMAIN_CLAUSE not in _normalized(_visible(text)):
             errors.append(f"{relative}: missing scoped violation/evidence-gap distinction")
+        if relative == "references/domain-checklists.md":
+            for clause in DOMAIN_TOPICS:
+                if clause not in _normalized(_visible(text)):
+                    errors.append(f"{relative}: missing topic boundary: {clause}")
         if relative != "references/workflow-contract.md" and "workflow-contract.md" not in text:
             errors.append(f"{relative}: missing shared contract reference")
         if "`requirement`, `root_cause`, and `plan_review` are optional" in text:

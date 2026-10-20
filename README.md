@@ -64,6 +64,12 @@ dirty 要分别盘点暂存、未暂存和未跟踪文件，明确排除项。co
 
 仅缺证据时返回 SKIPPED；确定违规优先返回 FIX_REQUIRED。
 
+退出码0不单独证明测试通过；零用例/全部跳过为 inconclusive，实际失败不能降级。
+
+可选 test_report/test_summary/test_exit_code 按共享合同核对真实报告计数、原始身份、当前候选/cell 和历史重放；旧无摘要记录不追溯补造。外审消费已有证据，不运行待审测试或 helper。
+
+公共库按源码兼容、二进制 ABI 兼容、运行行为分别审查；Read 登记不等于实际阅读或覆盖完成。
+
 ## 输出
 
 保留 Root Cause Review、Implementation Review、Architecture and Contract Review、Regression Review、Security Review、Performance Review、Findings 和 Final Decision，追加 Workflow Contract Review、Verification and Delivery Review，以及范围/SHA/候选匹配与债务说明。Final Decision 仍只有 `PASS`、`FIX_REQUIRED`、`SKIPPED`；PASS 限于证据足够的明确审查范围。

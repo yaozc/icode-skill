@@ -64,6 +64,7 @@ Actual model and host, or SKIPPED with reason; never claim a different reviewer.
 - Changes inspected: staged / unstaged / untracked / committed; exclusions and working-tree differences
 - git diff: present / missing / empty, with the scope that produced it
 - Verification output: present / missing
+- Test evidence: observed cases, report identity, actual process result and missing proof; legacy/no-summary boundary
 
 ## Root Cause Review
 
@@ -77,9 +78,12 @@ PASS / FAIL / INSUFFICIENT_EVIDENCE
 
 PASS / FAIL / INSUFFICIENT_EVIDENCE
 
+For affected public interfaces, distinguish source compatibility, exports/layout/ownership, external compilation/linking, binary ABI compatibility and runtime behavior from supplied evidence.
+
 ## Workflow Contract Review
 
 PASS / FAIL / INSUFFICIENT_EVIDENCE; actual mode, prefix, schema, decisions/replan, and current artifact generation.
+Check frozen scope/attempt/phase and actual coverage evidence; a registered path or batch Read receipt alone never proves complete reading.
 
 ## Regression Review
 
@@ -89,6 +93,7 @@ PASS / FAIL / INSUFFICIENT_EVIDENCE
 
 PASS / FAIL / INSUFFICIENT_EVIDENCE; required cells, matching baseline/evidence, latest outcomes, lifecycle coverage and remaining debt.
 Report workflow status, implemented, delivery_verdict and direction verdict separately; none is Final Decision.
+Inspect true case counts and process failures; zero/all-skipped is inconclusive. Apply optional test_summary history and candidate/cell selection rules from the shared contract; do not run target helpers to manufacture missing evidence.
 
 ## Security Review
 

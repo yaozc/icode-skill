@@ -14,6 +14,19 @@ from tools import lint_review_contract as lint
 
 ROOT = Path(__file__).resolve().parents[1]
 SAFE_GIT_PREFIX = ("--no-pager", "--no-optional-locks", "-c", "core.fsmonitor=false")
+TOPIC_RULES = (
+    ("Read registration does not prove actual reading or complete coverage.",
+     "Batch registration proves every file was read."),
+    ("Source compatibility, binary ABI compatibility, and runtime behavior are separate claims.",
+     "Matching headers prove binary ABI compatibility."),
+    ("Exit code 0 alone does not establish test success.", "Exit code 0 establishes all tests passed."),
+    ("Zero-case and all-skipped reports are inconclusive, not pass.", "Zero-case reports pass."),
+    ("Known process failures cannot be downgraded to inconclusive.", "Process failure may be inconclusive."),
+    ("When a test report is also explicit evidence, its summary hash must match evidence_hashes.",
+     "A report summary may disagree with the saved evidence hash."),
+    ("A later pass without test_summary cannot replace current-candidate report-backed evidence for the same cell.",
+     "A later uncounted pass replaces report-backed failure."),
+)
 
 
 class DocumentContractTests(unittest.TestCase):
@@ -34,6 +47,27 @@ class DocumentContractTests(unittest.TestCase):
     def test_current_documents_pass(self):
         self.assertEqual(lint.lint_repo(ROOT), [])
         self.assertEqual(lint.lint_repo(self.root), [])
+
+    def test_test_truth_abi_and_coverage_contracts_are_present(self):
+        text = (self.root / "references/workflow-contract.md").read_text()
+        for clause, _ in TOPIC_RULES:
+            self.assertIn(clause, text)
+
+    def test_new_topics_reject_inversions_hidden_clauses_and_omissions(self):
+        name = "references/workflow-contract.md"
+        for clause, opposite in TOPIC_RULES:
+            for replacement in ("", opposite, f"<!-- {clause} -->", f"```text\n{clause}\n```"):
+                with self.subTest(clause=clause, replacement=replacement):
+                    self.edit(name, clause, replacement)
+                    self.assertTrue(lint.lint_repo(self.root))
+
+    def test_specialized_checklists_cannot_be_removed_or_hidden(self):
+        for clause in ("Inspect supplied public headers, exported symbols and old consumer binary evidence separately.",
+                       "A registered path or Read receipt is not evidence of actual review coverage.",
+                       "Compare test_summary with supplied runner output and the true process result."):
+            for replacement in ("", f"<!-- {clause} -->"):
+                self.edit("references/domain-checklists.md", clause, replacement)
+                self.assertTrue(lint.lint_repo(self.root))
 
     def test_each_required_clause_removal_is_detected(self):
         for rule, clauses in lint.RULE_CLAUSES.items():

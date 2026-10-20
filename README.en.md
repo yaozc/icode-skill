@@ -64,6 +64,12 @@ Report workflow status, implemented, `delivery_verdict`, direction verdict and e
 
 Evidence gaps alone require SKIPPED; confirmed violations take precedence with FIX_REQUIRED.
 
+Exit code 0 alone does not prove test success; zero/all-skipped cases are inconclusive and known failures cannot be downgraded.
+
+Check optional test_report/test_summary/test_exit_code against real report counts, original identity, the current candidate/cell and exact history replay. Do not fabricate summaries for old runs or execute reviewed tests/helpers to obtain missing evidence.
+
+Review source compatibility, binary ABI compatibility and runtime behavior separately; Read registration does not prove actual reading or complete coverage.
+
 ## Output
 
 Preserve Root Cause Review, Implementation Review, Architecture and Contract Review, Regression Review, Security Review, Performance Review, Findings and Final Decision. Add Workflow Contract Review, Verification and Delivery Review, scope/SHA/candidate matching and debt details. Final Decision remains `PASS`, `FIX_REQUIRED` or `SKIPPED`; PASS applies only to an explicit scope with sufficient evidence.

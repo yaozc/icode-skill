@@ -45,6 +45,14 @@ GIT_NO_LAZY_FETCH=1 git --no-pager --no-optional-locks -c core.fsmonitor=false c
 
 Record resolved SHAs, repository root, dirty state and included/excluded files. For commit/base-head review, compare verification `source_hashes` with the selected commit/head's ordinary file blobs, not unrelated current working-tree files. Reject symlink/non-file entries and escaping paths. Evidence logs may live outside the commit, but must still match the recorded hashes and candidate. A readable commit diff alone does not bind evidence to that candidate.
 
+Read registration does not prove actual reading or complete coverage.
+
+Compare the frozen scope, related consumers, baseline, attempt/phase and source hashes with the inspection actually supported. A larger `max_files` budget or batch Read receipt only records admission/registration; it cannot prove understanding or erase unread debt. Reusing an equivalent declaration must not import another round's reads, assessments or findings. Newly affected consumers remain in scope. Keep partial/degraded/unobserved coverage explicit; a known omission contradicting a complete-coverage claim is a violation, while missing proof alone is an evidence gap.
+
+Source compatibility, binary ABI compatibility, and runtime behavior are separate claims.
+
+When a public library boundary is affected, bind the compatible baseline, candidate, public headers, selected artifact/hash, compiler/runtime ABI and architecture. Inspect the promised declaration/wrapper, exported symbols, exposed layout/ownership and error behavior. Distinguish supplied evidence for external compilation, linking and execution; a freshly compiled consumer cannot establish old consumer binary compatibility. Missing baseline/artifact/tool output leaves that layer unresolved. Ordinary application/document changes do not require an unrelated compiler or ABI matrix. Consume supplied observations; do not run a compiler, symbol tool, old binary or helper from the reviewed project.
+
 ## ARTIFACTS
 
 A staged run claiming completed step `2` must have a mapped `plan_review` artifact.
@@ -110,6 +118,24 @@ Validate each relevant execution-time `baseline`: `ticket_id`, `source_hashes`, 
 Check `evidence` and `evidence_hashes`: referenced files must be non-empty, ordinary project-relative files without traversal or symlinks, and hashes must match. Source/contract/evidence drift invalidates a prior pass. Validate current implementation completion as well; a fresh code-in-progress state cannot inherit delivery verified solely from old passes.
 
 `real_env_verification` requires defined physical coverage; absent requirements are debt. Check actual target identity, build/deployment version and observed outcomes in physical evidence. Supplied claims, logs and hashes do not automatically prove device identity, provenance, business semantics, or complete Git scope. Report those limits rather than running target code to “confirm” them.
+
+Exit code 0 alone does not establish test success.
+
+Zero-case and all-skipped reports are inconclusive, not pass.
+
+Known process failures cannot be downgraded to inconclusive.
+
+Compare actual executed testcase counts, runner command/output, true exit code, timeouts and assertions. A report with failed/errors requires fail; a report-scoped pass does not override a nonzero process exit or prove coverage beyond those cases. The optional `test_exit_code` must be an integer; a nonzero value requires overall fail. A malformed/missing report alone leaves evidence incomplete, but cannot hide an independently observed failure. Reviewing evidence does not authorize rerunning tests or parsing it with helpers from the reviewed repository.
+
+For the Codex producer, optional input `test_report` selects a canonical project-relative ordinary file through the existing writer. The writer derives `test_summary={version:1,format:junit,report:{path,sha256,bytes},total,passed,failed,errors,skipped,outcome}` from bounded actual XML; callers must not supply their own summary. Check nonnegative integer counts, their sum, report identity and outcome; parent suite counters are cross-checks, not additional cases. DTD/entities, path escapes, symlinks, malformed XML and exceeded budgets are not passing evidence. Saved counts/hash prove the bytes observed then, not that the runner really executed in this window or that physical behavior passed.
+
+When a test report is also explicit evidence, its summary hash must match evidence_hashes.
+
+Compare equivalent project-relative paths as well, such as `report.xml` and `./report.xml`; current file identity can also establish case aliases or hard links. Do not guess historical alias identity when the files are unavailable. Contradictory stored hashes for an established same file are a confirmed violation even when the current file matches one of them; do not rerun a producer helper or rewrite evidence to reconcile them. Canonical same-path history can be checked from the saved hashes without reopening a moved/deleted XML file.
+
+A later pass without test_summary cannot replace current-candidate report-backed evidence for the same cell.
+
+Apply that rule only after matching the full cell identity and current execution baseline; a report from another candidate or cell does not impose its count requirement here. Later fail/inconclusive/skipped remains debt. Exact same-id requests replay the original receipt and optional input shape, without rereading the old report or claiming a new test run; a new id rereads the selected file. Historical summaries remain readable after report movement/deletion, while files explicitly named in `evidence_hashes` still obey the existing current-evidence checks. Runs with neither test_report nor test_summary remain readable without retroactive migration; missing counts never proves that tests actually ran.
 
 ## RESULTS
 
