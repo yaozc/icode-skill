@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
 import json
-from pathlib import Path, PureWindowsPath
+from functools import lru_cache
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Mapping
 
 PHASES = ("immediate", "converged", "restart", "replay")
@@ -14,6 +16,46 @@ LAYERS = ("static", "unit", "build", "host", "deploy", "delivery", "consumption"
 FIELDS = {"workflow_contract_version", "semantic_decisions", "requirement_deltas", "replan_state",
           "acceptance_contract", "verification_contract", "verification_runs", "delivery_verdict"}
 STEP_KEYS = ("plan", "plan_review", "final_plan", "implementation", "deepcheck", "audit")
+VERIFICATION_INPUT = {"id", "cell", "outcome", "baseline", "evidence", "summary"}
+TEST_INPUT = {"test_report", "test_exit_code"}
+
+
+@lru_cache(maxsize=1)
+def test_report_module():
+    # 按当前安装位置解析，兼容状态 CLI 的隔离动态导入。
+    spec = importlib.util.spec_from_file_location("codex_test_report", Path(__file__).with_name("test_result_summary.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _test_report_name(name):
+    if (not isinstance(name, str) or not name or "\0" in name or "\\" in name
+            or PureWindowsPath(name).drive or PurePosixPath(name).is_absolute()
+            or any(part in ("", ".", "..") for part in name.split("/"))):
+        raise ValueError("test_report must be a canonical project-relative POSIX path")
+
+
+def _test_exit_code(item):
+    if "test_exit_code" in item:
+        if type(item["test_exit_code"]) is not int:
+            raise ValueError("test_exit_code must be an integer")
+        if item["test_exit_code"] != 0 and item.get("outcome") != "fail":
+            raise ValueError("nonzero test_exit_code requires fail")
+
+
+def _test_observation(item):
+    """历史摘要只校验保存的观察，不重新打开旧报告。"""
+    _test_exit_code(item)
+    if ("test_report" in item) != ("test_summary" in item):
+        raise ValueError("test_report and machine test_summary must be stored together")
+    if "test_report" in item:
+        _test_report_name(item["test_report"])
+        test_report_module().validate_summary(item["test_summary"], item["outcome"])
+        for name, digest in item.get("evidence_hashes", {}).items():
+            if (PurePosixPath(name) == PurePosixPath(item["test_report"])
+                    and digest != item["test_summary"]["report"]["sha256"]):
+                raise ValueError("test report summary disagrees with explicit evidence hash")
 
 
 def initialize(metadata: dict) -> None:
@@ -150,6 +192,7 @@ def schema_errors(metadata: Mapping[str, Any]) -> list:
                     _object(item.get("baseline"), "verification baseline")
                     if not isinstance(item.get("evidence_hashes"), dict) or not item["evidence_hashes"]:
                         raise ValueError("verification evidence hashes are required")
+                    _test_observation(item)
         replan = metadata.get("replan_state")
         if replan is not None:
             _object(replan, "replan_state")
@@ -373,16 +416,21 @@ def apply(metadata: dict, run_dir: Path, action: str, payload: dict) -> None:
             if delta["status"] == "open":
                 delta.update(status="resolved", plan=plan, revision=replan["revision"])
     elif action == "record-verification":
-        if set(payload) != {"id", "cell", "outcome", "baseline", "evidence", "summary"}:
-            raise ValueError("verification requires id/cell/outcome/baseline/evidence/summary")
+        if not VERIFICATION_INPUT <= set(payload) or set(payload) - (VERIFICATION_INPUT | TEST_INPUT):
+            raise ValueError("verification requires id/cell/outcome/baseline/evidence/summary; optional test_report/test_exit_code only")
         _text(payload["id"], "verification id")
         _text(payload["summary"], "verification summary")
         _cell(payload["cell"])
         if payload["outcome"] not in ("pass", "fail", "inconclusive", "skipped"):
             raise ValueError("invalid verification outcome")
+        _test_exit_code(payload)
+        if "test_report" in payload:
+            _test_report_name(payload["test_report"])
         prior = next((r for r in metadata["verification_runs"] if r["id"] == payload["id"]), None)
         if prior:
-            if any(prior.get(k) != v for k, v in payload.items()):
+            # 可选字段的省略也是请求身份，不能借省略报告复用另一条回执。
+            request = {k: prior[k] for k in VERIFICATION_INPUT | TEST_INPUT if k in prior}
+            if request != payload:
                 raise ValueError("verification id already has different content")
             return
         if not implemented(metadata):
@@ -395,8 +443,16 @@ def apply(metadata: dict, run_dir: Path, action: str, payload: dict) -> None:
         if not isinstance(evidence, list) or not evidence or not all(isinstance(p, str) for p in evidence):
             raise ValueError("verification evidence must be non-empty paths")
         root = _project(metadata, run_dir)
-        metadata["verification_runs"].append(dict(copy.deepcopy(payload),
-            evidence_hashes={p: file_hash(root, p) for p in evidence}))
+        record = dict(copy.deepcopy(payload), evidence_hashes={p: file_hash(root, p) for p in evidence})
+        if "test_report" in payload:
+            record["test_summary"] = test_report_module().summarize_report(payload["test_report"], root)
+            report = record["test_summary"]["report"]
+            # 同一文件可能通过大小写别名或硬链接登记，不能只比较路径字符串。
+            for name, digest in record["evidence_hashes"].items():
+                if (root / name).samefile(report["path"]) and digest != report["sha256"]:
+                    raise ValueError("test report summary disagrees with explicit evidence hash")
+        _test_observation(record)
+        metadata["verification_runs"].append(record)
     else:
         raise ValueError("unknown workflow action")
     errors = schema_errors(metadata)
@@ -431,7 +487,11 @@ def pending(metadata: Mapping[str, Any], run_dir: Path) -> dict:
             debt.append({"reason": "candidate_unavailable", "detail": str(error)})
         root = _project(metadata, run_dir)
         for cell in contract["required_cells"]:
-            latest = next((r for r in reversed(metadata["verification_runs"]) if cell_key(r["cell"]) == cell_key(cell)), None)
+            runs = [r for r in metadata["verification_runs"] if cell_key(r["cell"]) == cell_key(cell)]
+            tracked = any("test_summary" in r and r["baseline"] == current for r in runs)
+            # 先绑定当前候选与单元；无计数 pass 不覆盖已观察的报告，负面结果始终保留。
+            latest = next((r for r in reversed(runs) if not (tracked and r["baseline"] == current
+                          and r["outcome"] == "pass" and "test_summary" not in r)), None)
             reason = "missing_run"
             if latest:
                 reason = latest["outcome"] if latest["outcome"] != "pass" else ""

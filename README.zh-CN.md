@@ -94,6 +94,8 @@ bash ~/.codex/skills/icodex/mcp/install-codex.sh
 
 ## 验证
 
+现有 `record-verification --input-json` 可选接收工程相对路径 `test_report`（真实 JUnit XML）和整数 `test_exit_code`，由 writer 生成 test_summary，拒绝自填计数。零用例/全部跳过为 inconclusive，实际失败保持 fail；当前 baseline/cell 已有报告证据后，无计数 pass 不能覆盖它。摘要证明读到的报告字节，实际执行仍须 runner 输出与来源。详见[测试报告合同](references/workflow_contract.md#测试报告证据)。
+
 先在测试环境安装 `pytest`，再执行完整测试。
 
 ```bash

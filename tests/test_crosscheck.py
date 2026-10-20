@@ -161,6 +161,65 @@ def test_new_round_requires_independent_worklist(workspace):
     assert failed["gate_id"] == "inspection_worklist"
 
 
+def test_start_recovers_only_empty_orphan_containers(workspace):
+    root, ticket, env = workspace
+    orphan = root / ".ai/icode/.crosscheck/icode_1"
+    orphan.mkdir(parents=True)
+    before = tree_digest(ticket)
+    started = run_tool(env, "start", ticket)
+    assert Path(started["crosscheck_dir"]) == orphan
+    assert (orphan / "crosscheck_manifest.json").is_file()
+    assert tree_digest(ticket) == before
+
+
+def test_nonempty_orphan_is_preserved_and_rejected(workspace):
+    root, ticket, env = workspace
+    orphan = root / ".ai/icode/.crosscheck/icode_1"
+    orphan.mkdir(parents=True)
+    evidence = orphan / "unexplained.json"
+    evidence.write_bytes(b"partial evidence")
+    result = run_tool(env, "start", ticket, expected=1)
+    assert result["gate_id"] == "crosscheck_manifest_missing"
+    assert evidence.read_bytes() == b"partial evidence"
+
+
+def test_container_inventory_does_not_remove_empty_directories(tmp_path):
+    from tools import icode_crosscheck as api
+    orphan = tmp_path / "icode_1"
+    orphan.mkdir()
+    assert api.matching_containers(tmp_path, {}) == ([], [])
+    assert orphan.is_dir()
+
+
+@pytest.mark.parametrize("failure", ["round", "publish", "after_publish"])
+def test_start_failure_has_no_unrecoverable_empty_container(workspace, monkeypatch, failure):
+    from tools import icode_crosscheck as api
+    root, ticket, env = workspace
+    args = api.build_parser().parse_args(["start", str(ticket)])
+    before = tree_digest(ticket)
+    with monkeypatch.context() as patcher:
+        if failure == "round":
+            def fail_round(*args):
+                raise api.CrosscheckError("snapshot failed", gate_id="fixture")
+            patcher.setattr(api, "new_round", fail_round)
+        else:
+            writer = api.atomic_write_json
+            def fail_publish(path, value):
+                if failure == "after_publish":
+                    writer(path, value)
+                raise OSError("injected publication failure")
+            patcher.setattr(api, "atomic_write_json", fail_publish)
+        with pytest.raises((api.CrosscheckError, OSError)):
+            api.cmd_start(args)
+    containers = list((root / ".ai/icode/.crosscheck").glob("icode_*"))
+    if failure != "after_publish":
+        assert containers == []
+    else:
+        assert (containers[0] / "crosscheck_manifest.json").is_file()
+    run_tool(env, "start", ticket)
+    assert tree_digest(ticket) == before
+
+
 def test_root_seed_avoids_repository_wide_default_scope(workspace):
     root, ticket, env = workspace
     (root / "build.sh").write_text("#!/bin/sh\nexit 0\n")

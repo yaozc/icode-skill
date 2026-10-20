@@ -92,6 +92,8 @@ See [SKILL.md](SKILL.md) for routing and [the Codex runtime contract](references
 
 ## Verification
 
+Verification records optionally accept a project-relative `test_report` (real JUnit XML) and an integer `test_exit_code` through the existing `record-verification --input-json` interface. The writer derives `test_summary`; caller-supplied counts are rejected. Zero/all-skipped cases are inconclusive, known failures stay fail, and an uncounted pass cannot mask report-backed evidence for the same current baseline/cell. Saved summaries describe observed report bytes; actual execution still needs runner output and provenance. See the [test evidence contract](references/workflow_contract.md#测试报告证据).
+
 Install `pytest` in your test environment before running the suite.
 
 ```bash

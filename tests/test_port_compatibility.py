@@ -55,7 +55,7 @@ class CompatibilityTests(unittest.TestCase):
 
     def test_windows_git_dispatch_avoids_selector_and_rejects_failure(self):
         # 只替换被测模块的 os，避免改变宿主 pathlib/pytest 的平台判断。
-        windows = SimpleNamespace(name="nt", environ=os.environ)
+        windows = SimpleNamespace(name="nt", environ=os.environ, dup=os.dup, read=os.read, close=os.close)
         with patch.object(self.inspection, "os", windows), patch.object(
                 self.inspection.selectors, "DefaultSelector", side_effect=AssertionError("anonymous pipe select")):
             data, truncated = self.inspection._git(self.root, ["--version"])

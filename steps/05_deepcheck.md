@@ -134,6 +134,7 @@ Free 阶段一次性完整覆盖全部 15 个角度。
 1. 检测最新目录，确定 `ICODE_OUT_DIR`
 2. 读取 `03_plan_final.md` 和 `.ico_metadata.json`
    - 若 `.ico_metadata.json.code_compile_failed == true`，输出 `⚠️ 步骤4编译失败，仍继续复检` 警告；若 `test_failures == true`，输出 `⚠️ 步骤4测试未通过（test_outcome=fail），重点复检测试失败相关功能点` 警告
+   - 若 `test_outcome=inconclusive`，明确提示测试证据不完整，核对原始 runner 输出与零用例/全部跳过/无效报告原因；继续复检但保留验证债务，不能按测试通过处理
 3. **强制思考前置**（不可跳过，缺证据视为不合规；按 [references/thinking_core.md](../references/thinking_core.md)「强制思考前置·统一契约」段执行）：本步骤子项（至少3步）= 梳理代码清单 → 回顾计划要点 → 制定逆推/Fixed/Free 检查策略
 4. **分步续跑**：若 `status == "deepcheck_in_progress"`，从 metadata 恢复 `deepcheck_total_rounds` / `deepcheck_clean_rounds` / `deepcheck_phase`，同时读取已存在的 `05_deepcheck.md`（若含「Reverse 逆推」段 **且 `metadata.patch_count` 为 0/缺失（无补丁修改）** 则跳过 Reverse；**有补丁（`patch_count > 0`）时不跳过**——补丁修改必须重新纳入 Reverse 逆推，重跑 Reverse 覆盖更新逆推段，再进入后续阶段）
 5. 否则初始化 `deepcheck_clean_rounds = 0`, `deepcheck_total_rounds = 1`, `deepcheck_phase = "reverse"`, `status = deepcheck_in_progress`

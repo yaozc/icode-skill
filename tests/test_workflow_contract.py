@@ -1,6 +1,7 @@
 """合同门控、原工单重计划和交付证据失效的回归。"""
 import copy
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -209,6 +210,180 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(state.verification_query(self.run)["pending"][0]["reason"], "fail")
         (self.project / "src/example.py").write_text("value = 3\n")
         self.assertEqual(state.verification_query(self.run)["pending"][0]["reason"], "stale_candidate")
+
+    def report_record(self, identity="report-1", outcome="pass", xml="<testsuite><testcase/></testsuite>", **extra):
+        (self.project / "report.xml").write_text(xml, encoding="utf-8")
+        return dict(self.record(identity, outcome), test_report="report.xml", **extra)
+
+    def test_report_counts_come_from_file_and_no_summary_can_be_supplied(self):
+        self.configure()
+        payload = self.report_record()
+        result = self.change("record-verification", payload)["verification_runs"][-1]
+        self.assertEqual(result["test_summary"]["passed"], 1)
+        self.assertEqual(result["test_summary"]["report"]["sha256"], contract.file_hash(self.project, "report.xml"))
+        forged = dict(self.record("forged"), test_summary=result["test_summary"])
+        self.assert_rejected_unchanged(lambda: self.change("record-verification", forged))
+
+    def test_zero_skipped_and_failed_reports_do_not_become_pass(self):
+        self.configure()
+        for xml, outcome in [("<testsuite/>", "inconclusive"),
+                             ("<testsuite><testcase><skipped/></testcase></testsuite>", "inconclusive"),
+                             ("<testsuite><testcase><failure/></testcase></testsuite>", "fail")]:
+            with self.subTest(xml=xml):
+                payload = self.report_record(xml=xml)
+                self.assert_rejected_unchanged(lambda: self.change("record-verification", payload))
+                payload["outcome"] = outcome
+                payload["id"] = outcome + str(len(self.read()["verification_runs"]))
+                self.change("record-verification", payload)
+                self.assertEqual(state.verification_query(self.run)["pending"][0]["reason"], outcome)
+
+    def test_process_failure_and_report_failure_cannot_be_downgraded(self):
+        self.configure()
+        for outcome in ("pass", "inconclusive", "skipped"):
+            payload = self.report_record(outcome=outcome, test_exit_code=2)
+            self.assert_rejected_unchanged(lambda: self.change("record-verification", payload))
+        payload["outcome"] = "fail"
+        self.change("record-verification", payload)
+        self.assertEqual(self.read()["verification_runs"][-1]["test_summary"]["outcome"], "pass")
+        bad = self.report_record("failed-xml", "inconclusive", "<testsuite><testcase><error/></testcase></testsuite>")
+        self.assert_rejected_unchanged(lambda: self.change("record-verification", bad))
+        for value in (True, "0", None):
+            bad = self.report_record("bad-exit", test_exit_code=value)
+            self.assert_rejected_unchanged(lambda: self.change("record-verification", bad))
+
+    def test_report_replay_is_exact_and_does_not_reread_history(self):
+        self.configure()
+        payload = self.report_record(test_exit_code=0)
+        self.change("record-verification", payload)
+        before = self.path.read_bytes()
+        (self.project / "report.xml").unlink()
+        self.change("record-verification", payload)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(state.verification_query(self.run)["delivery_verdict"], "verified")
+        for key in ("test_report", "test_exit_code"):
+            omitted = dict(payload); del omitted[key]
+            self.assert_rejected_unchanged(lambda: self.change("record-verification", omitted))
+
+    def test_report_summary_and_explicit_evidence_must_observe_the_same_bytes(self):
+        self.configure()
+        for name in ("report.xml", "./report.xml"):
+            with self.subTest(evidence=name):
+                payload = self.report_record()
+                payload["evidence"].append(name)
+                original = contract.file_hash
+                def replace_after_hash(root, path, *args):
+                    digest = original(root, path, *args)
+                    if path == name:
+                        (self.project / "report.xml").write_text("<testsuite><testcase/><testcase/></testsuite>")
+                    return digest
+                with patch.object(contract, "file_hash", side_effect=replace_after_hash):
+                    self.assert_rejected_unchanged(lambda: self.change("record-verification", payload), "report.*evidence")
+
+    def test_saved_report_summary_cannot_disagree_with_explicit_evidence_hash(self):
+        self.configure()
+        payload = self.report_record()
+        payload["evidence"].append("report.xml")
+        self.change("record-verification", payload)
+        metadata = self.read()
+        metadata["verification_runs"][-1]["test_summary"]["report"]["sha256"] = "0" * 64
+        self.assertTrue(contract.schema_errors(metadata))
+
+    def test_report_evidence_aliases_are_matched_by_file_identity(self):
+        self.configure()
+        payload = self.report_record()
+        alias = self.project / "report-alias.xml"
+        os.link(self.project / "report.xml", alias)
+        payload["evidence"].append(alias.name)
+        original = contract.file_hash
+        def replace_after_hash(root, name, *args):
+            digest = original(root, name, *args)
+            if name == alias.name:
+                (self.project / "report.xml").write_text("<testsuite><testcase/><testcase/></testsuite>")
+            return digest
+        with patch.object(contract, "file_hash", side_effect=replace_after_hash):
+            self.assert_rejected_unchanged(lambda: self.change("record-verification", payload), "report.*evidence")
+
+    def test_fresh_request_reads_current_report_and_failure_keeps_prior_bytes(self):
+        self.configure()
+        payload = self.report_record()
+        self.change("record-verification", payload)
+        payload = self.report_record("report-2", xml="<testsuite><testcase/><testcase/></testsuite>")
+        self.change("record-verification", payload)
+        runs = self.read()["verification_runs"]
+        self.assertEqual([r["test_summary"]["total"] for r in runs], [1, 2])
+        bad = self.report_record("bad", xml="<not-junit/>")
+        self.assert_rejected_unchanged(lambda: self.change("record-verification", bad))
+        bad = self.report_record("write-failure")
+        with patch.object(state, "_atomic_write_json", side_effect=OSError("injected")):
+            before = self.path.read_bytes()
+            with self.assertRaises(OSError):
+                self.change("record-verification", bad)
+            self.assertEqual(self.path.read_bytes(), before)
+
+    def test_unreported_pass_does_not_mask_counted_failure_or_zero_cases(self):
+        self.configure()
+        for outcome, xml in [("fail", "<testsuite><testcase><failure/></testcase></testsuite>"),
+                             ("inconclusive", "<testsuite/>")]:
+            with self.subTest(outcome=outcome):
+                self.change("record-verification", self.report_record(outcome, outcome, xml))
+                self.change("record-verification", self.record("uncounted-" + outcome))
+                debt = state.verification_query(self.run)["pending"][0]
+                self.assertEqual((debt["reason"], debt["run_id"]), (outcome, outcome))
+        self.change("record-verification", self.report_record("good"))
+        self.change("record-verification", self.record("later-failure", "fail"))
+        self.assertEqual(state.verification_query(self.run)["pending"][0]["run_id"], "later-failure")
+
+    def test_report_requirement_is_bound_to_candidate_and_cell(self):
+        self.configure(verification([cell(), dict(cell(), scenario="other")]))
+        self.change("record-verification", self.report_record(outcome="fail", xml="<testsuite><testcase><failure/></testcase></testsuite>"))
+        self.change("record-verification", self.record("other", target=dict(cell(), scenario="other")))
+        self.assertEqual(len(state.verification_query(self.run)["pending"]), 1)
+        (self.project / "src/example.py").write_text("value = 2\n")
+        self.change("record-verification", self.record("fresh"))
+        self.change("record-verification", self.record("fresh-other", target=dict(cell(), scenario="other")))
+        self.assertEqual(state.verification_query(self.run)["delivery_verdict"], "verified")
+
+    def test_report_paths_and_stored_summary_corruption_are_rejected(self):
+        self.configure()
+        for path in ("../report.xml", str(self.project / "report.xml"), "missing.xml"):
+            payload = self.report_record(); payload["test_report"] = path
+            self.assert_rejected_unchanged(lambda: self.change("record-verification", payload))
+        (self.project / "linked.xml").symlink_to(self.project / "report.xml")
+        payload["test_report"] = "linked.xml"
+        self.assert_rejected_unchanged(lambda: self.change("record-verification", payload))
+        self.change("record-verification", self.report_record())
+        saved = self.read()
+        for field, value in (("total", 99), ("passed", True), ("outcome", "fail")):
+            bad = copy.deepcopy(saved)
+            bad["verification_runs"][-1]["test_summary"][field] = value
+            self.assertTrue(contract.schema_errors(bad))
+
+    def test_report_cli_and_concurrent_writers_use_existing_transaction(self):
+        self.configure()
+        payload = self.report_record()
+        request = self.project / "verification.json"
+        request.write_text(json.dumps(payload))
+        process = subprocess.run([sys.executable, "-I", str(ROOT / "tools/icode_state.py"), "record-verification",
+                                  "--run-dir", str(self.run), "--input-json", str(request)], capture_output=True, text=True)
+        self.assertEqual(process.returncode, 0, process.stdout + process.stderr)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(lambda n: self.change("record-verification", dict(payload, id=f"parallel-{n}")), range(4)))
+        self.assertEqual(len(self.read()["verification_runs"]), 5)
+
+    def test_concise_report_keeps_explicit_evidence_file_requirements(self):
+        metadata = self.read()
+        metadata.update(artifact_layout="concise", workflow_kind="codex_full", status="full_in_progress",
+                        completed_steps=[], completed_phases=["diagnose", "plan", "implement"], current_phase="self_review")
+        metadata["artifact_map"]["root_cause"] = "RCA.md"
+        (self.run / "RCA.md").write_text("actual diagnosis\n")
+        self.path.write_text(json.dumps(metadata))
+        self.configure()
+        payload = self.report_record()
+        payload["evidence"].append("report.xml")
+        self.change("record-verification", payload)
+        self.assertEqual(state.verification_query(self.run)["delivery_verdict"], "verified")
+        (self.project / "report.xml").unlink()
+        self.assertEqual(state.verification_query(self.run)["pending"][0]["reason"], "missing_evidence")
 
     def test_protected_fields_malformed_input_and_paths_do_not_write(self):
         self.configure()
