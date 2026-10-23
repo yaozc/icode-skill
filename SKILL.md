@@ -79,11 +79,13 @@ PASS / FAIL / INSUFFICIENT_EVIDENCE
 PASS / FAIL / INSUFFICIENT_EVIDENCE
 
 For affected public interfaces, distinguish source compatibility, exports/layout/ownership, external compilation/linking, binary ABI compatibility and runtime behavior from supplied evidence.
+Compare unordered membership only where the producer contract declares a set; retain ordered histories.
 
 ## Workflow Contract Review
 
 PASS / FAIL / INSUFFICIENT_EVIDENCE; actual mode, prefix, schema, decisions/replan, and current artifact generation.
 Check frozen scope/attempt/phase and actual coverage evidence; a registered path or batch Read receipt alone never proves complete reading.
+Where supported, inspect the frozen file budget and exact batch membership; do not require new options from older producers or unimplemented stage/provider fields.
 
 ## Regression Review
 
@@ -99,9 +101,15 @@ Inspect true case counts and process failures; zero/all-skipped is inconclusive.
 
 PASS / FAIL / N/A / INSUFFICIENT_EVIDENCE
 
+Report the actual authorization source and action scope; scanner success or a note does not grant permission.
+Distinguish permission prose from supplied credential values/headers without reproducing secrets; missing proof is a gap and established unauthorized execution is a violation. Consume supplied observations without running a target scanner or action.
+
 ## Performance Review
 
 PASS / FAIL / N/A / INSUFFICIENT_EVIDENCE
+
+Separate raw read limits, parser memory and soft deadlines from observed hard resource bounds.
+Bind performance measurements to the candidate, workload and environment. Pure-data reuse must preserve fresh authorization/evidence checks; host simulation and MCP configuration changes do not prove a native runtime result or process reload.
 
 ## Findings
 

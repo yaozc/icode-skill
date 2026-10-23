@@ -27,6 +27,24 @@ TOPIC_RULES = (
     ("A later pass without test_summary cannot replace current-candidate report-backed evidence for the same cell.",
      "A later uncounted pass replaces report-backed failure."),
 )
+PRECISE_RULES = (
+    ("Scanner success and permission notes do not establish action authorization.",
+     "A scanner pass grants permission for deployment."),
+    ("A permission disclaimer is not a credential leak merely because it contains the word authorization.",
+     "Every occurrence of authorization proves a credential leak."),
+    ("Only fields explicitly defined as unordered sets may ignore member order.",
+     "Every array may be compared as an unordered set."),
+    ("verification_runs, patch_history, event history and accepted prefixes remain ordered.",
+     "Sort and deduplicate verification_runs before deciding the latest result."),
+    ("Raw read budgets do not prove peak parser memory or hard elapsed-time bounds.",
+     "A 64 MiB input cap proves peak memory stays below 64 MiB."),
+    ("Performance optimizations must not cache authorization or evidence eligibility.",
+     "Cache an old authorization or evidence eligibility result to reduce checking."),
+    ("File budgets and batch registration never erase unread or unobserved coverage debt.",
+     "A larger file budget removes all unread coverage debt."),
+    ("Do not require stage or provider fields from producers that do not implement those contracts.",
+     "All schema-1 producers must provide stage and provider fields."),
+)
 
 
 class DocumentContractTests(unittest.TestCase):
@@ -68,6 +86,57 @@ class DocumentContractTests(unittest.TestCase):
             for replacement in ("", f"<!-- {clause} -->"):
                 self.edit("references/domain-checklists.md", clause, replacement)
                 self.assertTrue(lint.lint_repo(self.root))
+
+    def test_authorization_order_and_resource_contracts_are_present(self):
+        text = (self.root / "references/workflow-contract.md").read_text()
+        for clause, _ in PRECISE_RULES:
+            with self.subTest(clause=clause):
+                self.assertIn(clause, text)
+
+    def test_precise_rules_reject_inversions_hidden_clauses_and_omissions(self):
+        name = "references/workflow-contract.md"
+        for clause, opposite in PRECISE_RULES:
+            for replacement in ("", opposite, f"<!-- {clause} -->", f"```text\n{clause}\n```"):
+                with self.subTest(clause=clause, replacement=replacement):
+                    self.edit(name, clause, replacement)
+                    self.assertTrue(lint.lint_repo(self.root))
+
+    def test_precise_report_instructions_cannot_be_hidden_or_reversed(self):
+        for clause in (
+                "Compare unordered membership only where the producer contract declares a set; retain ordered histories.",
+                "Report the actual authorization source and action scope; scanner success or a note does not grant permission.",
+                "Separate raw read limits, parser memory and soft deadlines from observed hard resource bounds."):
+            for replacement in ("", "The opposite rule applies.", f"<!-- {clause} -->"):
+                with self.subTest(clause=clause, replacement=replacement):
+                    self.edit("SKILL.md", clause, replacement)
+                    self.assertTrue(lint.lint_repo(self.root))
+
+    def test_precise_domain_checks_cannot_be_removed_or_hidden(self):
+        for clause in (
+                "Inspect authorization provenance independently of scanner output and permission prose.",
+                "Distinguish declared unordered membership from ordered observations and decisions.",
+                "Review raw input limits, parser expansion and elapsed-time guarantees separately."):
+            for replacement in ("", f"<!-- {clause} -->"):
+                with self.subTest(clause=clause, replacement=replacement):
+                    self.edit("references/domain-checklists.md", clause, replacement)
+                    self.assertTrue(lint.lint_repo(self.root))
+
+    def test_precise_rule_failure_cli_does_not_repair_documents_or_execute_target_helpers(self):
+        clause = PRECISE_RULES[0][0]
+        self.edit("references/workflow-contract.md", clause, "A scanner pass grants deployment permission.")
+        # 目标项目内容不是本检查器的输入；真实 CLI 失败也不得执行或修复它。
+        marker = self.root / "executed.marker"
+        helper = self.root / "target-helper.py"
+        helper.write_text("from pathlib import Path\nPath(__file__).with_name('executed.marker').write_text('ran')\n")
+        before = {p.relative_to(self.root): (p.read_bytes(), p.stat().st_mtime_ns)
+                  for p in self.root.rglob("*") if p.is_file()}
+        result = subprocess.run([sys.executable, "-B", str(ROOT / "tools/lint_review_contract.py"), str(self.root)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("DECISIONS", result.stdout)
+        self.assertFalse(marker.exists())
+        self.assertEqual({p.relative_to(self.root): (p.read_bytes(), p.stat().st_mtime_ns)
+                          for p in self.root.rglob("*") if p.is_file()}, before)
 
     def test_each_required_clause_removal_is_detected(self):
         for rule, clauses in lint.RULE_CLAUSES.items():

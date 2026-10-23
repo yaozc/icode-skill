@@ -70,6 +70,10 @@ dirty 要分别盘点暂存、未暂存和未跟踪文件，明确排除项。co
 
 公共库按源码兼容、二进制 ABI 兼容、运行行为分别审查；Read 登记不等于实际阅读或覆盖完成。
 
+扫描通过和权限说明不代表动作已授权；集合等价仅适用于明确的无序字段，有序历史不能重排。
+
+核对授权来源、动作/目标/限制，区分普通否定权限说明与真实凭据内容；不只因出现 authorization 单词就认定泄密。只读消费已有材料，不执行待审扫描器来补证明。按生产方实际支持核对冻结预算与批量登记，不向旧票强加新字段。读取字节预算、解析峰值内存与软超时分别陈述；删除历史引用或宿主模拟测试不能替代资源实测或原生运行结果。
+
 ## 输出
 
 保留 Root Cause Review、Implementation Review、Architecture and Contract Review、Regression Review、Security Review、Performance Review、Findings 和 Final Decision，追加 Workflow Contract Review、Verification and Delivery Review，以及范围/SHA/候选匹配与债务说明。Final Decision 仍只有 `PASS`、`FIX_REQUIRED`、`SKIPPED`；PASS 限于证据足够的明确审查范围。

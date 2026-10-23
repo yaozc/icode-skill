@@ -15,6 +15,9 @@ DOMAIN_TOPICS = (
     "Inspect supplied public headers, exported symbols and old consumer binary evidence separately.",
     "A registered path or Read receipt is not evidence of actual review coverage.",
     "Compare test_summary with supplied runner output and the true process result.",
+    "Inspect authorization provenance independently of scanner output and permission prose.",
+    "Distinguish declared unordered membership from ordered observations and decisions.",
+    "Review raw input limits, parser expansion and elapsed-time guarantees separately.",
 )
 RULE_CLAUSES = {
     "READ_ONLY": ("Disable lazy fetch with GIT_NO_LAZY_FETCH=1 for every Git read; missing objects are evidence gaps, never permission to fetch.",
@@ -23,11 +26,14 @@ RULE_CLAUSES = {
                   "Never use working-tree git diff or status to obtain evidence; clean/process filters can execute despite the diff flags."),
     "SCOPE": ("An empty working-tree diff does not establish an empty review scope.",
               "Read registration does not prove actual reading or complete coverage.",
-              "Source compatibility, binary ABI compatibility, and runtime behavior are separate claims."),
+              "Source compatibility, binary ABI compatibility, and runtime behavior are separate claims.",
+              "File budgets and batch registration never erase unread or unobserved coverage debt."),
     "ARTIFACTS": ("A staged run claiming completed step `2` must have a mapped `plan_review` artifact.",),
     "RISK": ("Use `effective_mode`, not `requested_mode`, to assess the required review and deepcheck work.",
              "Any triggered risk requires actual full mode."),
-    "DECISIONS": ("Unresolved semantic decisions block implementation claims, not explicitly scoped diagnosis-only analysis.",),
+    "DECISIONS": ("Unresolved semantic decisions block implementation claims, not explicitly scoped diagnosis-only analysis.",
+                  "Scanner success and permission notes do not establish action authorization.",
+                  "A permission disclaimer is not a credential leak merely because it contains the word authorization."),
     "REPLAN": ("Old snapshot mappings cannot count as completed work in the current replan or upgrade generation.",
                "Only resolved major deltas accepted through replan require plan/revision; ordinary minor deltas do not."),
     "ACCEPTANCE": ("A non-empty acceptance matrix is not runtime proof.", "The matrix uses only these fixed keys.",
@@ -42,6 +48,10 @@ RULE_CLAUSES = {
         "Known process failures cannot be downgraded to inconclusive.",
         "When a test report is also explicit evidence, its summary hash must match evidence_hashes.",
         "A later pass without test_summary cannot replace current-candidate report-backed evidence for the same cell.",
+        "Only fields explicitly defined as unordered sets may ignore member order.",
+        "verification_runs, patch_history, event history and accepted prefixes remain ordered.",
+        "Raw read budgets do not prove peak parser memory or hard elapsed-time bounds.",
+        "Performance optimizations must not cache authorization or evidence eligibility.",
     ),
     "RESULTS": (
         "Confirmed violations take precedence: return FIX_REQUIRED even when evidence gaps also exist.",
@@ -52,27 +62,35 @@ RULE_CLAUSES = {
         "An absent workflow_contract_version is legacy, not automatically verified.",
         "An explicit unsupported version must not be treated as legacy.",
         "Missing or malformed schema-1 fields are confirmed violations.",
+        "Do not require stage or provider fields from producers that do not implement those contracts.",
     ),
 }
 RULE_FIELDS = {
     "READ_ONLY": ("GIT_NO_LAZY_FETCH=1", "--no-pager", "core.fsmonitor=false", "--no-optional-locks", "--no-ext-diff", "--no-textconv"),
     "SCOPE": ("staged", "unstaged", "untracked", "--end-of-options", "source_hashes", "blob",
-              "max_files", "attempt/phase", "public headers", "exported symbols", "old consumer binary"),
+              "max_files", "attempt/phase", "public headers", "exported symbols", "old consumer binary",
+              "--max-files", "--paths-json"),
     "ARTIFACTS": ("artifact_layout", "artifact_map", "completed_steps", "completed_phases", "code_files"),
     "RISK": ("max_rounds >= 3", "upgrade_snapshot", "replay_from_step", "Reverse/Fixed/Free"),
-    "DECISIONS": ("semantic_decisions", "analysis_only"),
+    "DECISIONS": ("semantic_decisions", "analysis_only", "authorization source", "credential", "scanner"),
     "REPLAN": ("requirement_deltas", "replan_state", "old_artifact_map", "accepted_plan", "pending_verification", "staged-only"),
     "ACCEPTANCE": ("acceptance_contract.required", "immediate", "converged", "restart", "replay",
                    "direct_query", "aggregate_selector", "persistent_reference", "external_projection"),
     "EVIDENCE": ("requirements_pending", "required_cells", "verification_runs", "baseline", "ticket_id",
                  "source_hashes", "contract_sha256", "replan_revision", "patch_count", "evidence_hashes",
-                 "test_report", "test_summary", "test_exit_code", "passed", "failed", "skipped"),
+                 "test_report", "test_summary", "test_exit_code", "passed", "failed", "skipped",
+                 "patch_history", "duplicate", "peak", "soft", "PATH", "reload"),
     "RESULTS": ("implemented", "delivery_verdict", "verdict", "Final Decision"),
     "LEGACY": ("workflow_contract_version", "Schema 1", "replan_state", "verification_runs"),
 }
 REPORT_SECTIONS = ("Reviewer", "Inputs", "Root Cause Review", "Implementation Review",
                    "Architecture and Contract Review", "Workflow Contract Review", "Regression Review",
                    "Verification and Delivery Review", "Security Review", "Performance Review", "Findings", "Final Decision")
+REPORT_GUIDANCE = {
+    "Architecture and Contract Review": "Compare unordered membership only where the producer contract declares a set; retain ordered histories.",
+    "Security Review": "Report the actual authorization source and action scope; scanner success or a note does not grant permission.",
+    "Performance Review": "Separate raw read limits, parser memory and soft deadlines from observed hard resource bounds.",
+}
 README_CLAUSES = {
     "README.md": ("所有 Git 读取设置 GIT_NO_LAZY_FETCH=1 并使用 --no-pager；缺失对象作为证据缺口，不自动取回对象或执行远程 helper/pager。",
                   "已提交代码请提供 commit 或 base/head，不因工作树 diff 为空自动放行。",
@@ -81,7 +99,8 @@ README_CLAUSES = {
                   "契约检查仅验证文档规则和 Git 示例，不证明 AI 已正确执行审查。",
                   "工作区内容使用可信内建工具与原始提交/索引 blob 比较，不运行工作区 git diff/status，避免 clean/process filter。",
                   "退出码0不单独证明测试通过；零用例/全部跳过为 inconclusive，实际失败不能降级。",
-                  "公共库按源码兼容、二进制 ABI 兼容、运行行为分别审查；Read 登记不等于实际阅读或覆盖完成。"),
+                  "公共库按源码兼容、二进制 ABI 兼容、运行行为分别审查；Read 登记不等于实际阅读或覆盖完成。",
+                  "扫描通过和权限说明不代表动作已授权；集合等价仅适用于明确的无序字段，有序历史不能重排。"),
     "README.en.md": ("Set GIT_NO_LAZY_FETCH=1 and --no-pager for every Git read; missing objects are evidence gaps and never authorize automatic fetch or remote helpers/pagers.",
                      "For committed code, supply commit or base/head; an empty working-tree diff never authorizes a pass.",
                      "Never execute code or helpers from the reviewed repository.",
@@ -90,7 +109,8 @@ README_CLAUSES = {
                      "The contract checker validates document rules and Git examples, not whether an AI correctly performed a review.",
                      "Compare working-tree content with raw commit/index blobs using trusted built-in tools; never use working-tree git diff/status because clean/process filters can execute.",
                      "Exit code 0 alone does not prove test success; zero/all-skipped cases are inconclusive and known failures cannot be downgraded.",
-                     "Review source compatibility, binary ABI compatibility and runtime behavior separately; Read registration does not prove actual reading or complete coverage."),
+                     "Review source compatibility, binary ABI compatibility and runtime behavior separately; Read registration does not prove actual reading or complete coverage.",
+                     "Scanner success and permission prose do not authorize actions; only explicitly unordered fields permit member permutations, while ordered histories retain their sequence."),
 }
 SAFE_GIT_TEMPLATES = (
     "rev-parse --verify --end-of-options <ref>^{commit}",
@@ -173,6 +193,9 @@ def lint_repo(root: Path) -> List[str]:
         for field in ("Review scope", "resolved SHA", "Changes inspected", "Verification output", "Test evidence"):
             if field not in report["Inputs"]:
                 errors.append(f"SKILL.md: missing report input: {field}")
+        for title, clause in REPORT_GUIDANCE.items():
+            if _normalized(clause) not in _normalized(_visible(report[title])):
+                errors.append(f"SKILL.md: {title}: missing report guidance: {clause}")
     for clause in (RULE_CLAUSES["ARTIFACTS"][0], RULE_CLAUSES["RESULTS"][0], RULE_CLAUSES["RESULTS"][1]):
         if _normalized(clause) not in _normalized(_visible(skill)):
             errors.append(f"SKILL.md: missing entry rule: {clause}")

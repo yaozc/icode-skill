@@ -30,6 +30,14 @@ Load only the sections relevant to the current task.
 - Errors do not leak resources or leave partially initialized state.
 - Shutdown and retry paths preserve invariants.
 
+## Resource Budgets and Performance Evidence
+
+Review raw input limits, parser expansion and elapsed-time guarantees separately.
+
+- Check per-file and cumulative bytes, entry/event counts, actual allowed paths, parse expansion and peak live memory. A higher single-file budget does not raise every limit; a soft deadline around I/O does not prove interruptible I/O or a hard elapsed-time bound.
+- `del`, weak-reference expiry and reduced history lifetime only show those objects can be released. Require supplied candidate/workload/environment measurements before claiming a peak-memory or throughput improvement.
+- Pure-data reuse must not cache authorization, freshness or evidence eligibility. Releasing old history must not omit fresh validation; incomplete coverage, timeouts, links and read races remain visible. Do not run target pressure tests or helpers to fill gaps.
+
 ## Architecture and Contracts
 
 - Dependency direction remains consistent with the project.
@@ -37,6 +45,23 @@ Load only the sections relevant to the current task.
 - Side effects are localized and testable.
 - Public contracts and serialized formats remain compatible.
 - Error handling is intentional rather than swallowed or converted into silent success.
+
+## Collection and History Semantics
+
+Distinguish declared unordered membership from ordered observations and decisions.
+
+- Identify the producer version and field contract first. For an explicitly unordered collection, compare exact complete members, required types and duplicate prohibition; only member permutations are equivalent. JSON object-key order alone carries no array-order claim.
+- Preserve `verification_runs`, `patch_history`, event history, accepted prefixes and any contract-defined review/decision order. Sorting or deduplicating those histories cannot hide a later negative result, repair lineage or change which record is latest.
+- Do not require stage/provider fields from a producer that lacks that feature. A feature being disabled does not validate ordinary ticket/evidence claims. For an actually enabled feature, missing locator/binding/history or exhausted discovery is not proof that it was never enabled.
+
+## Authorization and Sensitive Evidence
+
+Inspect authorization provenance independently of scanner output and permission prose.
+
+- Bind the actual user/trusted authorization source to the action, target and limits. Scanner success, zero violations, exit 0 or a note cannot grant permission or expand an existing grant. Finite lexical matching does not resolve natural-language intent.
+- A disclaimer containing "authorization" is not automatically a secret. Inspect actual credential values, assignments or authentication headers without reproducing them; a scanner exception proves neither secret absence nor authorization.
+- Missing authorization proof is a gap; an independently established unauthorized action is a violation. Keep the review read-only rather than rerunning a target scanner or operation.
+- Host simulation is not a native runtime observation. MCP installation/configuration does not prove process reload; access policy refusal is not file absence. Keep explicit PATH/access roots and supplied host/execution/artifact identities visible.
 
 ## Public Library API/ABI
 
@@ -51,6 +76,7 @@ Inspect supplied public headers, exported symbols and old consumer binary eviden
 A registered path or Read receipt is not evidence of actual review coverage.
 
 - Compare frozen scope/related consumers, source hash, baseline and attempt/phase. A larger max_files or batch admission does not reduce reading obligations; a new round starts fresh reads/assessments/findings.
+- For producers supporting --max-files/--paths-json, compare the frozen positive budget, exact batch and current round; successful registration does not establish enumeration or actual reading. Older producers need no new option/metadata fields.
 - Equivalent declaration reuse must preserve the complete required set and checks; new consumers, truncation and unknown coverage remain visible. Known unread scope contradicting claimed completeness is a violation; missing support alone is a gap.
 
 ## ICode Artifact and Metadata Contract

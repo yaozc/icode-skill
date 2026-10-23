@@ -49,6 +49,10 @@ Read registration does not prove actual reading or complete coverage.
 
 Compare the frozen scope, related consumers, baseline, attempt/phase and source hashes with the inspection actually supported. A larger `max_files` budget or batch Read receipt only records admission/registration; it cannot prove understanding or erase unread debt. Reusing an equivalent declaration must not import another round's reads, assessments or findings. Newly affected consumers remain in scope. Keep partial/degraded/unobserved coverage explicit; a known omission contradicting a complete-coverage claim is a violation, while missing proof alone is an evidence gap.
 
+File budgets and batch registration never erase unread or unobserved coverage debt.
+
+Where the producer supports `--max-files` or `--paths-json`, compare the frozen positive budget, exact batch members and current round with the supplied observations. A larger limit does not establish complete enumeration, and an atomic registration receipt does not establish actual reading. New consumers remain required even when their declaration resembles an earlier one. These options are not required fields for older producers or workflow metadata.
+
 Source compatibility, binary ABI compatibility, and runtime behavior are separate claims.
 
 When a public library boundary is affected, bind the compatible baseline, candidate, public headers, selected artifact/hash, compiler/runtime ABI and architecture. Inspect the promised declaration/wrapper, exported symbols, exposed layout/ownership and error behavior. Distinguish supplied evidence for external compilation, linking and execution; a freshly compiled consumer cannot establish old consumer binary compatibility. Missing baseline/artifact/tool output leaves that layer unresolved. Ordinary application/document changes do not require an unrelated compiler or ABI matrix. Consume supplied observations; do not run a compiler, symbol tool, old binary or helper from the reviewed project.
@@ -80,6 +84,12 @@ Late fast upgrade preserves the ticket/source and old artifacts but restarts num
 Unresolved semantic decisions block implementation claims, not explicitly scoped diagnosis-only analysis.
 
 Read `semantic_decisions` and their question, status, decision and evidence. Do not replace an unresolved user choice with a reviewer-selected “safe default”. A resolved decision must have a concrete choice and supporting authorization/evidence. Diagnose-only/analysis-only work may document open questions; it must not be portrayed as implemented or verified delivery. Inspect patch intent/history as well as the main workflow; an `analysis_only` reservation cannot become completed implementation.
+
+Scanner success and permission notes do not establish action authorization.
+
+A permission disclaimer is not a credential leak merely because it contains the word authorization.
+
+Inspect the actual user or trusted authorization source, permitted action, target and limits. A note saying "No deployment authorization", a scanner reporting zero issues, or process exit 0 cannot grant permission, widen a prior grant or prove natural-language intent. Distinguish such prose from supplied credential values, assignments or authentication headers; inspect their actual contents without reproducing secrets. Finite lexical exceptions may reduce scanner false positives, but do not establish secret absence or action eligibility. A missing authorization source is an evidence gap; an independently established unauthorized action is a confirmed violation. Do not execute an action or target scanner to resolve that gap.
 
 ## REPLAN
 
@@ -137,6 +147,20 @@ A later pass without test_summary cannot replace current-candidate report-backed
 
 Apply that rule only after matching the full cell identity and current execution baseline; a report from another candidate or cell does not impose its count requirement here. Later fail/inconclusive/skipped remains debt. Exact same-id requests replay the original receipt and optional input shape, without rereading the old report or claiming a new test run; a new id rereads the selected file. Historical summaries remain readable after report movement/deletion, while files explicitly named in `evidence_hashes` still obey the existing current-evidence checks. Runs with neither test_report nor test_summary remain readable without retroactive migration; missing counts never proves that tests actually ran.
 
+Only fields explicitly defined as unordered sets may ignore member order.
+
+verification_runs, patch_history, event history and accepted prefixes remain ordered.
+
+Use the supplied producer version and field contract before comparing structures. JSON object-key reordering alone is not history reordering. For an explicitly unordered collection, check the required member type, exact complete membership and duplicate prohibition before treating permutations as equivalent; dropping, adding or duplicating members is not equivalence. Preserve the original sequence of observations, review arrays, decisions, generations and lineage wherever the contract gives it meaning. Never sort or deduplicate a history to turn an older pass into the latest result, suppress an intervening failure or repair a broken chain.
+
+Raw read budgets do not prove peak parser memory or hard elapsed-time bounds.
+
+Performance optimizations must not cache authorization or evidence eligibility.
+
+Distinguish file/total bytes, entries/events, parser expansion, peak live memory and elapsed time. A raw byte cap can coexist with larger decoded structures and several live copies; `del`, weak-reference expiry or a smaller retained history does not alone measure peak RSS. Time checks around I/O are soft when an OS call cannot be interrupted. A larger single-file limit must not silently widen cumulative budgets or allowed paths. Assess improvement only from supplied measurements tied to the candidate, workload and environment. Freshness, authorization and evidence eligibility checks remain current even when successful pure-data computations are reused. Incomplete scans, timeout, links or read races retain their actual coverage limits; do not run target helpers or pressure tests to manufacture missing observations.
+
+Host simulation of a Windows code branch or a CI test listing is not an observed native Windows runtime result. An installed/configured MCP entry does not prove that the running process reloaded it. Compare the actual host, execution environment, source/artifact and process observations; explicit PATH or access-root settings must not be silently overwritten to make a check pass. A policy refusal establishes unread evidence, not file absence.
+
 ## RESULTS
 
 Confirmed violations take precedence: return FIX_REQUIRED even when evidence gaps also exist.
@@ -158,3 +182,7 @@ An explicit unsupported version must not be treated as legacy.
 Schema 1 requires all contract containers: `semantic_decisions`, `requirement_deltas`, `replan_state` (which can be null), `acceptance_contract`, `verification_contract`, `verification_runs`. Missing or malformed schema-1 fields are confirmed violations. Unsupported explicit versions are evidence gaps until their contract is supplied. Do not migrate, initialize or fill missing fields during review.
 
 Legacy runs remain readable with their actual layout and applicable expectations. Adequate independently inspected evidence can support a limited review PASS; missing modern fields never establishes delivery verified or absence of real-environment obligations. If requirements/evidence cannot establish the relevant verification scope, return SKIPPED. Preserve and explain uncertainty rather than applying new required fields retroactively or assuming validation succeeded.
+
+Do not require stage or provider fields from producers that do not implement those contracts.
+
+An optional feature being disabled does not establish that the ordinary ticket, transaction or evidence is valid; inspect those claims under their own contract. Conversely, unrelated optional gates must not replace an ordinary producer's applicable checks. When the reviewed producer actually implements stage or provider state, require its explicit version and available evidence: a missing locator, authenticated stage history, damaged binding or exceeded discovery budget cannot simply be called "not enabled". Consume supplied observations without running discovery helpers, repairing references or migrating the ticket.
