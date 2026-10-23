@@ -6,6 +6,8 @@ This port is based on [`ayukyo/icode-skill`](https://github.com/ayukyo/icode-ski
 
 Compatible fixes through upstream `main@5be9dee` are selectively ported for large-repository crosschecks, Windows I/O and locks, and safe synchronization. The [port record](docs/superpowers/specs/2026-10-14-main-codex-selective-port-design.md) documents the selection and Codex adaptations; the v2.17 workflow and Codex storage contracts remain in place.
 
+The next selective batch from `main@c07d4b0` adds conditional [public library API/ABI review](references/domain-checklists.md#public-library-apiabi), frozen crosscheck budgets and atomic batch Read declarations, plus Python/Windows Node startup handling. This is a selective adaptation, not a full merge of upstream workflow or control-plane features.
+
 ## Install
 
 Clone or synchronize the repository to:
@@ -22,6 +24,8 @@ bash ~/.codex/skills/icodex/mcp/install-codex.sh
 ```
 
 The adapter uses only `codex mcp list|get|add|remove`. Identical configurations are skipped; different same-name configurations are refused with exit code 2 and are never removed or overwritten.
+
+The shared launcher probes Python 3.9+ and preserves an explicit executable path as one argument. Windows npm services use a paired native Node/npm CLI with a private child PATH; macOS/Linux retain the existing npx transport. See [MCP startup runtime](references/codex_mcp_runtime.md) for overrides and validation limits.
 
 ## Two execution modes
 
@@ -70,6 +74,8 @@ Use explicit commands for staged mode:
 | `$icodex install [name]` | Safe Codex MCP registration |
 
 `$icodex crosscheck` persists isolated review records under `.ai/icode/.crosscheck/` without changing the target run or source. Independent cross-model `$icodex-review` remains zero-write and returns its report only in the response.
+
+The crosscheck controller accepts `start --max-files N`: the positive file budget is frozen on resume and inherited by new rounds unless explicitly overridden. After actually reading files, use the existing single `--path` registration or atomic `inspection --phase read --paths-json '["src/a.c","src/a.h"]'`, optionally with a per-round `--request-id`. Registration does not prove reading or coverage. See [inspection worklists](references/inspection_worklist.md) for batch limits, recovery and redundant-related checks.
 
 ## Storage and recovery
 

@@ -9,6 +9,8 @@
 **会话**: 主会话
 **Codex 发布键**: 最终 `02_review.md` 使用 `plan_review`；round JSON 仅为附属证据。发布和 `validate` 成功后才追加 step `2`。
 
+> **公共库 API/ABI（按需）**：计划影响公开库、包或绑定边界时，读取 [Public Library API/ABI](../references/domain-checklists.md#public-library-apiabi)，核对兼容承诺、基线/公开头文件或包/真实制品/编译器与架构，以及声明、导出/布局/所有权和错误语义。计划须分别安排外部消费者编译、链接、运行；承诺旧二进制兼容时安排保留旧消费者不重编译的运行证明。普通应用/文档变更不添加无关 ABI 矩阵；缺能力标记待验证，不在计划审查中把预期或头文件相同当作实测通过。
+
 > **fast 风险前置（步骤2）**：若 metadata.mode=fast 或 risk_profile.requested_mode=fast，必须先读取 [fast_risk.md](../references/fast_risk.md)，按当前需求/计划/实现证据重新评估，调用 `assess-fast-risk` 和 `workflow-plan`，再重新 Read metadata。风险命中时实际 mode=full，不能依据最初 fast 请求跳过完整动作。若此次评估回流到步骤2，或升级后的 next_step 尚不是本步骤，立即按 next_step 调用对应步骤，不沿旧变量继续；不要新建工单。全部前置检查和产物 Read 通过 artifact_map 找当前文件，旧固定文件只作历史。
 
 ## 本步骤 L1/L2 检查项声明

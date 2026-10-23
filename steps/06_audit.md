@@ -9,6 +9,8 @@
 **会话**: 主会话
 **Codex 发布键**: 最终 `06_audit.md` 使用 `audit`；审计修复、最新验证、发布与 `validate` 全部成功后才追加 step `6` 并设置 `status=completed`。
 
+> **公共库 API/ABI（按需）**：对实际受影响且有兼容承诺的公开库、包或绑定，读取 [Public Library API/ABI](../references/domain-checklists.md#public-library-apiabi)，把源码兼容、真实导出/布局/所有权、外部消费者编译/链接、旧二进制运行逐层列入现有报告并绑定基线/头文件或包/制品/编译器与架构。不得用新消费者重编译成功、头文件不变或 in-tree 测试替代旧二进制/目标运行证明。缺材料保留对应验证债务，不能宣称该层兼容通过；普通应用/文档变更明确不适用，不强加任意 ABI 矩阵。
+
 > **fast 风险前置（步骤6）**：若 metadata.mode=fast 或 risk_profile.requested_mode=fast，必须先读取 [fast_risk.md](../references/fast_risk.md)，按当前需求/计划/实现证据重新评估，调用 `assess-fast-risk` 和 `workflow-plan`，再重新 Read metadata。风险命中时实际 mode=full，不能依据最初 fast 请求跳过完整动作。若此次评估回流到步骤2，或升级后的 next_step 尚不是本步骤，立即按 next_step 调用对应步骤，不沿旧变量继续；不要新建工单。全部前置检查和产物 Read 通过 artifact_map 找当前文件，旧固定文件只作历史。
 
 ## 本步骤 L1/L2 检查项声明

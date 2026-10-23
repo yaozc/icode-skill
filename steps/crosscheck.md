@@ -32,10 +32,13 @@ python3 tools/icode_crosscheck.py start --workspace <project_root> <ticket_path_
 - 当前工单会话无参数时，步骤层必须把已经绑定的 `ICODE_OUT_DIR` 作为路径参数传入；控制器只额外接受 cwd 本身位于目标工单内的情形。禁止读取 active pointer 或按 latest 猜测。
 - 保存返回的 `crosscheck_dir`、`round`、`fresh_output`。
 - `resumed=true` 表示继续未完成轮次；不要另建目录或跳号。
+- 文件预算默认 200，可在控制器 start 传 `--max-files <正整数>`；同轮恢复保持原预算，新轮默认继承或显式覆盖。需要 `--related/--scope/--baselines-json` 时按清单合同提供；恢复时只接受经新鲜重建证明完全冗余的 related 变化，不扩范围或消除债务。
 
 ### 2. 首次独立评审（禁止先看旧 crosscheck）
 
 执行 [审查清单合同](../references/inspection_worklist.md)，保存 start 的 inspection_worklist。按本轮单元实际独立 Read 后，用 `icode_crosscheck.py inspection --dir <crosscheck_dir> --round <N> --phase read --path <file>` 登记 fresh 阅读，清单不替代设计评审。fresh findings 的 locations 绑定当前行段/hash；不能定位则 needs_more_evidence + evidence_boundary。freeze 同时冻结清单，缺阅读/错定位不可完整通过，原工单仍零回写。
+
+已实际 Read 的多个文件也可用 `--paths-json '["src/a.c","src/a.h"]'` 一次登记（1–256 个唯一规范相对路径、JSON 至多 64KiB），替代 `--path`；可加 `--request-id read-1` 绑定本轮批次，精确重放保留进度，同 ID 换成员拒绝。整批先校验再原子保存；登记本身不能证明实际阅读，新轮不能借用旧轮回执。
 
 在写完 fresh 文件并执行 freeze 前，**不得读取既往 crosscheck 的 `crosscheck_round_*.json/.md`、`findings.json` 或 `crosscheck_report.md`**。可以且必须读取目标工单自己的需求、计划、审查、定稿、代码复检、deepcheck、audit、patch、verification 和证据账本。
 

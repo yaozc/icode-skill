@@ -161,6 +161,245 @@ def test_new_round_requires_independent_worklist(workspace):
     assert failed["gate_id"] == "inspection_worklist"
 
 
+def worklist_files(started):
+    report = json.loads(Path(started["inspection_worklist"]).read_text())
+    return report, {f["path"]: f for u in report["units"] for f in u["files"]}
+
+
+def read_batch(env, started, paths, *, identity=None, expected=0):
+    args = ["inspection", "--dir", started["crosscheck_dir"], "--round", started["round"],
+            "--phase", "read", "--paths-json", json.dumps(paths)]
+    if identity is not None:
+        args += ["--request-id", identity]
+    return run_tool(env, *args, expected=expected)
+
+
+def test_file_budget_is_frozen_resumed_and_inherited_by_next_round(workspace):
+    root, ticket, env = workspace
+    before = tree_digest(ticket)
+    started = run_tool(env, "start", ticket, "--max-files", "350")
+    assert worklist_files(started)[0]["max_files"] == 350
+    assert run_tool(env, "start", ticket)["resumed"]
+    directory = Path(started["crosscheck_dir"])
+    saved = tree_digest(directory)
+    denied = run_tool(env, "start", ticket, "--max-files", "351", expected=1)
+    assert denied["gate_id"] == "inspection_budget"
+    assert tree_digest(directory) == saved
+    write_fresh(Path(started["fresh_output"]), fresh_payload(1), env)
+    run_tool(env, "freeze", "--dir", directory, "--round", "1")
+    write_json(directory / "crosscheck_round_1.json", fresh_payload(1))
+    run_tool(env, "finish", "--dir", directory, "--round", "1")
+    second = run_tool(env, "start", ticket)
+    assert second["round"] == 2
+    report, files = worklist_files(second)
+    assert report["max_files"] == 350
+    assert all(f["reads"] == {} for f in files.values())
+    assert tree_digest(ticket) == before
+
+
+def test_legacy_round_without_budget_field_keeps_its_worklist_budget(workspace):
+    _, ticket, env = workspace
+    started = run_tool(env, "start", ticket)
+    directory = Path(started["crosscheck_dir"])
+    manifest_path = directory / "crosscheck_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["rounds"][0].pop("inspection_max_files", None)
+    write_json(manifest_path, manifest)
+    saved = tree_digest(directory)
+    assert run_tool(env, "start", ticket, "--max-files", "200")["resumed"]
+    assert tree_digest(directory) == saved
+
+
+def test_budget_is_durable_if_worklist_creation_is_interrupted(workspace, monkeypatch):
+    from tools import icode_crosscheck as api
+    _, ticket, env = workspace
+    args = api.build_parser().parse_args(["start", str(ticket), "--max-files", "350"])
+    writer = api.atomic_write_json
+    def fail_worklist(path, value):
+        if str(path).endswith(".worklist.json"):
+            raise OSError("injected worklist failure")
+        return writer(path, value)
+    with monkeypatch.context() as patched:
+        patched.setattr(api, "atomic_write_json", fail_worklist)
+        with pytest.raises(OSError):
+            api.cmd_start(args)
+    started = run_tool(env, "start", ticket)
+    assert worklist_files(started)[0]["max_files"] == 350
+
+
+def test_budget_and_declaration_survive_binding_write_interruption(workspace, monkeypatch):
+    from tools import icode_crosscheck as api
+    _, ticket, env = workspace
+    args = api.build_parser().parse_args(["start", str(ticket), "--max-files", "350"])
+    writer = api.atomic_write_json
+    manifest_writes = 0
+    def fail_binding(path, value):
+        nonlocal manifest_writes
+        if path.name == "crosscheck_manifest.json":
+            manifest_writes += 1
+            if manifest_writes == 2:
+                raise OSError("injected declaration binding failure")
+        return writer(path, value)
+    with monkeypatch.context() as patched:
+        patched.setattr(api, "atomic_write_json", fail_binding)
+        with pytest.raises(OSError):
+            api.cmd_start(args)
+    started = run_tool(env, "start", ticket)
+    assert started["resumed"] and started["round"] == 1
+    report, files = worklist_files(started)
+    assert report["max_files"] == 350
+    assert all(f["reads"] == {} for f in files.values())
+
+
+@pytest.mark.parametrize("changed", ["src/feature.c", "src/feature.h"])
+def test_source_drift_can_start_a_new_round_with_an_explicit_budget(workspace, changed):
+    root, ticket, env = workspace
+    (root / "src/feature.h").write_text("int feature(void);\n")
+    first = run_tool(env, "start", ticket)
+    (root / changed).write_text("int changed;\n")
+    second = run_tool(env, "start", ticket, "--max-files", "350")
+    assert second["round"] == first["round"] + 1 and not second["resumed"]
+    assert worklist_files(second)[0]["max_files"] == 350
+
+
+@pytest.mark.parametrize("budget", ["0", "-1"])
+def test_invalid_budget_does_not_create_crosscheck_output(workspace, budget):
+    root, ticket, env = workspace
+    denied = run_tool(env, "start", ticket, "--max-files", budget, expected=1)
+    assert denied["gate_id"] == "inspection_budget"
+    assert not (root / ".ai/icode/.crosscheck").exists()
+
+
+def test_batch_read_is_atomic_idempotent_and_does_not_read_for_the_agent(workspace):
+    root, ticket, env = workspace
+    (root / "src/feature.h").write_text("int feature(void);\n")
+    (root / "src/extra.c").write_text("int extra;\n")
+    started = run_tool(env, "start", ticket)
+    directory = Path(started["crosscheck_dir"])
+    # 单纯提交结果不能替代本轮实际阅读；登记只保存调用方声明。
+    write_json(Path(started["fresh_output"]), dict(fresh_payload(1), verdict="pass", findings=[]))
+    assert run_tool(env, "freeze", "--dir", directory, "--round", "1", expected=1)["gate_id"] == "inspection_worklist"
+    report, files = worklist_files(started)
+    paths = sorted(files)
+    for path in paths:
+        assert hashlib.sha256((root / path).read_bytes()).hexdigest() == files[path]["sha256"]
+    before = tree_digest(ticket)
+    registered = paths[:2]
+    result = read_batch(env, started, registered, identity="batch-1")
+    assert result["paths"] == registered and not result["already_applied"]
+    run_tool(env, "inspection", "--dir", directory, "--round", "1", "--phase", "read", "--path", paths[2])
+    report, files = worklist_files(started)
+    assert all(f["reads"]["fresh"] == f["sha256"] for f in files.values())
+    saved = Path(started["inspection_worklist"]).read_bytes()
+    replay = read_batch(env, started, list(reversed(registered)), identity="batch-1")
+    assert replay["already_applied"]
+    assert Path(started["inspection_worklist"]).read_bytes() == saved
+    denied = read_batch(env, started, paths[:1], identity="batch-1", expected=1)
+    assert denied["gate_id"] == "inspection_worklist"
+    assert Path(started["inspection_worklist"]).read_bytes() == saved
+    run_tool(env, "freeze", "--dir", directory, "--round", "1")
+    assert read_batch(env, started, paths, expected=1)["gate_id"] == "inspection_worklist"
+    assert tree_digest(ticket) == before
+
+
+@pytest.mark.parametrize("paths", [[], ["src/feature.c"] * 2, ["src/feature.c", "missing.c"],
+    ["src/feature.c", "../outside.c"], ["./src/feature.c"], ["C:escape.c"],
+    ["x" * 65536], [f"src/{i}.c" for i in range(257)]])
+def test_bad_batch_has_no_partial_registration(workspace, paths):
+    _, ticket, env = workspace
+    started = run_tool(env, "start", ticket)
+    before = Path(started["inspection_worklist"]).read_bytes()
+    result = read_batch(env, started, paths, expected=1)
+    assert result["gate_id"] == "inspection_worklist"
+    assert Path(started["inspection_worklist"]).read_bytes() == before
+
+
+def test_batch_write_failure_and_new_round_do_not_reuse_receipts(workspace, monkeypatch):
+    from tools import icode_crosscheck as api
+    root, ticket, env = workspace
+    started = run_tool(env, "start", ticket)
+    before = Path(started["inspection_worklist"]).read_bytes()
+    args = api.build_parser().parse_args(["inspection", "--dir", started["crosscheck_dir"],
+        "--round", "1", "--phase", "read", "--paths-json", '["src/feature.c"]', "--request-id", "retry"])
+    with monkeypatch.context() as patched:
+        patched.setattr(api, "atomic_write_json", lambda *a: (_ for _ in ()).throw(OSError("injected")))
+        with pytest.raises(OSError):
+            api.cmd_inspection(args)
+    assert Path(started["inspection_worklist"]).read_bytes() == before
+    assert not read_batch(env, started, ["src/feature.c"], identity="retry")["already_applied"]
+    (root / "src/feature.c").write_text("int feature(void) { return 2; }\n")
+    next_round = run_tool(env, "start", ticket)
+    assert next_round["round"] == 2
+    assert not worklist_files(next_round)[0].get("read_batches")
+    assert not read_batch(env, next_round, ["src/feature.c"], identity="retry")["already_applied"]
+
+
+def test_larger_budget_supports_an_actual_256_member_batch(workspace):
+    root, ticket, env = workspace
+    for index in range(255):
+        (root / "src" / f"file_{index}.c").write_text("int x;\n")
+    started = run_tool(env, "start", ticket, "--max-files", "300")
+    report, files = worklist_files(started)
+    assert len(files) == 256 and report["coverage_status"] == "complete_within_scope"
+    paths = sorted(files)
+    for path in paths:
+        assert hashlib.sha256((root / path).read_bytes()).hexdigest() == files[path]["sha256"]
+    result = read_batch(env, started, paths, identity="large")
+    assert len(result["source_hashes"]) == 256
+    assert run_tool(env, "inspection", "--dir", started["crosscheck_dir"], "--round", "1", "--phase", "check")["read_only"]
+
+
+def test_batch_drift_bad_json_and_wrong_phase_leave_worklist_unchanged(workspace):
+    root, ticket, env = workspace
+    started = run_tool(env, "start", ticket)
+    before = Path(started["inspection_worklist"]).read_bytes()
+    args = ("inspection", "--dir", started["crosscheck_dir"], "--round", "1")
+    for tail in (("--phase", "read", "--paths-json", "["),
+                 ("--phase", "read", "--paths-json", '["src/feature.c"]', "--path", "src/feature.c"),
+                 ("--phase", "check", "--paths-json", '["src/feature.c"]'),
+                 ("--phase", "read", "--paths-json", '["src/feature.c"]', "--request-id", "../bad")):
+        assert run_tool(env, *args, *tail, expected=1)["gate_id"] == "inspection_worklist"
+    (root / "src/feature.c").write_text("int changed;\n")
+    assert read_batch(env, started, ["src/feature.c"], identity="stale", expected=1)["gate_id"] == "inspection_worklist"
+    assert Path(started["inspection_worklist"]).read_bytes() == before
+
+
+def test_saved_batch_receipt_cannot_forge_members_hashes_or_reads(workspace):
+    _, ticket, env = workspace
+    started = run_tool(env, "start", ticket)
+    read_batch(env, started, ["src/feature.c"], identity="b")
+    report, _ = worklist_files(started)
+    path = Path(started["inspection_worklist"])
+    for variant in ("members", "hash", "reads"):
+        changed = json.loads(json.dumps(report))
+        if variant == "members":
+            changed["read_batches"]["b"]["paths"].append("missing.c")
+        elif variant == "hash":
+            changed["read_batches"]["b"]["source_hashes"]["src/feature.c"] = "0" * 64
+        else:
+            changed["units"][0]["files"][0]["reads"] = {}
+        write_json(path, changed)
+        before = path.read_bytes()
+        assert read_batch(env, started, ["src/feature.c"], identity="b", expected=1)["gate_id"] == "inspection_worklist"
+        assert path.read_bytes() == before
+
+
+def test_redundant_related_resume_preserves_progress_but_new_consumer_is_rejected(workspace):
+    root, ticket, env = workspace
+    (root / "src/feature.h").write_text("int feature(void);\n")
+    (root / "elsewhere").mkdir()
+    (root / "elsewhere/caller.c").write_text("int caller(void);\n")
+    started = run_tool(env, "start", ticket)
+    run_tool(env, "inspection", "--dir", started["crosscheck_dir"], "--round", "1",
+             "--phase", "read", "--path", "src/feature.c")
+    before = Path(started["inspection_worklist"]).read_bytes()
+    assert run_tool(env, "start", ticket, "--related", "src/feature.h")["resumed"]
+    assert Path(started["inspection_worklist"]).read_bytes() == before
+    result = run_tool(env, "start", ticket, "--related", "elsewhere/caller.c", expected=1)
+    assert result["gate_id"] == "inspection_worklist"
+    assert Path(started["inspection_worklist"]).read_bytes() == before
+
+
 def test_start_recovers_only_empty_orphan_containers(workspace):
     root, ticket, env = workspace
     orphan = root / ".ai/icode/.crosscheck/icode_1"

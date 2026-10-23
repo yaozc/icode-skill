@@ -9,6 +9,8 @@
 **会话**: 主会话
 **Codex 发布键**: 收敛后的 `05_deepcheck.md` 使用 `deepcheck`；附属 JSON 不替代稳定映射。发布与 `validate` 成功后才追加 step `5`。
 
+> **公共库 API/ABI（按需）**：变更影响公开库、包或绑定边界时，按 [Public Library API/ABI](../references/domain-checklists.md#public-library-apiabi) 追踪公开/废弃包装到真实导出，检查布局/所有权/生命周期/错误清理，并核对实际基线、公开头文件或包、制品哈希、编译器/运行时和架构。在已授权范围验证最小外部消费者，编译、链接、执行分别记录；旧消费者二进制兼容须由不重编译的旧二进制在候选上实测。缺工具/基线/目标保持对应层未验证，不能把 in-tree 测试或模拟成功提升为完整 ABI/运行兼容；不适用的普通应用/文档不增加该门槛。
+
 > **fast 风险前置（步骤5）**：若 metadata.mode=fast 或 risk_profile.requested_mode=fast，必须先读取 [fast_risk.md](../references/fast_risk.md)，按当前需求/计划/实现证据重新评估，调用 `assess-fast-risk` 和 `workflow-plan`，再重新 Read metadata。风险命中时实际 mode=full，不能依据最初 fast 请求跳过完整动作。若此次评估回流到步骤2，或升级后的 next_step 尚不是本步骤，立即按 next_step 调用对应步骤，不沿旧变量继续；不要新建工单。全部前置检查和产物 Read 通过 artifact_map 找当前文件，旧固定文件只作历史。
 
 ## 本步骤 L1/L2 检查项声明

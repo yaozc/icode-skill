@@ -90,6 +90,14 @@ HOST_SPECIFIC_MCP_FALLBACKS = (
     (re.compile(r"Claude\s*家族最便宜模型"), "Claude-specific cheapest-model fallback"),
 )
 
+PUBLIC_LIBRARY_CLAUSES = (
+    "Apply this profile only to an affected public library, package, or binding boundary and its compatibility promise.",
+    "Source compatibility, binary ABI compatibility, and runtime behavior are separate claims.",
+    "When backward binary compatibility is promised, exercise a preserved old consumer binary against the candidate without recompiling it.",
+    "Missing baseline, artifact, compiler, or target environment leaves the corresponding layer unresolved.",
+)
+PUBLIC_LIBRARY_HOOK = "../references/domain-checklists.md#public-library-apiabi"
+
 
 def _matches(path: str, patterns: Sequence[str]) -> bool:
     return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
@@ -296,7 +304,30 @@ def lint_repo(root: Path) -> List[str]:
         + lint_mcp_fallback_contract(root)
         + lint_fast_risk_contract(root)
         + lint_workflow_contract(root)
+        + lint_public_library_contract(root)
     )
+
+
+def lint_public_library_contract(root: Path) -> List[str]:
+    """只保护按需审查与证据分层规则，不判断具体工程是否兼容。"""
+    errors: List[str] = []
+    reference = root / "references/domain-checklists.md"
+    if not reference.is_file():
+        errors.append("references/domain-checklists.md: missing public library profile")
+    else:
+        content = reference.read_text(encoding="utf-8")
+        content = re.sub(r"<!--.*?-->", "", content, flags=re.S)
+        content = re.sub(r"^```[^\n]*\n.*?^```[ \t]*$", "", content, flags=re.M | re.S)
+        match = re.search(r"^## Public Library API/ABI\n(.*?)(?=^## |\Z)", content, re.M | re.S)
+        body = " ".join(match.group(1).split()) if match else ""
+        for clause in PUBLIC_LIBRARY_CLAUSES:
+            if clause not in body:
+                errors.append(f"references/domain-checklists.md: missing public library boundary: {clause}")
+    for relative in ("steps/02_review.md", "steps/05_deepcheck.md", "steps/06_audit.md"):
+        path = root / relative
+        if not path.is_file() or PUBLIC_LIBRARY_HOOK not in path.read_text(encoding="utf-8"):
+            errors.append(f"{relative}: missing public library review hook")
+    return errors
 
 
 def lint_workflow_contract(root: Path) -> List[str]:

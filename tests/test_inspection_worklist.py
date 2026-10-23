@@ -187,6 +187,20 @@ def test_file_budget_and_incomplete_read_policy(api, repo):
     assert api.validate_worklist(report, repo, allow_incomplete=True)
 
 
+def test_redundant_related_cannot_reuse_unknown_or_truncated_coverage(api, repo):
+    complete = build(api, repo)
+    assert api.equivalent_related(complete, repo, ["src/feature.h"])
+    for variant in ("budget", "unobserved", "debt"):
+        report = build(api, repo, max_files=1) if variant == "budget" else copy.deepcopy(complete)
+        if variant == "unobserved":
+            report["coverage_status"] = "partial"
+            report["unobserved"] = [{"path": "elsewhere", "debt_reason": "not enumerated"}]
+        elif variant == "debt":
+            report["coverage_status"] = "degraded"
+            report["debt_reason"] = "coverage unknown"
+        assert not api.equivalent_related(report, repo, ["src/feature.h"])
+
+
 @pytest.mark.parametrize("field,value", [("ticket_id", "wrong"), ("attempt", True), ("required_phases", []), ("workspace", "/tmp/wrong"), ("schema_version", 2)])
 def test_identity_and_shape_fail_closed(api, repo, field, value):
     report = read_all(build(api, repo))

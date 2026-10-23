@@ -6,6 +6,17 @@
   "additionalProperties": false,
   "required": ["schema_version", "workspace", "step", "ticket_id", "attempt", "mode", "required_phases", "code_files", "related", "scopes", "baselines", "resolved_baselines", "max_files", "max_bytes", "units", "exclusions", "unobserved", "findings", "coverage_status"],
   "properties": {
+    "read_batches": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+      "additionalProperties": {
+        "type": "object", "required": ["paths", "source_hashes"], "additionalProperties": false,
+        "properties": {
+          "paths": {"type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "source_hashes": {"type": "object", "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+        }
+      }
+    },
     "schema_version": {"const": 1},
     "workspace": {"type": "string", "pattern": "^/"},
     "step": {"enum": ["code", "deepcheck", "audit", "crosscheck"]},

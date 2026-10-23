@@ -816,7 +816,9 @@ $icodex install --no-auto-install
 | [references/adversarial.md](references/adversarial.md) | 对抗分析模式（3质疑者/裁决优先级/诚实降级/证据回指） | 02_review / log |
 | [references/dir_and_metadata.md](references/dir_and_metadata.md) | 目录管理 + ticket_id 生成 + 全局索引写入（含LRU淘汰） + metadata 模板 + **注入缓存机制（防重复注入，两源共用）** + **project_docs 工程文档库 + 段零检索** | init / log / plan / start / fast / doc |
 | [references/crosscheck_mode.md](references/crosscheck_mode.md) | 独立复评的隔离目录、多轮状态、输入快照、零回写与恢复真源 | crosscheck |
-| [references/inspection_worklist.md](references/inspection_worklist.md) | Crosscheck 审查范围、真实 Read 登记、定位证据与基线合同 | crosscheck |
+| [references/inspection_worklist.md](references/inspection_worklist.md) | Crosscheck 范围、冻结文件预算、单路径/原子批量 Read 声明、定位与基线；登记不证明实际阅读 | crosscheck |
+| [references/domain-checklists.md](references/domain-checklists.md#public-library-apiabi) | 按实际公共库边界核对 API/ABI，分开声明、导出/布局、外部编译链接与旧二进制运行证据 | review / deepcheck / audit（按需） |
+| [references/codex_mcp_runtime.md](references/codex_mcp_runtime.md) | MCP 入口 Python 探针、Windows Node/npm 配对、子服务 PATH 与验证边界 | install / uninstall |
 | [references/doc_template.md](references/doc_template.md) | icode doc 章节模板：前 50 行四块结构（项目元信息/KEYS/简要说明/目录）+ 十位桶编号 + 自适应 grep 关键词表 + 99 章审计策略 + **v2.0.0 双视角必含元素清单（14 项）+ 业务流独立成章 + 英文首次中文备注 + 链路中文说明 + 质量审视检查清单 + 模板版本自举迁移** | doc |
 | [references/necessity_check.md](references/necessity_check.md) | **现有功能覆盖度检查（防重复实现机制）**：触发时机 + 执行命令（全工程检索 + Read 命中处行为链）+ 三类判定（已覆盖/部分/未覆盖）+ 各步骤落点（init §2.X/预筛列、plan 前置/断言/ADR/对抗、review 维度7、deepcheck Reverse 对比、audit 视角 C） | init / plan / review / deepcheck / audit |
 | [references/first_activation_path.md](references/first_activation_path.md) | **首次激活路径一致性检查**：静态分析盲区（"写了从没实机执行过"的死路径既有 bug）+ 触发条件 + 检测法（软信号、不阻断）+ 双侧校验一致性核对清单 + 部署后验证建议下游输出 | plan（断言⑤）/ deepcheck（Reverse）/ audit（部署后建议）/ patch（部署后验证发现） |

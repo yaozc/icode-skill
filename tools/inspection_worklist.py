@@ -423,7 +423,7 @@ def _rebuild(report, workspace, code_files=None):
     keys = ("code_files", "step", "ticket_id", "attempt", "mode", "related", "scopes", "baselines", "max_files", "max_bytes")
     if any(k not in report for k in keys):
         raise InspectionError("report missing identity/scope/budget fields")
-    allowed = set(keys) | {"schema_version", "workspace", "required_phases", "resolved_baselines", "units", "exclusions", "unobserved", "findings", "coverage_status", "debt_reason"}
+    allowed = set(keys) | {"schema_version", "workspace", "required_phases", "resolved_baselines", "units", "exclusions", "unobserved", "findings", "coverage_status", "debt_reason", "read_batches"}
     if set(report) - allowed:
         raise InspectionError("unknown report fields")
     pinned = report.get("resolved_baselines")
@@ -452,11 +452,54 @@ def _flatten(report):
     return result
 
 
+def equivalent_related(report, workspace, related):
+    """只接受新鲜推导后完全冗余的关联声明；不修改已冻结声明或借用旧轮阅读。"""
+    if report.get("unobserved") or report.get("debt_reason") or report.get("coverage_status") != "complete_within_scope":
+        return False
+    normalized = _paths(_workspace(workspace), related)
+    fresh = _rebuild(dict(report, related=normalized), workspace)
+    if fresh["unobserved"] or fresh["coverage_status"] != "complete_within_scope":
+        return False
+    required = _flatten(fresh)
+    if any(path not in required or not _inside(path, fresh["scopes"])
+           for path in set(report["related"]) ^ set(normalized)):
+        return False
+    def identity(value):
+        return {"units": [{"unit_id": unit["unit_id"], "files": [
+            {key: row[key] for key in ("path", "sha256", "kind", "rules")}
+            for row in unit["files"]]} for unit in value["units"]],
+            "exclusions": value["exclusions"], "required_phases": value["required_phases"],
+            "scopes": value["scopes"], "resolved_baselines": value["resolved_baselines"],
+            "max_files": value["max_files"], "max_bytes": value["max_bytes"]}
+    # reason 是发现来源，不改变必审义务；reads/findings 不参与复用也不被导入。
+    return identity(fresh) == identity(report)
+
+
+def _validate_read_batches(report, files):
+    batches = report.get("read_batches", {})
+    if not isinstance(batches, dict) or (batches and report["step"] != "crosscheck"):
+        raise InspectionError("invalid Read batch receipts")
+    for identity, receipt in batches.items():
+        if (not isinstance(identity, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", identity) is None
+                or not isinstance(receipt, dict) or set(receipt) != {"paths", "source_hashes"}):
+            raise InspectionError("invalid Read batch receipt identity/shape")
+        paths, hashes = receipt["paths"], receipt["source_hashes"]
+        if (not isinstance(paths, list) or not 1 <= len(paths) <= 256
+                or any(not isinstance(path, str) or path not in files for path in paths)
+                or paths != sorted(set(paths)) or not isinstance(hashes, dict) or set(hashes) != set(paths)):
+            raise InspectionError("invalid Read batch receipt members")
+        for path in paths:
+            if (hashes[path] != files[path]["sha256"] or not isinstance(files[path]["reads"], dict)
+                    or files[path]["reads"].get("fresh") != hashes[path]):
+                raise InspectionError("Read batch receipt hash/read mismatch")
+
+
 def validate_worklist(report, workspace, *, code_files=None, step=None,
                       ticket_id=None, attempt=None, allow_incomplete=False):
     try:
         expected = _rebuild(report, workspace, code_files)
         actual, required = _flatten(report), _flatten(expected)
+        _validate_read_batches(report, actual)
         issues = []
         for key in ("schema_version", "workspace", "step", "ticket_id", "attempt", "mode", "required_phases", "code_files", "related", "scopes", "baselines", "resolved_baselines", "max_files", "max_bytes"):
             if type(report.get(key)) is not type(expected[key]) or report.get(key) != expected[key]:

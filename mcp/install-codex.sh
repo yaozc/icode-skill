@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-PYTHON_BIN="${ICODEX_ADAPTER_PYTHON_BIN:-python3}"
-exec "$PYTHON_BIN" "$HERE/codex_adapter.py" install "$@"
+source "$HERE/codex-python.sh"
+icodex_resolve_python
+exec "${ICODEX_ADAPTER_PYTHON[@]}" "$HERE/codex_adapter.py" install "$@"

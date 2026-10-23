@@ -5,10 +5,13 @@ from pathlib import Path
 from tools.lint_codex_contract import (
     COMMAND_ROUTES,
     MCP_THREE_STATE_TRUTH_SOURCES,
+    PUBLIC_LIBRARY_CLAUSES,
+    PUBLIC_LIBRARY_HOOK,
     lint_active_boundaries,
     lint_fast_risk_contract,
     lint_workflow_contract,
     lint_mcp_fallback_contract,
+    lint_public_library_contract,
     lint_repo,
 )
 
@@ -60,6 +63,38 @@ class BoundaryTests(unittest.TestCase):
 
 
 class RepositoryContractTests(unittest.TestCase):
+    def test_public_library_evidence_layers_and_conditional_applicability(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual(lint_public_library_contract(root), [])
+
+    def test_public_library_profile_cannot_be_weakened_or_hidden(self) -> None:
+        import shutil
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repository = Path(__file__).resolve().parents[1]
+            surfaces = ("references/domain-checklists.md", "steps/02_review.md",
+                        "steps/05_deepcheck.md", "steps/06_audit.md")
+            for relative in surfaces:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(repository / relative, path)
+            self.assertEqual(lint_public_library_contract(root), [])
+            profile = root / surfaces[0]
+            original = profile.read_text(encoding="utf-8")
+            for clause in PUBLIC_LIBRARY_CLAUSES:
+                for replacement in ("", f"<!-- {clause} -->", f"```text\n{clause}\n```",
+                                    "Headers or a rebuilt consumer alone prove every compatibility layer."):
+                    with self.subTest(clause=clause, replacement=replacement):
+                        profile.write_text(original.replace(clause, replacement), encoding="utf-8")
+                        self.assertTrue(lint_public_library_contract(root))
+            profile.write_text(original, encoding="utf-8")
+            for relative in surfaces[1:]:
+                path = root / relative
+                original_step = path.read_text(encoding="utf-8")
+                path.write_text(original_step.replace(PUBLIC_LIBRARY_HOOK, "unrelated.md"), encoding="utf-8")
+                self.assertTrue(any(relative in error for error in lint_public_library_contract(root)))
+                path.write_text(original_step, encoding="utf-8")
+
     def test_workflow_hook_cannot_disappear_from_patch(self) -> None:
         import shutil
         temporary = tempfile.TemporaryDirectory()

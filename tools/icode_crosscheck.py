@@ -26,7 +26,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
@@ -519,7 +519,7 @@ def validate_manifest(manifest, directory=None):
     }
     optional = {
         "finished_at", "fresh_sha256", "final_sha256", "round_markdown_sha256",
-        "verdict", "stale_snapshot_digest", "inspection_version", "worklist_file", "worklist_sha256", "inspection_declaration_hash",
+        "verdict", "stale_snapshot_digest", "inspection_version", "worklist_file", "worklist_sha256", "inspection_declaration_hash", "inspection_max_files",
     }
     for index, item in enumerate(rounds, 1):
         if not isinstance(item, dict) or not round_required.issubset(item) or set(item) - round_required - optional:
@@ -532,6 +532,9 @@ def validate_manifest(manifest, directory=None):
         if "inspection_version" in item and (type(item["inspection_version"]) is not int or item["inspection_version"] != 1
                 or item.get("worklist_file") != f"crosscheck_round_{index}.worklist.json"):
             raise CrosscheckError("crosscheck 工作清单身份非法", gate_id="inspection_worklist")
+        if "inspection_max_files" in item and (not item.get("inspection_version")
+                or type(item["inspection_max_files"]) is not int or item["inspection_max_files"] <= 0):
+            raise CrosscheckError("crosscheck 文件预算必须为正整数", gate_id="inspection_budget")
         for key in ("start_snapshot_digest", "fresh_sha256", "final_sha256",
                     "round_markdown_sha256", "stale_snapshot_digest", "worklist_sha256", "inspection_declaration_hash"):
             if key in item and (not isinstance(item[key], str) or not SHA256_RE.fullmatch(item[key])):
@@ -593,7 +596,7 @@ def matching_containers(root, target, *, prune_empty=False):
     return matches, numbers
 
 
-def new_round(target, metadata, round_no):
+def new_round(target, metadata, round_no, max_files=200):
     snapshot = capture_target_snapshot(target, metadata)
     return {
         "round": round_no,
@@ -605,11 +608,15 @@ def new_round(target, metadata, round_no):
         "fresh_file": f"crosscheck_round_{round_no}.fresh.json",
         "final_file": f"crosscheck_round_{round_no}.json",
         "inspection_version": 1,
+        "inspection_max_files": max_files,
         "worklist_file": f"crosscheck_round_{round_no}.worklist.json",
     }
 
 
 def cmd_start(args):
+    requested_max_files = getattr(args, "max_files", None)
+    if requested_max_files is not None and (type(requested_max_files) is not int or requested_max_files <= 0):
+        raise CrosscheckError("文件预算必须为正整数", gate_id="inspection_budget")
     target, metadata = resolve_target(args)
     root = safe_crosscheck_root(target["project_root"], args.crosscheck_root)
     with DirectoryLock(root):
@@ -622,6 +629,7 @@ def cmd_start(args):
             )
         resumed = False
         requested_baselines = json.loads(args.baselines_json) if args.baselines_json else None
+        max_files = requested_max_files or 200
         if matches:
             directory, manifest = matches[0]
             if manifest["target"]["ticket_dir"] != target["ticket_dir"]:
@@ -632,6 +640,17 @@ def cmd_start(args):
             for old in manifest["rounds"]:
                 verify_frozen_worklist(directory, old)
             current = manifest["rounds"][-1]
+            old_worklist = directory / current.get("worklist_file", "unused.worklist.json")
+            prior_budget = current.get("inspection_max_files", 200)
+            if current.get("inspection_version") and old_worklist.is_file():
+                declaration = load_json(old_worklist, "crosscheck worklist")
+                if current.get("inspection_declaration_hash") != inspection_declaration_hash(declaration):
+                    raise CrosscheckError("审查边界声明被修改", gate_id="inspection_worklist")
+                prior_budget = declaration.get("max_files")
+                if type(prior_budget) is not int or prior_budget <= 0 or (
+                        "inspection_max_files" in current and current["inspection_max_files"] != prior_budget):
+                    raise CrosscheckError("工作清单与冻结文件预算不一致", gate_id="inspection_budget")
+            max_files = requested_max_files or prior_budget
             if requested_baselines is None:
                 for old in reversed(manifest["rounds"]):
                     old_path = directory / old.get("worklist_file", "unused.worklist.json")
@@ -659,8 +678,10 @@ def cmd_start(args):
                         "state": "stale_input", "phase": "finalized", "finished_at": now_iso(),
                         "stale_snapshot_digest": object_digest(current_snapshot),
                     })
+            if resumed and requested_max_files is not None and requested_max_files != prior_budget:
+                raise CrosscheckError("恢复轮不得改变文件预算", gate_id="inspection_budget")
             if not resumed:
-                manifest["rounds"].append(new_round(target, metadata, len(manifest["rounds"]) + 1))
+                manifest["rounds"].append(new_round(target, metadata, len(manifest["rounds"]) + 1, max_files))
                 manifest["current_round"] = len(manifest["rounds"])
                 manifest["updated_at"] = now_iso()
                 atomic_write_json(directory / MANIFEST_NAME, manifest)
@@ -669,7 +690,7 @@ def cmd_start(args):
             number = max(numbers, default=0) + 1
             directory = root / f"icode_{number}"
             # 快照等易失败工作完成后再创建容器，避免无 manifest 的残留。
-            first_round = new_round(target, metadata, 1)
+            first_round = new_round(target, metadata, 1, max_files)
             directory.mkdir()
             created = now_iso()
             identity_material = f"{target['project_root']}\0{target['ticket_id']}"
@@ -694,7 +715,8 @@ def cmd_start(args):
             worklist = directory / current["worklist_file"]
             if worklist.is_symlink():
                 raise CrosscheckError("工作清单不得为符号链接", gate_id="inspection_worklist")
-            if not worklist.exists():
+            publish_worklist = not worklist.exists()
+            if publish_worklist:
                 if current.get("fresh_sha256"):
                     raise CrosscheckError("已冻结轮缺工作清单，禁止重新生成", gate_id="inspection_worklist")
                 helper = inspection_module()
@@ -704,21 +726,31 @@ def cmd_start(args):
                     # 根文件不能默认扩成整个仓库；子目录保持现有关联联审。
                     scopes=args.scope or sorted({p if Path(p).parent == Path(".")
                         else Path(p).parent.as_posix() for p in normalize_code_files(metadata)}),
-                    baselines=requested_baselines)
-                atomic_write_json(worklist, report)
+                    baselines=requested_baselines, max_files=current.get("inspection_max_files", 200))
             else:
                 report = load_json(worklist, "crosscheck worklist")
                 if any(value is not None and value != report.get(key) for key, value in
-                    (("related", sorted(set(args.related)) if args.related else None),
-                     ("scopes", sorted(set(args.scope)) if args.scope else None),
+                    (("scopes", sorted(set(args.scope)) if args.scope else None),
                      ("baselines", json.loads(args.baselines_json) if args.baselines_json else None))):
                     raise CrosscheckError("恢复轮不得改变审查范围", gate_id="inspection_worklist")
+                if args.related and sorted(set(args.related)) != report.get("related"):
+                    try:
+                        equivalent = inspection_module().equivalent_related(report,
+                            code_root_for(metadata, Path(target["project_root"])), args.related)
+                    except (ValueError, OSError) as exc:
+                        raise CrosscheckError(str(exc), gate_id="inspection_worklist") from exc
+                    if not equivalent:
+                        raise CrosscheckError("恢复轮不得改变必审关联范围", gate_id="inspection_worklist")
             declaration = inspection_declaration_hash(report)
             if current.get("inspection_declaration_hash") and current["inspection_declaration_hash"] != declaration:
                 raise CrosscheckError("审查边界声明被修改", gate_id="inspection_worklist")
             if not current.get("inspection_declaration_hash"):
                 current["inspection_declaration_hash"] = declaration
                 atomic_write_json(directory / MANIFEST_NAME, manifest)
+            if publish_worklist:
+                # 先持久绑定声明，再发布清单；任一写入中断后都可按原预算重建，
+                # 不会留下无法鉴别来源的未绑定清单，也不复用任何 Read 进度。
+                atomic_write_json(worklist, report)
         return {
             "ok": True,
             "crosscheck_dir": str(directory),
@@ -759,6 +791,8 @@ def check_inspection(directory, manifest, item, findings=None, *, allow_incomple
     report = load_json(directory / item["worklist_file"], "crosscheck worklist")
     if item.get("inspection_declaration_hash") != inspection_declaration_hash(report):
         raise CrosscheckError("审查边界声明被修改", gate_id="inspection_worklist")
+    if "inspection_max_files" in item and item["inspection_max_files"] != report.get("max_files"):
+        raise CrosscheckError("工作清单与冻结文件预算不一致", gate_id="inspection_budget")
     helper = inspection_module()
     snapshot = item["start_snapshot"]
     workspace = snapshot["code_root"]
@@ -776,7 +810,40 @@ def check_inspection(directory, manifest, item, findings=None, *, allow_incomple
     return report
 
 
+def inspection_paths(args):
+    raw, path = getattr(args, "paths_json", None), getattr(args, "path", None)
+    request_id = getattr(args, "request_id", None)
+    if args.phase != "read":
+        if raw is not None or path is not None or request_id is not None:
+            raise CrosscheckError("check 不接受 Read 登记参数", gate_id="inspection_worklist")
+        return None
+    if raw is None:
+        if request_id is not None:
+            raise CrosscheckError("request-id 仅用于批量 Read", gate_id="inspection_worklist")
+        return [path]
+    try:
+        if path is not None or not isinstance(raw, str) or len(raw.encode("utf-8")) > 64 * 1024:
+            raise ValueError("paths-json 仅接受至多64KiB的数组且不能同时传 path")
+        paths = json.loads(raw, parse_constant=reject_nonfinite)
+        if type(paths) is not list or not 1 <= len(paths) <= 256:
+            raise ValueError("批量 Read 必须有1至256个唯一成员")
+        for name in paths:
+            if (type(name) is not str or not name or "\0" in name or "\\" in name
+                    or name.startswith("/") or PureWindowsPath(name).drive
+                    or any(part in {"", ".", "..", ".git"} for part in name.split("/"))):
+                raise ValueError("批量 Read 必须使用规范的项目相对POSIX路径")
+        if len(set(paths)) != len(paths):
+            raise ValueError("批量 Read 不得重复成员")
+        if request_id is not None and (type(request_id) is not str
+                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", request_id) is None):
+            raise ValueError("request-id 必须为1至128个字母数字或 ._:- 字符")
+        return sorted(paths)
+    except (ValueError, TypeError, RecursionError) as exc:
+        raise CrosscheckError(str(exc), gate_id="inspection_worklist") from exc
+
+
 def cmd_inspection(args):
+    paths = inspection_paths(args)
     directory, manifest = load_manifest(args.dir)
     if args.phase == "check":
         item = get_round(manifest, args.round)
@@ -788,12 +855,31 @@ def cmd_inspection(args):
         if item["state"] != "in_progress" or item["phase"] != "fresh_review" or item.get("fresh_sha256"):
             raise CrosscheckError("仅未冻结的本轮 fresh_review 可登记 Read", gate_id="inspection_worklist")
         report = check_inspection(directory, manifest, item, pending=True)
-        selected = [f for unit in report["units"] for f in unit["files"] if f["path"] == args.path]
-        if len(selected) != 1:
+        members = {f["path"]: f for unit in report["units"] for f in unit["files"]}
+        if any(path not in members for path in paths):
             raise CrosscheckError("Read 路径不在唯一自查单元中", gate_id="inspection_worklist")
-        selected[0]["reads"]["fresh"] = selected[0]["sha256"]
-        atomic_write_json(directory / item["worklist_file"], report)
-        return {"ok": True, "round": args.round, "path": args.path, "source_sha256": selected[0]["sha256"]}
+        hashes = {path: members[path]["sha256"] for path in paths}
+        request_id = getattr(args, "request_id", None)
+        already_applied = False
+        if request_id is not None:
+            receipt = {"paths": paths, "source_hashes": hashes}
+            prior = report.get("read_batches", {}).get(request_id)
+            if prior is not None and prior != receipt:
+                raise CrosscheckError("批次 request-id 已绑定不同成员或源码", gate_id="inspection_worklist")
+            already_applied = prior is not None
+            if not already_applied:
+                report.setdefault("read_batches", {})[request_id] = receipt
+        changed = False
+        for path in paths:
+            if members[path]["reads"].get("fresh") != hashes[path]:
+                changed = True
+                members[path]["reads"]["fresh"] = hashes[path]
+        if changed or (request_id is not None and not already_applied):
+            atomic_write_json(directory / item["worklist_file"], report)
+        if getattr(args, "paths_json", None) is not None:
+            return {"ok": True, "round": args.round, "paths": paths, "source_hashes": hashes,
+                    "already_applied": already_applied}
+        return {"ok": True, "round": args.round, "path": args.path, "source_sha256": hashes[args.path]}
 
 
 def inspection_declaration_hash(report):
@@ -1172,6 +1258,7 @@ def build_parser():
     start.add_argument("--related", action="append", help="显式关联文件，项目根相对路径")
     start.add_argument("--scope", action="append", help="明确 Git 审查目录边界")
     start.add_argument("--baselines-json", help="逐仓真实基线ref对象")
+    start.add_argument("--max-files", type=int, help="新轮文件预算（正整数）；同轮恢复必须与冻结值一致")
     start.set_defaults(function=cmd_start)
 
     freeze = sub.add_parser("freeze", help="冻结 fresh 评审，之后才允许读取上一轮")
@@ -1193,6 +1280,8 @@ def build_parser():
     inspection.add_argument("--round", required=True, type=int)
     inspection.add_argument("--phase", required=True, choices=["read", "check"])
     inspection.add_argument("--path")
+    inspection.add_argument("--paths-json", help="仅read：1至256个唯一相对路径的JSON数组，至多64KiB；与path互斥")
+    inspection.add_argument("--request-id", help="可选批量Read幂等身份；仅在本轮绑定成员与源码哈希")
     inspection.set_defaults(function=cmd_inspection)
     return parser
 

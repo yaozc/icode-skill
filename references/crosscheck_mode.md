@@ -65,7 +65,7 @@ finish 必须重新采集并比较摘要。不同即 `stale_input`：本轮内�
 
 每轮分两份 JSON：
 
-新轮还带独立 `crosscheck_round_N.worklist.json`，按 [inspection_worklist.md](inspection_worklist.md)登记本轮 fresh Read、验证 finding 位置/原文/hash。start 可用内部 `--related/--scope/--baselines-json` 传入真实影响面；恢复轮不改变边界。freeze 同时冻结清单 hash，未审完仅 blocked；原工单零回写不变，旧轮只读兼容。
+新轮还带独立 `crosscheck_round_N.worklist.json`，按 [inspection_worklist.md](inspection_worklist.md)登记本轮 fresh Read、验证 finding 位置/原文/hash。start 可用内部 `--related/--scope/--baselines-json` 传入真实影响面，`--max-files` 冻结正整数文件预算；恢复轮不改变边界，完全冗余的 related 声明须经新鲜等价检查。新轮默认继承预算，显式覆盖仅对实际新轮生效。单路径和原子批量登记都只记录调用方阅读声明，不证明已实际完成审查。freeze 同时冻结清单 hash，未审完仅 blocked；原工单零回写不变，旧轮只读兼容。
 
 1. `crosscheck_round_N.fresh.json`：不读旧 crosscheck 后的独立判断，finding status 只能为 `new`。
 2. `crosscheck_round_N.json`：fresh 经 freeze 固化后，才读取上一完成轮并标注生命周期。

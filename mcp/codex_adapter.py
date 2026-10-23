@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import ntpath
 import os
 import shutil
 import subprocess
@@ -41,13 +42,79 @@ def _venv_python(server_dir: Path) -> Path:
     return server_dir / ".venv" / "bin" / "python"
 
 
-def build_catalog(root: Path) -> Dict[str, ServerConfig]:
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def _windows_env_with_node_path(node: str, env: Optional[Mapping[str, str]] = None) -> Dict[str, str]:
+    """仅为子服务补运行路径，显式 PATH（不区分大小写）优先。"""
+    result = dict(env or {})
+    if any(key.upper() == "PATH" for key in result):
+        return result
+    system = os.environ.get("SystemRoot") or os.environ.get("windir") or r"C:\Windows"
+    result["PATH"] = ";".join([str(Path(node).parent), ntpath.join(system, "system32"), system,
+                              ntpath.join(system, "System32", "Wbem"),
+                              ntpath.join(system, "System32", "WindowsPowerShell", "v1.0")])
+    return result
+
+
+def _executable_path(raw: str, label: str) -> Path:
+    resolved = shutil.which(raw)
+    path = Path(resolved or raw).expanduser()
+    if not path.is_file():
+        raise RuntimeError(f"{label} executable is missing: {raw}")
+    return path.resolve()
+
+
+def _npx_cli_near(executable: Path) -> Optional[Path]:
+    directory = executable.parent
+    for relative in ("node_modules/npm/bin/npx-cli.js", "../lib/node_modules/npm/bin/npx-cli.js",
+                     "../node_modules/npm/bin/npx-cli.js"):
+        candidate = directory / relative
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
+def _npm_config(name: str, package: str) -> ServerConfig:
     npx = os.environ.get("ICODEX_NPX_BIN") or shutil.which("npx") or "npx"
+    if not _is_windows():
+        return ServerConfig(name=name, command=npx, args=["-y", package])
+
+    explicit_npx = os.environ.get("ICODEX_NPX_BIN")
+    explicit_node = os.environ.get("ICODEX_NODE_BIN")
+    npx_path = _executable_path(npx, "npx") if explicit_npx or shutil.which("npx") else None
+    # 用户选择的原生包装器可直接 spawn；不把它替换成系统中另一套 npm。
+    if explicit_npx and npx_path.suffix.lower() in {".exe", ".com"}:
+        if explicit_node:
+            raise RuntimeError("An explicit native npx wrapper owns its runtime; remove ICODEX_NODE_BIN or select npx.cmd")
+        return ServerConfig(name=name, command=str(npx_path), args=["-y", package])
+    adjacent_node = npx_path.parent / "node.exe" if npx_path else None
+    node_name = explicit_node or (str(adjacent_node) if adjacent_node and adjacent_node.is_file()
+                                  else shutil.which("node"))
+    if not node_name:
+        raise RuntimeError("Windows npm MCP requires node.exe and its npm/bin/npx-cli.js; set ICODEX_NODE_BIN")
+    node = _executable_path(node_name, "node")
+    if node.suffix.lower() not in {".exe", ".com"}:
+        raise RuntimeError("Windows npm MCP requires a native node.exe executable, not a shell shim")
+    cli = _npx_cli_near(node)
+    if cli is None:
+        raise RuntimeError("Windows npm MCP requires npx-cli.js paired with the selected node executable")
+    if explicit_npx and _npx_cli_near(npx_path) != cli:
+        raise RuntimeError("ICODEX_NPX_BIN and selected node must match the same npm/npx-cli.js pair")
+    return ServerConfig(name=name, command=str(node), args=[str(cli), "-y", package],
+                        env=_windows_env_with_node_path(str(node)))
+
+
+def build_catalog(root: Path, names: Optional[Sequence[str]] = None) -> Dict[str, ServerConfig]:
+    selected = set(names) if names else set(NPM_PACKAGES) | set(LOCAL_SERVERS)
     catalog = {
-        name: ServerConfig(name=name, command=npx, args=["-y", package])
-        for name, package in NPM_PACKAGES.items()
+        name: _npm_config(name, package)
+        for name, package in NPM_PACKAGES.items() if name in selected
     }
     for name, config_variable in LOCAL_SERVERS.items():
+        if name not in selected:
+            continue
         server_dir = root / name
         catalog[name] = ServerConfig(
             name=name,
@@ -164,11 +231,16 @@ def _prepare_local_server(config: ServerConfig) -> None:
 
 def install(root: Path, names: Sequence[str], dry_run: bool, auto_install: bool) -> int:
     codex = os.environ.get("ICODEX_CODEX_BIN") or "codex"
-    catalog = build_catalog(root)
-    selected = list(names) if names else list(catalog)
-    unknown = [name for name in selected if name not in catalog]
+    known = [*NPM_PACKAGES, *LOCAL_SERVERS]
+    selected = list(names) if names else known
+    unknown = [name for name in selected if name not in known]
     if unknown:
         print("Unknown MCP server(s): " + ", ".join(unknown), file=sys.stderr)
+        return 1
+    try:
+        catalog = build_catalog(root, selected)
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
         return 1
 
     existing_names = set(_list_names(codex))
@@ -221,9 +293,10 @@ def install(root: Path, names: Sequence[str], dry_run: bool, auto_install: bool)
 
 def uninstall(root: Path, names: Sequence[str], dry_run: bool, assume_yes: bool) -> int:
     codex = os.environ.get("ICODEX_CODEX_BIN") or "codex"
-    catalog = build_catalog(root)
-    selected = list(names) if names else list(catalog)
-    unknown = [name for name in selected if name not in catalog]
+    # 卸载只需名称清单，不依赖服务的 Node 或 venv 仍可用。
+    known = [*NPM_PACKAGES, *LOCAL_SERVERS]
+    selected = list(names) if names else known
+    unknown = [name for name in selected if name not in known]
     if unknown:
         print("Unknown MCP server(s): " + ", ".join(unknown), file=sys.stderr)
         return 1
