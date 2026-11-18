@@ -9,6 +9,13 @@ from functools import lru_cache
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Mapping
 
+try:
+    from . import path_safety
+except ImportError:
+    _paths_spec = importlib.util.spec_from_file_location("icode_path_safety", Path(__file__).resolve().with_name("path_safety.py"))
+    path_safety = importlib.util.module_from_spec(_paths_spec)
+    _paths_spec.loader.exec_module(path_safety)
+
 PHASES = ("immediate", "converged", "restart", "replay")
 CONSUMERS = ("direct_query", "aggregate_selector", "persistent_reference", "external_projection")
 LAYERS = ("static", "unit", "build", "host", "deploy", "delivery", "consumption",
@@ -289,6 +296,8 @@ def sync_risk(metadata: dict) -> None:
 
 
 def _project(metadata: Mapping[str, Any], run_dir: Path) -> Path:
+    if path_safety.has_link(run_dir) or path_safety.has_link(metadata.get("project_path", run_dir)):
+        raise ValueError("verification project/run must not traverse a symlink")
     if len(run_dir.resolve().parents) < 3:
         raise ValueError("verification requires a native project run")
     root = run_dir.resolve().parents[2]
@@ -307,9 +316,11 @@ def file_hash(root: Path, name: str, require_nonempty: bool = True) -> str:
             or ".." in relative.parts or not relative.parts):
         raise ValueError("file path must be project-relative POSIX")
     path = root
+    if path_safety.has_link(root):
+        raise ValueError("symlink source/evidence root is forbidden")
     for part in relative.parts:
         path = path / part
-        if path.is_symlink():
+        if path_safety.is_link(path):
             raise ValueError("symlink source/evidence is forbidden")
     try:
         path.resolve().relative_to(root.resolve())

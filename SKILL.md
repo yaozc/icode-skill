@@ -448,12 +448,12 @@ python3 -c "import json,sys; d=json.load(open('{ICODE_OUT_DIR}/.ico_metadata.jso
 
 ### 强制思考前置 + 反偷懒约束（所有步骤必须遵守，硬性总则）
 
-完整规则见下表两真源（步骤执行前**必须** Read 完整内容，不得凭 SKILL.md 概述或记忆执行——见反偷懒第 15 条）：
+完整规则见下表两真源（步骤执行前按 [静态 references 读取与复用合同](references/thinking_core.md#静态-references-读取与复用合同) 核对全文实读或复用，不得凭概述或记忆执行——见反偷懒第 14 条）：
 
 | 主题 | 真源 | 核心要点 |
 |------|------|---------|
-| 强制思考前置 | [references/thinking_core.md](references/thinking_core.md)（每步必读）+ [references/thinking_detail.md](references/thinking_detail.md)（按需读） | 每步开始前先 `ultrathink`，首选 `sequential-thinking` MCP 至少 3 步；MCP 不可用降级 `### 结构化思考` 文字块；思考子项见各 step 文件 |
-| 反偷懒约束 | [references/anti_laziness.md](references/anti_laziness.md) | 31 条典型偷懒行为 + 正面合规要求；引用 references 必须每步重新 Read 输出 `📖 已 Read` 确认行；思考块每子项 ≥2 句实质内容 |
+| 强制思考前置 | [references/thinking_core.md](references/thinking_core.md)（每步核对静态读取合同）+ [references/thinking_detail.md](references/thinking_detail.md)（按需读） | 每步开始前先 `ultrathink`，首选 `sequential-thinking` MCP 至少 3 步；MCP 不可用降级 `### 结构化思考` 文字块；思考子项见各 step 文件 |
+| 反偷懒约束 | [references/anti_laziness.md](references/anti_laziness.md) | 31 条典型偷懒行为 + 正面合规要求；静态 references 首次全文实读 + SHA256，逐步核对复用条件并区分实读/复用确认；思考块每子项 ≥2 句实质内容 |
 
 ### 根因优先决策准则（修复缺陷逻辑本身，优先于规避/绕过/补丁/开关）
 
@@ -744,8 +744,8 @@ $icodex install --no-auto-install
 
 - **TB 缺陷源附件视频/图片**：log 步骤拉取 TB 缺陷源后,`tb_source/<ID>/` 下若含视频(`*.mp4`/`*.mov`/`*.avi` 等)/图片(`*.png`/`*.jpg`/`*.jpeg` 等),**vision-bridge 可用则主动调**——视频先用 ffmpeg 本地提取关键帧(免费),再传图片帧给 vision-bridge 分析(省 API 额度)。vision-bridge 不可用时仅提示附件清单不主动调(防纯文字模型报错)。详见 [steps/log.md](steps/log.md)「附件分析（含本地路径 + TB 源）与 ffmpeg 抽帧」与「TB 视频/图片附件研读」(反偷懒第 23 条含 vision-bridge 不可用豁免条款)
 - **本地日志目录视频/图片**：`$icodex log` 分析本地日志时,日志目录下若含视频/图片文件,vision-bridge 可用则主动调（扫目录枚举,视频同走 ffmpeg 抽帧,行为同 TB 源模式）。详见 [steps/log.md](steps/log.md)「附件分析（含本地路径 + TB 源）与 ffmpeg 抽帧」段
-- **装好 vision-bridge 且 `config.json` 配好三件套（base_url/api_key/model）**：`mcp__vision-bridge__analyze_media` 可用，**优先用 MCP 工具**走统一接口
-- **没装 vision-bridge，或装了但 `config.json` 三件套没填**：`analyze_media` 工具返回 fallback 提示字符串，**降级**——AI 不替用户判断原生能力
+- **vision-bridge 当前会话已取得完整工具 schema**：实际调用 `mcp__vision-bridge__analyze_media`；安装与 `config.json` 三件套（base_url/api_key/model）只作诊断，不能代替会话可调用或实际成功的证据
+- **vision-bridge 未暴露或实际调用失败**：未暴露时按发现依据记录 `unavailable_before_call`；实际返回错误/空结果或 fallback 提示时记录 `degraded_after_attempt` 并保留原始返回，再降级处理——AI 不替用户判断原生能力，不能只凭安装/配置猜测工具已返回
   - 原生支不支持图片/视频 **视具体 session 模型而定**（Opus/Sonnet 一般支持，Haiku 可能部分支持）
   - **用户自己把握**原生能力是否够用；AI 不假装"可以原生处理"
   - 不报错、不阻塞
@@ -806,11 +806,11 @@ $icodex install --no-auto-install
 
 ## 共享规则文件（references/）
 
-各 step 文件不再重复定义跨步骤共享的规则，统一引用 `references/` 下的共享文件。执行某步骤时若该步骤引用了共享文件，**必须先用 Read 工具实读该文件完整内容**（不得凭 SKILL.md 概述或记忆执行，否则产出不合规——见反偷懒第15条）：
+各 step 文件不再重复定义跨步骤共享的规则，统一引用 `references/` 下的共享文件。所有静态 refs（含“每步必读”或“Read 完整内容”）统一按 [静态 references 读取与复用合同](references/thinking_core.md#静态-references-读取与复用合同)：首次完整实读正文并计算 SHA256；仅同绝对 skill 根、文件路径、SHA256 且完整正文仍在当前上下文时复用。压缩、正文丢失、换根或内容变化必须重读；逐步核对，确认区分实读与复用，摘要或哈希不能替代正文（反偷懒第14条）。业务源码实读、每轮判断和 Read/worklist 登记不得复用：
 
 | 共享文件 | 内容 | 引用方 |
 |---------|------|--------|
-| [references/thinking_core.md](references/thinking_core.md) | 强制思考前置核心（每步必读：MCP+降级文字块/结构化思考/Read references） | 所有 step |
+| [references/thinking_core.md](references/thinking_core.md) | 强制思考前置核心（每步核对：MCP+降级文字块/结构化思考/Read references） | 所有 step |
 | [references/thinking_detail.md](references/thinking_detail.md) | 强制思考前置细节（按需读：各步骤子项速查/历史参考小节） | 所有 step |
 | [references/anti_laziness.md](references/anti_laziness.md) | 反偷懒约束（31条偷懒行为+合规要求+references必读+确认行） | 所有 step |
 | [references/adversarial.md](references/adversarial.md) | 对抗分析模式（3质疑者/裁决优先级/诚实降级/证据回指） | 02_review / log |

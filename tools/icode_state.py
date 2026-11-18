@@ -6,12 +6,14 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import io
 import json
 import os
 import re
 import shutil
 import socket
 import stat
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -174,6 +176,8 @@ def _artifact_path_error(run_dir: Path, key: str, relative_path: Any) -> Optiona
     if not isinstance(relative_path, str) or not relative_path:
         return f"artifact_map.{key} must be null or a non-empty relative path"
 
+    if contract.path_safety.has_link(run_dir / relative_path):
+        return f"artifact_map.{key} must not traverse a symlink"
     root = run_dir.resolve()
     candidate = (run_dir / relative_path).resolve()
     try:
@@ -419,17 +423,15 @@ def _execution_metadata_errors(metadata: Mapping[str, Any], run_dir: Path) -> Li
 
 
 def _path_has_symlink(root: Path, relative: Path) -> bool:
-    current = root
-    for part in relative.parts:
-        current = current / part
-        if current.is_symlink():
-            return True
-    return False
+    return contract.path_safety.has_link(root / relative)
 
 
 def _validate_code_files(code_files: Any, project_root: Path) -> List[str]:
     errors: List[str] = []
-    root = Path(project_root).resolve()
+    root = Path(project_root)
+    if contract.path_safety.has_link(root):
+        return ["project root must not traverse a symlink"]
+    root = root.resolve()
     if not isinstance(code_files, list) or not code_files:
         return ["code_files must be a non-empty array for completed crosscheck targets"]
     for position, raw in enumerate(code_files):
@@ -458,16 +460,18 @@ def _validate_code_files(code_files: Any, project_root: Path) -> List[str]:
 def validate_completed_run(run_dir: Path, project_root: Path) -> Dict[str, Any]:
     """Validate one completed Codex run before it can be crosschecked."""
 
+    if contract.path_safety.has_link(project_root):
+        raise ValueError("project root must not traverse a symlink")
     project_root = Path(project_root).resolve()
     raw_run_dir = Path(run_dir).expanduser()
     expected_parent = project_root / ".ai" / "icode"
-    if raw_run_dir.is_symlink():
+    if contract.path_safety.has_link(raw_run_dir):
         raise ValueError("completed run directory must not be a symlink")
     resolved_run_dir = raw_run_dir.resolve()
     if resolved_run_dir.parent != expected_parent or not CODEX_RUN_RE.fullmatch(resolved_run_dir.name):
         raise ValueError("completed run must be <project>/.ai/icode/icode_N")
     metadata_path = resolved_run_dir / ".ico_metadata.json"
-    if metadata_path.is_symlink() or not metadata_path.is_file():
+    if contract.path_safety.is_link(metadata_path) or not metadata_path.is_file():
         raise ValueError("completed run metadata must be a regular non-symlink file")
     metadata = _read_json(metadata_path)
     errors = validate_metadata(metadata, resolved_run_dir)
@@ -490,7 +494,7 @@ def _local_ticket_candidates(project_root: Path, ticket_id: str) -> List[Path]:
     for child in sorted(output_root.iterdir()):
         if not CODEX_RUN_RE.fullmatch(child.name):
             continue
-        if child.is_symlink():
+        if contract.path_safety.has_link(child):
             raise ValueError(f"ticket directory must not be a symlink: {child}")
         metadata_path = child / ".ico_metadata.json"
         if not metadata_path.is_file():
@@ -513,12 +517,17 @@ def _indexed_ticket_candidates(project_root: Path, codex_root: Path, ticket_id: 
         raw_out_dir = entry.get("out_dir")
         if not isinstance(raw_project, str) or not isinstance(raw_out_dir, str) or not raw_out_dir:
             raise ValueError("ticket index entry is missing project_path or out_dir")
+        indexed_project_is_link = contract.path_safety.has_link(raw_project)
         indexed_project = Path(raw_project).expanduser().resolve()
         if indexed_project != project_root:
             continue
+        if indexed_project_is_link:
+            raise ValueError("ticket index project_path must not traverse a symlink")
         if entry.get("status") != "completed":
             raise ValueError("ticket index status disagrees with completed target requirement")
         out_path = Path(raw_out_dir).expanduser()
+        if contract.path_safety.has_link(out_path if out_path.is_absolute() else indexed_project / out_path):
+            raise ValueError("ticket index out_dir must not traverse a symlink")
         if out_path.is_absolute():
             candidate = out_path.resolve()
         else:
@@ -540,6 +549,8 @@ def resolve_ticket(project_root: Path, codex_root: Path, ticket_id: str) -> Path
 
     if not isinstance(ticket_id, str) or not ticket_id:
         raise ValueError("ticket_id must be a non-empty string")
+    if contract.path_safety.has_link(project_root):
+        raise ValueError("project root must not traverse a symlink")
     project_root = Path(project_root).expanduser().resolve()
     if not project_root.is_dir():
         raise ValueError(f"project root does not exist: {project_root}")
@@ -586,7 +597,7 @@ def publish_artifact(
     source = Path(source)
     if key not in ARTIFACT_KEYS:
         raise ValueError(f"unknown artifact key: {key}")
-    if not source.is_file() or source.is_symlink():
+    if not source.is_file() or contract.path_safety.is_link(source):
         raise ValueError("artifact source must be a regular non-symlink file")
     target = _safe_relative_target(run_dir, relative_name)
     metadata_path = run_dir / ".ico_metadata.json"
@@ -642,13 +653,13 @@ def publish_artifact(
             raise ValueError("metadata validation failed: " + "; ".join(risk_errors))
         if (not replan and profile.get("replay_from_step") == 2
                 and key in ("plan_review", "final_plan", "implementation", "deepcheck", "audit")
-                and target.is_file() and not target.is_symlink()):
+                and target.is_file() and not contract.path_safety.is_link(target)):
             # 即使定稿内容不变，也另行发布 full 轮次，不能把旧 fast 映射直接算作完成。
             generation = hashlib.sha256(profile["upgraded_at"].encode("utf-8")).hexdigest()[:16]
             target = _safe_relative_target(run_dir, f"full/{generation}/{key}-{_sha256_file(source)}.md")
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
-            if not target.is_file() or target.is_symlink():
+            if not target.is_file() or contract.path_safety.is_link(target):
                 raise ValueError("existing artifact target is not a regular file")
             if _sha256_file(target) != _sha256_file(source):
                 raise FileExistsError(f"artifact target already contains different content: {target}")
@@ -1040,7 +1051,7 @@ def _files_for_kind(kind: str, root: Path, source: str) -> Dict[str, MergedFile]
         return {}
     files: Dict[str, MergedFile] = {}
     for path in sorted(base.rglob("*")):
-        if path.is_file() and not path.is_symlink():
+        if path.is_file() and not contract.path_safety.is_link(path):
             key = path.relative_to(base).as_posix()
             files[key] = MergedFile(key=key, path=path, source=source)
     return files
@@ -1073,12 +1084,12 @@ def _legacy_file_manifest(legacy_run: Path) -> Tuple[List[Tuple[str, str]], str]
         root_path = Path(root)
         for name in list(directory_names):
             path = root_path / name
-            if path.is_symlink() or not path.is_dir():
+            if contract.path_safety.is_link(path) or not path.is_dir():
                 raise ValueError(f"legacy migration rejects non-regular directory: {path}")
         for name in file_names:
             path = root_path / name
             mode = path.lstat().st_mode
-            if path.is_symlink() or not stat.S_ISREG(mode):
+            if contract.path_safety.is_link(path) or not stat.S_ISREG(mode):
                 raise ValueError(f"legacy migration rejects symlink or special file: {path}")
             relative = path.relative_to(legacy_run).as_posix()
             entries.append((relative, _sha256_file(path)))
@@ -1126,7 +1137,7 @@ def _safe_existing_migration_file(directory: Path, relative: str) -> bool:
         target = _safe_relative_target(directory, relative)
     except ValueError:
         return False
-    return target.is_file() and not target.is_symlink()
+    return target.is_file() and not contract.path_safety.is_link(target)
 
 
 def _safe_ticket_id(ticket_id: str) -> str:
@@ -1142,7 +1153,7 @@ def _safe_ticket_id(ticket_id: str) -> str:
 def _validate_legacy_location(project_root: Path, legacy_run: Path) -> Tuple[Path, Path]:
     project_root = Path(project_root)
     legacy_run = Path(legacy_run)
-    if project_root.is_symlink() or legacy_run.is_symlink():
+    if contract.path_safety.is_link(project_root) or contract.path_safety.is_link(legacy_run):
         raise ValueError("project root and legacy run must not be symlinks")
     if not project_root.is_dir() or not legacy_run.is_dir():
         raise ValueError("project root and legacy run must be real directories")
@@ -1241,7 +1252,7 @@ def migrate_legacy_run(project_root: Path, legacy_run: Path, codex_root: Path) -
     migration_lock = destination_root / ".migration-locks" / f"{migration_id}.lock"
     with PortableFileLock(migration_lock):
         if target.exists():
-            if not target.is_dir() or target.is_symlink():
+            if not target.is_dir() or contract.path_safety.is_link(target):
                 raise FileExistsError(f"migration target is not a real directory: {target}")
             prepared = _read_json(target / ".ico_metadata.json")
             if prepared.get("migration_id") != migration_id:
@@ -1441,4 +1452,8 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
 
 
 if __name__ == "__main__":
+    # Keep CLI diagnostics readable on legacy code pages without changing imported streams.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
     raise SystemExit(_main())

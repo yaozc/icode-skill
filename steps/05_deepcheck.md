@@ -231,21 +231,11 @@ Free 阶段一次性完整覆盖全部 15 个角度。
 
 ### 阶段 4 — Dedup（语义重复函数检测完整版）
 
-> **强证据场景判定**（详见 [references/mcp_per_step.md §5 deepcheck](../references/mcp_per_step.md)）：
->
-> - cheap-research 🟢（`mcp__cheap-research__extract` 可用）
-> - **函数数 ≥ 50**
->
-> **任一不满足 → 整个 §9.4 跳过**，在思考块 `MCP 调用` 段写明降级原因，不写产物文件。
->
-> **复用 §2.5.7 产物**：检测 `{ICODE_OUT_DIR}/<ticket>/dedup/categorized.json` 是否存在（由 §2 02_review §2.5.7 生成）→ **复用避免重跑分类阶段**（节省 haiku 调用的 token）。
+> 按[语义去重覆盖规则](../references/mcp_integration.md#语义去重覆盖规则)核对枚举、工具可用性与实际覆盖。review 的 top 5 分析只覆盖已核查部分。
 
 **执行步骤**（AI 直接照填）：
 
-1. **复用检测**：Read `{ICODE_OUT_DIR}/<ticket>/dedup/` 目录，分别判定：
-   - `catalog.json` 存在 → 跳过第 2 步
-   - `categorized.json` 存在 → 跳过第 3 步
-   - 否则按需重跑
+1. **复用检测**：核对 `{ICODE_OUT_DIR}/<ticket>/dedup/` 中的目录和分类与当前候选、范围和输入是否一致。目录或分类各自核验通过后可跳过相应生成步骤。
 2. **抽取阶段**（如 catalog.json 不存在，ripgrep 优先）：
 
    **优先用 ripgrep**（同 §2.5.7 第 1 步命令）：
@@ -265,7 +255,7 @@ Free 阶段一次性完整覆盖全部 15 个角度。
      "$PROJECT_ROOT" | head -2000
    ```
 
-   **ripgrep 不可用**（未装）：整个 §9.4 跳过
+   命令缺失、失败或枚举范围不足时，按共享规则尝试可信替代，记录未覆盖范围。
 3. **分类阶段**（如 categorized.json 不存在）：调 `mcp__cheap-research__extract`（haiku）**双层分类**（parent + sub）→ `dedup/categorized.json`。**双层 schema** + **后处理映射（只映射 parent_category）** 同 §2.5.7 第 3 步。
 4. **拆分阶段**：Claude 直接做——**按 sub_category 拆分** `categorized.json`（不按 parent_category——避免跨家族合并），**仅保留 3+ 函数的 sub_category**（< 3 不值得分析），输出 → `dedup/duplicates/<sub_category>.json`
 5. **找重复阶段（高质量模型逐类）**：同 §2.5.7 第 5 步——**简化 schema** + **主代理 try 两种解析格式**（A: JSON 数组字符串; B: 分隔符纯文本）+ **用 categorized.json 回填 file/line**
@@ -299,11 +289,11 @@ Free 阶段一次性完整覆盖全部 15 个角度。
 
 **降级路径**：
 
-- cheap-research 不可用 → 整个 §9.4 跳过，记 `[降级-cheap-research 不可用]`
-- 函数数 < 50 → 输出 `▶ §9.4 跳过：函数数 {N} < 50，工程规模太小无需 dedup`，整个 §9.4 结束
+- cheap-research 不可用或调用失败 → 按共享规则记录状态，基于可读源码核查关键候选，在复检报告列出实际范围和缺口。
+- 可信枚举完整覆盖适用范围且函数数 < 50 → 输出 `▶ §9.4 跳过：函数数 {N} < 50`，附枚举范围和方法。
 - 函数数 > 500 → 分批（每批 100），合并结果
-- extract 返回 `schema_validation_failed` → 重试 1 次（自动改 instruction 加"严格按 schema 输出"），仍失败标"分类降级-单类跳过"
-- 高质量模型某类返回空数组 → 该类跳过（无重复），不报错
+- extract 返回 `schema_validation_failed` → 重试 1 次（自动改 instruction 加"严格按 schema 输出"），仍失败则把受影响批次列为覆盖缺口。
+- 有效结果中的 `duplicates: []` 只支持当前已核查的子家族。
 
 **反偷懒第 21 条合规**：步骤末尾在思考块输出 `cheap-research 调用: extract x {1+1+K}` 或对应降级声明，**无记录 = 违规**。
 

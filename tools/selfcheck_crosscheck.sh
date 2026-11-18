@@ -2,6 +2,7 @@
 # Crosscheck 独立复评能力：默认 3 轮 7 维自检。
 set -u
 cd "$(dirname "$0")/.." || exit 1
+source tools/test-python.sh || exit 1
 
 ROUNDS="${1:-3}"
 FAILED=0
@@ -14,18 +15,18 @@ do
   error=0
 
   # 1. 语法/解析
-  python3 - <<'PY' >"$LOG_FILE" 2>&1 || error=1
+  "$ICODEX_TEST_PYTHON_BIN" - <<'PY' >"$LOG_FILE" 2>&1 || error=1
 from pathlib import Path
 for raw in ("tools/icode_crosscheck.py", "tests/test_crosscheck.py"):
     path = Path(raw)
     compile(path.read_text(encoding="utf-8"), str(path), "exec")
 PY
   bash -n tests/test_crosscheck_contract.sh tests/test_crosscheck_demo_sim.sh tools/selfcheck_crosscheck.sh >>"$LOG_FILE" 2>&1 || error=1
-  python3 -m json.tool schemas/crosscheck-manifest.schema.json >/dev/null 2>>"$LOG_FILE" || error=1
-  python3 -m json.tool schemas/crosscheck-round.schema.json >/dev/null 2>>"$LOG_FILE" || error=1
+  "$ICODEX_TEST_PYTHON_BIN" -m json.tool schemas/crosscheck-manifest.schema.json >/dev/null 2>>"$LOG_FILE" || error=1
+  "$ICODEX_TEST_PYTHON_BIN" -m json.tool schemas/crosscheck-round.schema.json >/dev/null 2>>"$LOG_FILE" || error=1
 
   # 2~5. 依赖、逻辑、异常、关联
-  python3 -m pytest -p no:anyio tests/test_crosscheck.py -q >>"$LOG_FILE" 2>&1 || error=1
+  "$ICODEX_TEST_PYTHON_BIN" -m pytest -p no:anyio tests/test_crosscheck.py -q >>"$LOG_FILE" 2>&1 || error=1
   bash tests/test_crosscheck_contract.sh >>"$LOG_FILE" 2>&1 || error=1
 
   # 6~7. 兼容与可运行：真实 demo Codex 工单隔离副本模拟

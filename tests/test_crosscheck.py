@@ -878,6 +878,18 @@ def test_manifest_paths_and_container_symlinks_fail_closed(workspace):
     assert denied_alias["gate_id"] == "crosscheck_symlink"
 
 
+def test_manifest_parent_alias_is_rejected_before_resolution(workspace):
+    root, _ticket, env = workspace
+    started = run_tool(env, "start", "--workspace", root, "--ticket", "demo-1")
+    directory = Path(started["crosscheck_dir"])
+    before = (directory / "crosscheck_manifest.json").read_bytes()
+    alias = root.parent / "project-alias"
+    alias.symlink_to(root, target_is_directory=True)
+    denied = run_tool(env, "validate", "--dir", alias / directory.relative_to(root), expected=1)
+    assert denied["gate_id"] == "crosscheck_symlink"
+    assert (directory / "crosscheck_manifest.json").read_bytes() == before
+
+
 def test_manifest_target_cannot_be_redirected_by_symlink(workspace):
     root, ticket, env = workspace
     started = run_tool(env, "start", "--workspace", root, "--ticket", "demo-1")
@@ -902,5 +914,6 @@ def test_start_resume_rejects_nested_target_path_redirected_by_symlink(workspace
     ticket.symlink_to(replacement, target_is_directory=True)
 
     denied = run_tool(env, "start", "--workspace", root, ticket / "01_plan.md", expected=1)
-    assert denied["gate_id"] == "crosscheck_manifest_identity"
+    # Reject the redirected parent before opening an artifact through it.
+    assert denied["gate_id"] == "target_symlink"
     assert manifest_path.read_bytes() == manifest_before

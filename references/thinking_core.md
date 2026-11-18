@@ -1,7 +1,7 @@
-# 强制思考前置——核心规则（每步必读）
+# 强制思考前置——核心规则（每步核对）
 
-> 本文件是 icode 所有步骤共享的「强制思考前置」**核心规则**，每步必读。
-> 各步骤子项详见 [thinking_detail.md](thinking_detail.md)「各步骤思考子项」段，按需 Read 自身步骤对应小节（各 step 文件本已声明本步骤子项，主要作为速查）。
+> 本文件是 icode 所有步骤共享的「强制思考前置」**核心规则**，每步应用。
+> 各步骤子项详见 [thinking_detail.md](thinking_detail.md)「各步骤思考子项」段，按需定位自身步骤对应小节；首次读取仍须完整正文（各 step 文件本已声明本步骤子项，主要作为速查）。
 >
 > 历史参考小节（init/plan/log/start 检索命中时）按 verdict 分流标注在 [thinking_detail.md](thinking_detail.md)「历史参考小节」段。
 
@@ -19,6 +19,23 @@
 
 > 所有 step 文件的「强制思考前置」段落**统一**用本契约引用，不可重新展开三件套 Read 长句（防重复；本段为真源，各 step 文件若展开完整长句则视为与本段重复）。
 
+### 静态 references 读取与复用合同
+
+本合同统一所有静态 `references/` 读取条款，包括其他文件中的“每步必读”“按需 Read”“Read 完整内容”：每步必须应用规则，是否重读按以下条件决定。仅适用于静态规则，不适用于工单产物、metadata、运行证据或业务源码。
+
+1. 首次必须完整实读静态 references 正文并计算 SHA256。
+2. 仅当绝对 skill 根、文件路径、SHA256 均一致，且完整正文仍在当前上下文时，才可复用。
+3. 上下文压缩、正文丢失、切换 skill 根或内容变化时，必须重新完整实读并计算 SHA256。
+4. SHA256 只证明字节身份，不证明已实读；摘要、确认行和文件哈希不能替代完整正文。
+5. 确认行必须区分实际实读与复用，并列出绝对 skill 根、文件路径和 SHA256。
+6. 业务源码实读、每轮判断和 Read/worklist 登记不得复用。
+
+每步使用前核对当前文件 SHA256 与实读时的值；不能确认正文完整保留或身份一致时立即重读。完整实读须覆盖全部正文；输出被截断时继续分段读取补齐，不能只读标题、命中片段或哈希。`thinking_detail.md` 等按需文件可不触发读取，一旦触发首次读取仍遵守全文合同。
+
+实读确认示例：`📖 已实读 references/xxx.md | skill_root=<绝对根> | file=<绝对文件路径> | SHA256=<实际值>`。
+复用确认示例：`📖 复用 references/xxx.md | skill_root=<同一绝对根> | file=<同一绝对文件路径> | SHA256=<本步核对值> | 完整正文仍在当前上下文`。
+不得把复用写成“已实读”；两个示例仅为会话确认格式，不新增 schema 字段或替代工具读取证据。每步业务适用性、MCP gate、思考及结论必须重新判断；Read/worklist 仍按当轮真实阅读登记，静态规则复用不计入业务源码覆盖率。
+
 每个 step 文件的「强制思考前置」段落**必须**按以下统一结构（不展开三件套 Read 长句）：
 
 ```text
@@ -27,11 +44,11 @@ N. **强制思考前置**（不可跳过，缺证据视为不合规；按 [refer
 
 **三件套 Read 要求**（统一契约真源，step 文件不得重复展开）：
 
-1. **[thinking_core.md](thinking_core.md) 完整内容**（每步必读）——核心规则 + MCP gate + 思考载体（首选 sequential-thinking、降级文字块）
-2. **[thinking_detail.md](thinking_detail.md) 对应小节**（按需 Read）——各步骤思考子项 + 历史参考小节
+1. **[thinking_core.md](thinking_core.md) 完整内容**（每步按静态读取合同核对）——核心规则 + MCP gate + 思考载体（首选 sequential-thinking、降级文字块）
+2. **[thinking_detail.md](thinking_detail.md)**（按需触发全文实读，使用对应小节）——各步骤思考子项 + 历史参考小节
 3. **[anti_laziness.md](anti_laziness.md) 完整内容**——31 条偷工反例 + 正面合规要求
 
-**多 Read 追加**：本步骤额外要求 Read 其他 references 时，**追加**在 step 文件强制思考前置段落末，格式 `+ Read [references/xxx.md](../references/xxx.md) 完整内容` 即可。当前已识别的多 Read 场景：
+**多 Read 追加**：本步骤额外要求 Read 其他 references 时，**追加**在 step 文件强制思考前置段落末，格式 `+ Read [references/xxx.md](../references/xxx.md) 完整内容` 即可，同样按静态读取合同核对实读或复用。当前已识别的多 Read 场景：
 
 - `02_review.md` / `log.md`：+ Read [references/adversarial.md](../references/adversarial.md) 完整内容（对抗模式）
 - `doc.md`：+ Read [references/doc_template.md](../references/doc_template.md) 完整内容（doc 模板）
@@ -81,7 +98,7 @@ N. **强制思考前置**（不可跳过，缺证据视为不合规；按 [refer
 ## 通用流程（每步执行）
 
 1. 输出 `ultrathink` 触发词（触发更长的内部推理 budget）
-2. **显式 Read 本步骤引用的 references 文件**（每步必须重新 Read，同会话已读不豁免——显式Read是深度思考的前置仪式，凭记忆会降级思考质量），Read 后在回复中输出确认行 `📖 已 Read references/xxx.md` 作为合规证据
+2. **核对本步骤引用的静态 references**：执行上方「静态 references 读取与复用合同」，首次完整实读并计算 SHA256，满足全部条件才复用；按实际动作输出实读或复用确认行
 3. **MCP 调用 gate**（不可跳过）：在结构化思考开始前，先处理本步 🟢 MCP（按 [mcp_per_step.md](mcp_per_step.md)「强证据场景判定」）：
    - 列出本步满足强证据场景的 🟢 MCP（**不含 sequential-thinking**，它由第 4 步承载；其余 🟢 MCP 由本 gate + 各 step 执行步骤内嵌点承载）
    - 对每个 🟢 MCP：工具直接可见则调用；不可见时仅使用当前宿主实际提供的工具发现能力。取得 schema 后调用并记录 `called` 或 `degraded_after_attempt`；未取得 schema 时记录 `unavailable_before_call`、`attempted=false`、发现依据、替代方法和替代结果/残余风险

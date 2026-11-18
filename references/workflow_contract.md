@@ -2,6 +2,8 @@
 
 本合同移植 main 的五项流程到现有 Codex 状态工具。机器真源是 `tools/workflow_contract.py` 与 `tools/icode_state.py`；所有活动步骤先读取本文。业务含义由代理按需求、代码和用户已授权决策填写，工具不做关键词判断。
 
+静态规则读取统一按 [静态 references 读取与复用合同](thinking_core.md#静态-references-读取与复用合同)：首次完整实读正文并计算 SHA256；仅同绝对 skill 根、文件路径、SHA256 且完整正文仍在当前上下文时复用。压缩、正文丢失、换根或内容变化必须重读，确认区分实读与复用。业务源码实读、每轮判断和 Read/worklist 登记不得复用；下面的 workflow-plan、baseline 和债务查询必须每轮重新执行。
+
 ## 创建和恢复
 
 首次 `publish-artifact --metadata-seed` 默认初始化 `workflow_contract_version=1`、semantic_decisions、requirement_deltas、replan_state、acceptance_contract、verification_contract、verification_runs。显式版本1缺字段拒绝；无版本历史票只读兼容，不视为验证通过。进入新版执行时先用 configure-workflow 显式迁移，staged 再按当前代码调用 assess-fast-risk；concise 按其阶段合同推进；迁移不会推断旧任务已通过验收。不可用 update-metadata 改合同、验证记录或 delivery_verdict。
@@ -55,6 +57,18 @@ configure-workflow 配置稀疏 required_cells，层来自 static/unit/build/hos
 `verification-pending`/`verification-plan` 只读派生结果，不写 metadata 或索引。每单元取最新记录，失败、跳过、缺证据、源码/合同/patch/revision/证据变化都保留债务。delivery_verdict=blocked/verification_pending/verified/not_assessed，与实现 implemented 和步骤 status=completed、方向 verdict 分开；旧票及未要求验证的任务为 not_assessed。review pending_verification 与交付验证债务不可混用。
 
 绑定范围仅为声明 code_files，代理须补齐所有相关文件。工具能校验摘要与单元匹配，不能自行证明业务语义、设备身份、记录真实性或完整 Git 构建部署来源；实机证据应附目标唯一身份、构建/部署版本和观察结果，不得声称本工具已自动核实设备。
+
+### 实际执行与证据对账
+
+- 实际流程步骤、verification_runs[].id 或供应方执行标识必须与原始日志逐项对账。
+- 每次新执行必须使用新的执行标识和独立证据路径，保留独立原始日志，不覆盖旧执行。
+- HANDOFF 只定位上下文，不是原始观测，不能替代原始日志或实际执行证据。
+- 同 ID 原样重放只是幂等登记，不是新执行。
+- 这些是报告证据要求，不新增 schema 字段，也不追补旧票的命名要求。
+
+报告写明实际完成的阶段/步骤、命令、环境、退出码/超时和观察结果，并回指对应执行标识及项目相对原始证据路径。执行标识使用既有 `verification_runs[].id`；外部供应方已有执行标识时在现有 summary/报告中说明其与登记 id 的对应关系，不增加 run_id/stage 字段。多轮验证分别保存日志和 JUnit 报告，可自行组织目录；独立证据路径没有强制命名模板，也不能靠复制旧日志或换 id/路径冒充新执行。旧记录如实保留，缺原始观测就列证据缺口，不补造历史执行。
+
+续接时通过 HANDOFF 找到工单、baseline 和证据，再实际读取原始文件核对。仅有交接摘要、登记响应、静态扫描或计划，不证明流程已实际跑过。查询和登记动作分别列明；登记成功后重新运行 verification-pending，把已执行范围与仍欠验证的单元分开报告。
 
 ## 测试报告证据
 

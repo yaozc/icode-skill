@@ -2,11 +2,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$ROOT/tools/test-python.sh" || exit 1
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 cp -a "$ROOT/demo" "$TMP_ROOT/demo"
 
-HOME="$TMP_ROOT/home" PYTHONDONTWRITEBYTECODE=1 python3 - "$ROOT" "$TMP_ROOT/demo" <<'PY'
+HOME="$TMP_ROOT/home" PYTHONDONTWRITEBYTECODE=1 "$ICODEX_TEST_PYTHON_BIN" - "$ROOT" "$TMP_ROOT/demo" <<'PY'
 import hashlib
 import json
 import os

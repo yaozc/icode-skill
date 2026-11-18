@@ -28,6 +28,13 @@ import tempfile
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
+try:
+    from . import path_safety
+except ImportError:
+    _paths_spec = importlib.util.spec_from_file_location("icode_crosscheck_paths", Path(__file__).resolve().with_name("path_safety.py"))
+    path_safety = importlib.util.module_from_spec(_paths_spec)
+    _paths_spec.loader.exec_module(path_safety)
+
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 METADATA_NAME = ".ico_metadata.json"
@@ -67,7 +74,7 @@ def reject_nonfinite(value):
 
 def load_json(path, label):
     path = Path(path)
-    if path.is_symlink():
+    if path_safety.is_link(path):
         raise CrosscheckError(f"{label} 不得是符号链接: {path}", gate_id="crosscheck_symlink")
     try:
         with path.open("r", encoding="utf-8") as stream:
@@ -92,6 +99,8 @@ def object_digest(value):
 
 
 def file_digest(path):
+    if path_safety.has_link(path):
+        raise CrosscheckError(f"读取路径不得经过链接: {path}", gate_id="crosscheck_symlink")
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         while True:
@@ -103,7 +112,7 @@ def file_digest(path):
 
 def atomic_write(path, data):
     path = Path(path)
-    if path.exists() and path.is_symlink():
+    if path.exists() and path_safety.is_link(path):
         raise CrosscheckError(f"拒绝覆盖符号链接: {path}", gate_id="crosscheck_symlink")
     fd, temporary = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:
@@ -175,7 +184,7 @@ def path_within(path, root):
 
 def find_ticket_dir(raw_path):
     original = Path(raw_path).expanduser()
-    if original.is_symlink():
+    if path_safety.has_link(original):
         raise CrosscheckError(f"目标路径不得是符号链接: {original}", gate_id="target_symlink")
     current = original.resolve()
     if current.is_file():
@@ -191,7 +200,10 @@ def find_ticket_dir(raw_path):
 
 def workspace_from_cwd(raw_workspace=None):
     if raw_workspace:
-        workspace = Path(raw_workspace).expanduser().resolve()
+        original = Path(raw_workspace).expanduser()
+        if path_safety.has_link(original):
+            raise CrosscheckError(f"工程路径不得经过链接: {original}", gate_id="crosscheck_symlink")
+        workspace = original.resolve()
     else:
         try:
             value = subprocess.run(
@@ -253,7 +265,7 @@ def derive_project_root(ticket_dir, metadata):
 
 def validate_target(ticket_dir):
     raw_ticket_dir = Path(ticket_dir).expanduser()
-    if raw_ticket_dir.is_symlink():
+    if path_safety.has_link(raw_ticket_dir):
         raise CrosscheckError(
             f"目标工单目录不得是符号链接: {raw_ticket_dir}",
             gate_id="target_symlink",
@@ -309,7 +321,7 @@ def safe_crosscheck_root(project_root, override=None):
     expected = output_root / ".crosscheck"
     if override is not None and Path(override).expanduser().absolute() != expected.absolute():
         raise CrosscheckError("crosscheck 根固定为项目 .ai/icode/.crosscheck，拒绝改写", gate_id="crosscheck_root")
-    if ai_root.is_symlink() or output_root.is_symlink() or expected.is_symlink():
+    if path_safety.is_link(ai_root) or path_safety.is_link(output_root) or path_safety.is_link(expected):
         raise CrosscheckError("crosscheck 路径不得经过符号链接", gate_id="crosscheck_symlink")
     output_root.mkdir(parents=True, exist_ok=True)
     expected.mkdir(exist_ok=True)
@@ -321,6 +333,8 @@ def safe_crosscheck_root(project_root, override=None):
 
 
 def snapshot_tree(root):
+    if path_safety.has_link(root):
+        raise CrosscheckError(f"快照根不得经过链接: {root}", gate_id="target_symlink")
     root = Path(root).resolve()
     entries = []
     for current, dirs, files in os.walk(root, followlinks=False):
@@ -329,8 +343,8 @@ def snapshot_tree(root):
         for name in sorted(dirs):
             path = current_path / name
             rel = path.relative_to(root).as_posix()
-            if path.is_symlink():
-                entries.append({"path": rel, "kind": "symlink", "target": os.readlink(path)})
+            if path_safety.is_link(path):
+                raise CrosscheckError(f"快照目录不得是链接: {path}", gate_id="target_symlink")
             else:
                 kept_dirs.append(name)
         dirs[:] = kept_dirs
@@ -339,8 +353,8 @@ def snapshot_tree(root):
                 continue
             path = current_path / name
             rel = path.relative_to(root).as_posix()
-            if path.is_symlink():
-                entries.append({"path": rel, "kind": "symlink", "target": os.readlink(path)})
+            if path_safety.is_link(path):
+                raise CrosscheckError(f"快照文件不得是链接: {path}", gate_id="target_symlink")
             elif path.is_file():
                 entries.append({
                     "path": rel, "kind": "file", "size": path.stat().st_size,
@@ -415,16 +429,19 @@ def git_snapshot(code_root):
 def capture_target_snapshot(target, metadata):
     ticket_dir = Path(target["ticket_dir"])
     project_root = Path(target["project_root"])
+    if path_safety.has_link(project_root):
+        raise CrosscheckError("代码根不得经过链接", gate_id="target_symlink")
     code_root = code_root_for(metadata, project_root)
     code_entries = []
     for raw in normalize_code_files(metadata):
         candidate = Path(raw).expanduser()
-        candidate = candidate.resolve() if candidate.is_absolute() else (code_root / candidate).resolve()
+        candidate = candidate if candidate.is_absolute() else code_root / candidate
+        if path_safety.has_link(candidate):
+            raise CrosscheckError(f"源码不得经过链接: {candidate}", gate_id="target_symlink")
+        candidate = candidate.resolve()
         entry = {"declared": raw}
         if not path_within(candidate, code_root):
             entry.update({"state": "outside_code_root", "path": str(candidate)})
-        elif candidate.is_symlink():
-            entry.update({"state": "symlink", "path": str(candidate), "target": os.readlink(candidate)})
         elif candidate.is_file():
             entry.update({"state": "present", "path": str(candidate), "size": candidate.stat().st_size,
                           "sha256": file_digest(candidate)})
@@ -564,7 +581,7 @@ def validate_manifest(manifest, directory=None):
 
 def load_manifest(directory):
     raw_directory = Path(directory).expanduser()
-    if raw_directory.is_symlink():
+    if path_safety.has_link(raw_directory):
         raise CrosscheckError(f"crosscheck 容器不得是符号链接: {raw_directory}", gate_id="crosscheck_symlink")
     directory = raw_directory.resolve()
     manifest = load_json(directory / MANIFEST_NAME, "crosscheck manifest")
@@ -578,7 +595,7 @@ def matching_containers(root, target, *, prune_empty=False):
         match = CONTAINER_RE.match(child.name)
         if not match:
             continue
-        if child.is_symlink() or not child.is_dir():
+        if path_safety.is_link(child) or not child.is_dir():
             raise CrosscheckError(f"crosscheck 编号项不是安全目录: {child}", gate_id="crosscheck_dir_shape")
         manifest_path = child / MANIFEST_NAME
         if not manifest_path.is_file():
@@ -713,7 +730,7 @@ def cmd_start(args):
         current = manifest["rounds"][-1]
         if current.get("inspection_version"):
             worklist = directory / current["worklist_file"]
-            if worklist.is_symlink():
+            if path_safety.is_link(worklist):
                 raise CrosscheckError("工作清单不得为符号链接", gate_id="inspection_worklist")
             publish_worklist = not worklist.exists()
             if publish_worklist:
@@ -898,7 +915,7 @@ def inspection_source_drift(exc):
 def verify_frozen_worklist(directory, item):
     if item.get("worklist_sha256"):
         path = directory / item["worklist_file"]
-        if path.is_symlink() or not path.is_file() or file_digest(path) != item["worklist_sha256"]:
+        if path_safety.is_link(path) or not path.is_file() or file_digest(path) != item["worklist_sha256"]:
             raise CrosscheckError("冻结工作清单被修改", gate_id="inspection_worklist")
 
 
@@ -915,7 +932,7 @@ def cmd_freeze(args):
         digest = file_digest(fresh_path)
         if item.get("inspection_version"):
             worklist = directory / item["worklist_file"]
-            if worklist.is_symlink() or not worklist.is_file():
+            if path_safety.is_link(worklist) or not worklist.is_file():
                 raise CrosscheckError("冻结清单必须为普通文件，不得为符号链接", gate_id="inspection_worklist")
             if not item.get("fresh_sha256"):
                 check_inspection(directory, manifest, item, fresh["findings"],
@@ -1046,7 +1063,7 @@ def render_report(directory, manifest, cumulative):
 
 def write_if_changed(path, data):
     path = Path(path)
-    if path.is_symlink():
+    if path_safety.is_link(path):
         raise CrosscheckError(f"派生报告不得是符号链接: {path}", gate_id="crosscheck_symlink")
     if path.is_file() and path.read_bytes() == data:
         return
@@ -1060,7 +1077,7 @@ def ensure_round_markdown(directory, item, final):
     recorded = item.get("round_markdown_sha256")
     if recorded and recorded != expected_digest:
         raise CrosscheckError("round Markdown 记录哈希与最终 JSON 不一致", gate_id="round_immutable")
-    if markdown_path.exists() and (markdown_path.is_symlink() or markdown_path.read_bytes() != markdown):
+    if markdown_path.exists() and (path_safety.is_link(markdown_path) or markdown_path.read_bytes() != markdown):
         raise CrosscheckError("round Markdown 已存在且内容不一致，拒绝覆盖", gate_id="round_immutable")
     write_if_changed(markdown_path, markdown)
     return markdown_path, expected_digest
@@ -1107,7 +1124,7 @@ def cmd_finish(args):
         if item["state"] == "completed":
             if item.get("inspection_version"):
                 path = directory / item["worklist_file"]
-                if path.is_symlink() or not path.is_file() or file_digest(path) != item.get("worklist_sha256"):
+                if path_safety.is_link(path) or not path.is_file() or file_digest(path) != item.get("worklist_sha256"):
                     raise CrosscheckError("已完成轮的工作清单被修改", gate_id="inspection_worklist")
             if not final_path.is_file() or file_digest(final_path) != item.get("final_sha256"):
                 raise CrosscheckError("已完成 round 的最终文件被修改", gate_id="final_immutable")
@@ -1155,7 +1172,7 @@ def cmd_finish(args):
             )
         if item.get("inspection_version"):
             worklist = directory / item["worklist_file"]
-            if worklist.is_symlink() or not worklist.is_file() or file_digest(worklist) != item.get("worklist_sha256"):
+            if path_safety.is_link(worklist) or not worklist.is_file() or file_digest(worklist) != item.get("worklist_sha256"):
                 raise CrosscheckError("冻结工作清单被修改", gate_id="inspection_worklist")
             try:
                 check_inspection(directory, manifest, item, final["findings"], allow_incomplete=final["verdict"] == "blocked")
@@ -1200,7 +1217,7 @@ def cmd_validate(args):
         # Historical rounds are immutable evidence, not claims about the latest source tree.
         if item.get("worklist_sha256"):
             worklist_path = directory / item["worklist_file"]
-            if worklist_path.is_symlink() or not worklist_path.is_file() or file_digest(worklist_path) != item["worklist_sha256"]:
+            if path_safety.is_link(worklist_path) or not worklist_path.is_file() or file_digest(worklist_path) != item["worklist_sha256"]:
                 raise CrosscheckError("历史工作清单哈希不一致", gate_id="inspection_worklist")
         fresh_path = directory / item["fresh_file"]
         if item.get("fresh_sha256"):
@@ -1230,11 +1247,11 @@ def cmd_validate(args):
             cumulative, ensure_ascii=False, indent=2, allow_nan=False
         ).encode("utf-8") + b"\n"
         findings_path = directory / "findings.json"
-        if findings_path.is_symlink() or not findings_path.is_file() or findings_path.read_bytes() != expected_findings:
+        if path_safety.is_link(findings_path) or not findings_path.is_file() or findings_path.read_bytes() != expected_findings:
             raise CrosscheckError("findings.json 与完成轮重建结果不一致", gate_id="crosscheck_report")
         expected_report = render_report(directory, manifest, cumulative).encode("utf-8")
         report_path = directory / "crosscheck_report.md"
-        if report_path.is_symlink() or not report_path.is_file() or report_path.read_bytes() != expected_report:
+        if path_safety.is_link(report_path) or not report_path.is_file() or report_path.read_bytes() != expected_report:
             raise CrosscheckError("crosscheck report 与完成轮重建结果不一致", gate_id="crosscheck_report")
     return {
         "ok": True, "valid": True, "crosscheck_dir": str(directory),

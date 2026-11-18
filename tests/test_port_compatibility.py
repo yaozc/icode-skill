@@ -2,8 +2,11 @@
 import contextlib
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
+import runpy
+import select
 import subprocess
 import sys
 import tempfile
@@ -32,8 +35,9 @@ class CompatibilityTests(unittest.TestCase):
 
     def pipe(self, code):
         proc = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE,
-                                stderr=subprocess.DEVNULL)
-        self.addCleanup(lambda: proc.stdout.close())
+                                stderr=subprocess.PIPE, bufsize=0)
+        self.addCleanup(proc.stdout.close)
+        self.addCleanup(proc.stderr.close)
         self.addCleanup(lambda: proc.wait(timeout=5))
         self.addCleanup(lambda: proc.kill() if proc.poll() is None else None)
         return proc
@@ -41,27 +45,37 @@ class CompatibilityTests(unittest.TestCase):
     def test_pipe_output_and_budget(self):
         for size, limit, cut in ((8, 8, False), (200000, 128, True)):
             with self.subTest(size=size):
-                proc = self.pipe(f"import sys; sys.stdout.buffer.write(b'x' * {size}); sys.stdout.flush()")
-                data, truncated = self.inspection._git_pipe(proc, limit, time.monotonic() + 5)
+                proc = self.pipe(f"import os; os.write(2, b'note'); os.write(1, b'x' * {size})")
+                data, truncated, diagnostic = self.inspection._git_pipe(proc, limit, time.monotonic() + 5)
                 self.assertEqual(data, b"x" * min(size, limit))
                 self.assertIs(truncated, cut)
+                self.assertEqual(diagnostic, "stderr [complete]: note")
                 self.assertIsNotNone(proc.returncode)
+                self.assertTrue(proc.stdout.closed and proc.stderr.closed)
 
     def test_pipe_timeout_reaps_process(self):
         proc = self.pipe("import time; time.sleep(30)")
         with self.assertRaisesRegex(ValueError, "timeout"):
             self.inspection._git_pipe(proc, 128, time.monotonic() + 0.1)
         self.assertIsNotNone(proc.returncode)
+        self.assertTrue(proc.stdout.closed and proc.stderr.closed)
 
     def test_windows_git_dispatch_avoids_selector_and_rejects_failure(self):
         # 只替换被测模块的 os，避免改变宿主 pathlib/pytest 的平台判断。
-        windows = SimpleNamespace(name="nt", environ=os.environ, dup=os.dup, read=os.read, close=os.close)
-        with patch.object(self.inspection, "os", windows), patch.object(
-                self.inspection.selectors, "DefaultSelector", side_effect=AssertionError("anonymous pipe select")):
+        windows = SimpleNamespace(name="nt", environ=os.environ, read=os.read)
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch.object(self.inspection, "os", windows))
+            stack.enter_context(patch.object(
+                self.inspection.selectors, "DefaultSelector", side_effect=AssertionError("anonymous pipe select"),
+            ))
+            if os.name != "nt":
+                def ready(stream):
+                    return 65536 if select.select([stream], [], [], 0)[0] else 0
+                stack.enter_context(patch.object(self.inspection, "_git_windows_ready", return_value=ready))
             data, truncated = self.inspection._git(self.root, ["--version"])
             self.assertIn(b"git version", data)
             self.assertFalse(truncated)
-            with self.assertRaisesRegex(ValueError, "git failed"):
+            with self.assertRaisesRegex(ValueError, r"git failed: .*; stderr \[complete\]: .+"):
                 self.inspection._git(self.root, ["not-a-git-command"])
 
     def test_rooted_paths_rejected_even_with_windows_path_semantics(self):
@@ -185,6 +199,31 @@ with api.DirectoryLock(root):
                 api.main()
         self.assertEqual(caught.exception.code, 0)
         self.assertIn("复评", text.getvalue())
+
+    def test_state_cli_preserves_utf8_error_json(self):
+        tool = ROOT / "tools" / "icode_state.py"
+        missing = self.root / "不存在的工单"
+        proc = subprocess.run(
+            [sys.executable, "-B", str(tool), "workflow-plan", "--run-dir", str(missing)],
+            env=dict(os.environ, PYTHONIOENCODING="cp1252"),
+            capture_output=True, timeout=10,
+        )
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(proc.stderr, b"")
+        error = json.loads(proc.stdout.decode("utf-8"))
+        self.assertIs(error["ok"], False)
+        self.assertIn(missing.name, error["error"])
+
+    def test_importing_state_preserves_host_streams(self):
+        with contextlib.ExitStack() as stack:
+            streams = {}
+            for name in ("stdout", "stderr"):
+                streams[name] = stream = stack.enter_context(io.TextIOWrapper(io.BytesIO(), encoding="cp1252"))
+                stack.enter_context(patch.object(sys, name, stream))
+            runpy.run_path(str(ROOT / "tools" / "icode_state.py"))
+            for name, stream in streams.items():
+                self.assertIs(getattr(sys, name), stream)
+                self.assertEqual(stream.encoding, "cp1252")
 
 
 if __name__ == "__main__":

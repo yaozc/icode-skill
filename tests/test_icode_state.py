@@ -41,7 +41,7 @@ def materialize_mapped_files(run_dir: Path, metadata: dict) -> None:
 class MetadataValidationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.run_dir = Path(self.temp_dir.name)
+        self.run_dir = Path(self.temp_dir.name).resolve()
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -184,7 +184,7 @@ class MetadataValidationTests(unittest.TestCase):
 class MergedViewTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        root = Path(self.temp_dir.name)
+        root = Path(self.temp_dir.name).resolve()
         self.codex_root = root / "codex"
         self.claude_root = root / "claude"
         self.codex_root.mkdir()
@@ -260,7 +260,7 @@ class MergedViewTests(unittest.TestCase):
 class TicketResolutionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
-        root = Path(self.temp_dir.name)
+        root = Path(self.temp_dir.name).resolve()
         self.project = root / "project"
         self.codex_root = root / "codex"
         self.project.mkdir()

@@ -5,6 +5,7 @@ Stored summaries authenticate the bytes observed then, not a live test run or
 coverage beyond the report. No independent writer or public command is added.
 """
 import hashlib
+import importlib.util
 import math
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -12,6 +13,13 @@ import re
 import stat
 import time
 from xml.parsers import expat
+
+try:
+    from . import path_safety
+except ImportError:
+    _paths_spec = importlib.util.spec_from_file_location("icode_report_paths", Path(__file__).resolve().with_name("path_safety.py"))
+    path_safety = importlib.util.module_from_spec(_paths_spec)
+    _paths_spec.loader.exec_module(path_safety)
 
 DEFAULT_LIMITS = {"max_bytes": 8 * 1024 * 1024, "max_elements": 100000,
                   "max_depth": 64, "max_tests": 100000, "timeout_seconds": 5.0}
@@ -62,6 +70,8 @@ def report_path(raw, workspace):
     path = Path(raw)
     if ".." in path.parts:
         raise ReportError("report path traversal is prohibited")
+    if path_safety.has_link(workspace):
+        raise ReportError("report workspace symlinks/reparse links are prohibited")
     root = Path(workspace).resolve()
     if not path.is_absolute():
         path = root / path
@@ -69,7 +79,7 @@ def report_path(raw, workspace):
     if any(part.lower() in private for part in path.parts):
         raise ReportError("system/private paths cannot be test reports")
     for parent in (path, *path.parents):
-        if parent.is_symlink() or (parent.exists() and getattr(parent.lstat(), "st_file_attributes", 0)
+        if path_safety.is_link(parent) or (parent.exists() and getattr(parent.lstat(), "st_file_attributes", 0)
                                    & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)):
             raise ReportError("report path symlinks/reparse points are prohibited")
     path = path.resolve()

@@ -8,6 +8,8 @@ Compatible fixes through upstream `main@5be9dee` are selectively ported for larg
 
 The next selective batch from `main@c07d4b0` adds conditional [public library API/ABI review](references/domain-checklists.md#public-library-apiabi), frozen crosscheck budgets and atomic batch Read declarations, plus Python/Windows Node startup handling. This is a selective adaptation, not a full merge of upstream workflow or control-plane features.
 
+The current selective maintenance adaptation covers a shared Python environment for maintenance checks, bounded Git diagnostics, static reference reuse, execution evidence and link rejection. It preserves the existing workflow and metadata schema.
+
 ## Install
 
 Clone or synchronize the repository to:
@@ -100,12 +102,21 @@ See [SKILL.md](SKILL.md) for routing and [the Codex runtime contract](references
 
 Verification records optionally accept a project-relative `test_report` (real JUnit XML) and an integer `test_exit_code` through the existing `record-verification --input-json` interface. The writer derives `test_summary`; caller-supplied counts are rejected. Zero/all-skipped cases are inconclusive, known failures stay fail, and an uncounted pass cannot mask report-backed evidence for the same current baseline/cell. Saved summaries describe observed report bytes; actual execution still needs runner output and provenance. See the [test evidence contract](references/workflow_contract.md#测试报告证据).
 
+Report the actual workflow steps and match `verification_runs[].id` or the provider execution identifier to independent raw logs. Each new execution needs a new identifier and separate evidence paths, including any generated test report; an identical-ID replay only registers the existing result again. HANDOFF locates context and cannot replace raw observations. These reporting rules add no schema fields or retrospective naming requirements for historical tickets.
+
+Static references follow the [read/reuse contract](references/thinking_core.md#静态-references-读取与复用合同): first read the complete body and compute SHA256. Reuse requires the same absolute skill root, file path and SHA256, with the complete body still in the current context. Compaction, missing body, root changes or changed content require a complete reread. Confirm actual reads and reuse separately. Source reads, per-round decisions and Read/worklist registration remain fresh each round.
+
 Install `pytest` in your test environment before running the suite.
 
+Maintenance selfchecks and contract/demo shell fixtures accept `ICODEX_TEST_PYTHON_BIN`, an independent Python 3.9+ executable path, including paths with spaces. An invalid explicit value fails without fallback; command strings such as `py -3` are not executable paths. The selected `sys.executable` is passed as a single path through child shells so contract/demo/pytest checks share that interpreter and environment. Maintenance selection does not depend on the MCP runtime override; MCP launcher override semantics remain unchanged.
+
 ```bash
-python3 -m pytest -q tests
+export ICODEX_TEST_PYTHON_BIN="/absolute/path/to/venv/bin/python"
+"$ICODEX_TEST_PYTHON_BIN" -m pytest -q tests
 bash tests/test_mcp_codex_install.sh
-python3 tools/lint_codex_contract.py .
+"$ICODEX_TEST_PYTHON_BIN" tools/lint_codex_contract.py .
+bash tools/selfcheck_crosscheck.sh 3
+bash tools/selfcheck_inspection_worklist.sh 3
 ```
 
 License: [MIT](LICENSE).

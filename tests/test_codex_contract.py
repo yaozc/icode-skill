@@ -1,3 +1,4 @@
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -175,6 +176,151 @@ class RepositoryContractTests(unittest.TestCase):
     def test_repository_contract(self) -> None:
         root = Path(__file__).resolve().parents[1]
         self.assertEqual(lint_repo(root), [])
+
+
+class StaticReadAndExecutionEvidenceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        repository = Path(__file__).resolve().parents[1]
+        # mutation 永不写共享工作区，并保留链接目标以免产生无关 lint 错误。
+        shutil.copytree(
+            repository, self.root, dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns(".git", ".ai", ".codegraph", "__pycache__",
+                                         ".pytest_cache", "node_modules", ".venv"),
+        )
+        self.assertEqual(lint_repo(self.root), [])
+
+    def assert_mutation_rejected(self, relative: str, original: str, mutated: str) -> None:
+        path = self.root / relative
+        path.write_text(mutated, encoding="utf-8")
+        try:
+            self.assertTrue(
+                any(relative in error for error in lint_repo(self.root)),
+                f"undetected contract mutation: {relative}",
+            )
+        finally:
+            path.write_text(original, encoding="utf-8")
+
+    def test_static_read_truth_source_requires_all_cache_boundaries(self) -> None:
+        relative = "references/thinking_core.md"
+        path = self.root / relative
+        original = path.read_text(encoding="utf-8")
+        for clause in (
+            "首次必须完整实读静态 references 正文并计算 SHA256。",
+            "仅当绝对 skill 根、文件路径、SHA256 均一致，且完整正文仍在当前上下文时，才可复用。",
+            "上下文压缩、正文丢失、切换 skill 根或内容变化时，必须重新完整实读并计算 SHA256。",
+            "SHA256 只证明字节身份，不证明已实读；摘要、确认行和文件哈希不能替代完整正文。",
+            "确认行必须区分实际实读与复用，并列出绝对 skill 根、文件路径和 SHA256。",
+            "业务源码实读、每轮判断和 Read/worklist 登记不得复用。",
+        ):
+            with self.subTest(clause=clause):
+                self.assertIn(clause, original)
+                for replacement in ("", f"<!-- {clause} -->", f"```text\n{clause}\n```"):
+                    self.assert_mutation_rejected(
+                        relative, original, original.replace(clause, "") + "\n" + replacement + "\n",
+                    )
+
+    def test_unconditional_static_reread_cannot_return_on_any_surface(self) -> None:
+        for relative in ("SKILL.md", "references/thinking_core.md", "references/thinking_detail.md",
+                         "references/anti_laziness.md", "references/mcp_integration.md",
+                         "references/workflow_contract.md", "steps/verify.md", "steps/06_audit.md"):
+            original = (self.root / relative).read_text(encoding="utf-8")
+            with self.subTest(relative=relative):
+                self.assert_mutation_rejected(
+                    relative, original,
+                    original + "\n静态 references 每步必须重新 Read，同会话已读不豁免。\n",
+                )
+
+    def test_mcp_configuration_or_handshake_cannot_claim_session_availability(self) -> None:
+        relative = "references/mcp_integration.md"
+        original = (self.root / relative).read_text(encoding="utf-8")
+        for claim in (
+            "任一即视为已配置可用",
+            "配置存在即可用",
+            "安装完成即可调用",
+            "握手成功即证明当前会话可用",
+        ):
+            with self.subTest(claim=claim):
+                self.assert_mutation_rejected(relative, original, original + "\n" + claim + "\n")
+
+    def test_static_read_hooks_cannot_disappear(self) -> None:
+        hook = "thinking_core.md#静态-references-读取与复用合同"
+        for relative in ("SKILL.md", "references/thinking_detail.md", "references/anti_laziness.md",
+                         "references/mcp_integration.md", "references/workflow_contract.md",
+                         "steps/verify.md", "steps/06_audit.md"):
+            original = (self.root / relative).read_text(encoding="utf-8")
+            with self.subTest(relative=relative):
+                self.assertIn(hook, original)
+                self.assert_mutation_rejected(relative, original, original.replace(hook, "thinking_core.md"))
+
+    def test_dedup_coverage_contract_requires_shared_rules(self) -> None:
+        hook = "mcp_integration.md#语义去重覆盖规则"
+        for relative in ("steps/02_review.md", "steps/05_deepcheck.md", "references/mcp_per_step.md"):
+            original = (self.root / relative).read_text(encoding="utf-8")
+            with self.subTest(relative=relative):
+                self.assert_mutation_rejected(relative, original, original.replace(hook, "mcp_integration.md"))
+
+        relative = "references/mcp_integration.md"
+        original = (self.root / relative).read_text(encoding="utf-8")
+        for clause in (
+            "只有可信枚举才能判定低于阈值。",
+            "枚举不完整或不可信时，记录未覆盖范围和原因，不能把未知计为零。",
+            "工具不可用或调用失败时，记录实际核查范围和剩余覆盖缺口。",
+            "仅当当前候选、范围与输入身份一致时复用目录或分类。",
+        ):
+            with self.subTest(clause=clause):
+                self.assert_mutation_rejected(
+                    relative, original, original.replace(clause, "") + f"\n<!-- {clause} -->\n",
+                )
+
+    def test_mcp_five_layers_and_three_states_cannot_be_deleted_or_hidden(self) -> None:
+        relative = "references/mcp_integration.md"
+        original = (self.root / relative).read_text(encoding="utf-8")
+        for clause in ("| 源码 |", "| 安装 |", "| 注册 |", "| 握手 |", "| 当前会话可用 |",
+                       "配置存在不等于当前会话可调用。",
+                       "源码、安装、注册、握手和当前会话可用不能混淆，也不是五种执行状态。",
+                       "called", "degraded_after_attempt", "unavailable_before_call", "attempted=false"):
+            with self.subTest(clause=clause):
+                self.assertIn(clause, original)
+                for replacement in ("", f"<!-- {clause} -->", f"```text\n{clause}\n```"):
+                    self.assert_mutation_rejected(
+                        relative, original, original.replace(clause, "") + "\n" + replacement + "\n",
+                    )
+
+    def test_execution_evidence_cannot_be_deleted_or_hidden(self) -> None:
+        for relative in ("references/workflow_contract.md", "steps/verify.md", "steps/06_audit.md"):
+            original = (self.root / relative).read_text(encoding="utf-8")
+            for clause in (
+                "实际流程步骤、verification_runs[].id 或供应方执行标识必须与原始日志逐项对账。",
+                "每次新执行必须使用新的执行标识和独立证据路径，保留独立原始日志，不覆盖旧执行。",
+                "HANDOFF 只定位上下文，不是原始观测，不能替代原始日志或实际执行证据。",
+                "同 ID 原样重放只是幂等登记，不是新执行。",
+                "这些是报告证据要求，不新增 schema 字段，也不追补旧票的命名要求。",
+            ):
+                with self.subTest(relative=relative, clause=clause):
+                    self.assertIn(clause, original)
+                    for replacement in ("", f"<!-- {clause} -->", f"```text\n{clause}\n```"):
+                        self.assert_mutation_rejected(
+                            relative, original, original.replace(clause, "") + "\n" + replacement + "\n",
+                        )
+
+    def test_maintenance_readmes_keep_override_separate_from_mcp(self) -> None:
+        for relative in ("README.md", "README.zh-CN.md"):
+            original = (self.root / relative).read_text(encoding="utf-8")
+            with self.subTest(relative=relative):
+                self.assertIn("ICODEX_TEST_PYTHON_BIN", original)
+                self.assert_mutation_rejected(
+                    relative, original, original.replace("ICODEX_TEST_PYTHON_BIN", "ICODEX_MCP_PYTHON_BIN"),
+                )
+
+    def test_replay_handoff_and_reused_paths_cannot_claim_new_execution(self) -> None:
+        for relative in ("references/workflow_contract.md", "steps/verify.md", "steps/06_audit.md"):
+            original = (self.root / relative).read_text(encoding="utf-8")
+            for claim in ("HANDOFF 可以作为原始观测", "同 ID 原样重放视为新执行", "新执行可复用旧证据路径"):
+                with self.subTest(relative=relative, claim=claim):
+                    self.assert_mutation_rejected(relative, original, original + "\n" + claim + "\n")
 
 
 if __name__ == "__main__":

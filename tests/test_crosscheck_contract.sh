@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+source tools/test-python.sh || exit 1
 
 PASS=0
 FAIL=0
@@ -22,7 +23,7 @@ contains tools/icode_crosscheck.py 'sub.add_parser("finish"' 'tool supports fini
 contains tools/icode_crosscheck.py 'sub.add_parser("validate"' 'tool supports validate'
 
 echo "=== 2. Codex path and read-only target contracts ==="
-python3 - "$ROOT" <<'PY'
+"$ICODEX_TEST_PYTHON_BIN" - "$ROOT" <<'PY'
 import pathlib
 import sys
 
@@ -48,15 +49,15 @@ PY
 PASS=$((PASS + 1))
 
 echo "=== 3. syntax and JSON contracts ==="
-python3 - <<'PY'
+"$ICODEX_TEST_PYTHON_BIN" - <<'PY'
 from pathlib import Path
 for raw in ("tools/icode_crosscheck.py", "tests/test_crosscheck.py"):
     path = Path(raw)
     compile(path.read_text(encoding="utf-8"), str(path), "exec")
 PY
 ok "Python sources compile without writing bytecode"
-python3 -m json.tool schemas/crosscheck-manifest.schema.json >/dev/null
-python3 -m json.tool schemas/crosscheck-round.schema.json >/dev/null
+"$ICODEX_TEST_PYTHON_BIN" -m json.tool schemas/crosscheck-manifest.schema.json >/dev/null
+"$ICODEX_TEST_PYTHON_BIN" -m json.tool schemas/crosscheck-round.schema.json >/dev/null
 ok "crosscheck schemas are valid JSON"
 
 printf '\nRESULT: %d passed, %d failed\n' "$PASS" "$FAIL"

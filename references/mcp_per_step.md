@@ -85,7 +85,7 @@
 
 
 - **cheap-research**（🟢*）：第 N 轮增量审查（`diff_summary` 摘要计划/代码差异）+ 审查输出压缩（`summarize` 压缩审查结果供 merge 消费）+ 维度结果结构化（`fill_template` 填审查维度模板）+ 历史相似 issue 检索（`retrieve_similar`）+ grep 模式扫描（`scan_patterns` 找 TODO/FIXME/重复模式）+ 引用追溯（`trace_refs` 找符号引用）。**不接管决策**：3 质疑者对抗验证 / 审查意见合成走主会话（高风险）
-- **dedup 子阶段**：见 §2.5.7。**强证据** = cheap-research 🟢 + 函数数 ≥ 50 → ripgrep 抽函数（catalog.json）+ `mcp__cheap-research__extract`（haiku 分类 + 高质量模型找 top 5 重复）。**降级**：函数数 < 50 / ripgrep 不可用 / cheap-research 不可用 → 整个 §2.5.7 跳过
+- **dedup 子阶段**：§2.5.7 核查 top 5 子家族。按[语义去重覆盖规则](mcp_integration.md#语义去重覆盖规则)判断业务适用性、工具可用性与实际覆盖。
 
 ### 3 merge（合并审查意见）
 - **sequential-thinking**：仅此（结构化合并审查点）
@@ -102,7 +102,7 @@
 
 
 - **cheap-research**（🟢*）：Reverse 阶段原文对比（`diff_summary` 对比计划与代码差异）+ 阶段摘要压缩（`summarize` 压缩长审查输出）。**不接管决策**：Fixed/Free 阶段 / 3 质疑者对抗（A6）走主会话（高风险）
-- **dedup 子阶段**：见 §9.4。**强证据** = cheap-research 🟢 + 函数数 ≥ 50 → 全量 dedup（5 阶段：抽取→分类→拆分→高质量模型逐类找重复→报告）。**降级**：函数数 < 50 / ripgrep 不可用 / cheap-research 不可用 → 整个 §9.4 跳过。**复用**：检测 `dedup_categorized.json` 是否已由 §2 02_review 生成 → 复用避免重跑分类
+- **dedup 子阶段**：§9.4 逐类核查。按[语义去重覆盖规则](mcp_integration.md#语义去重覆盖规则)核对当前输入后复用已有分类，并报告实际范围和缺口。
 
 ### 6 audit（终审）
 - **playwright**：真实 UI 验证——仅前端工程时

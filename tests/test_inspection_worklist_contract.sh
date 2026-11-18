@@ -2,7 +2,8 @@
 # Static Codex path/schema agreement; behavioral assertions are Python regressions.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-python3 - <<'PY'
+source tools/test-python.sh || exit 1
+"$ICODEX_TEST_PYTHON_BIN" - <<'PY'
 import importlib.util
 import json
 from pathlib import Path

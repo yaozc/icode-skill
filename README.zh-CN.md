@@ -6,6 +6,8 @@ ICode 是一个“先定位根因，再实施修改”的 Codex 技能。它把 
 
 已选择性导入上游 `main@5be9dee` 中的大仓复评、Windows I/O 与文件锁、同步保护修复。[移植记录](docs/superpowers/specs/2026-10-14-main-codex-selective-port-design.md)说明导入范围和 Codex 适配；工作流仍遵循 v2.17 与 Codex 存储契约。
 
+后续 `main@c07d4b0` 批次选择性适配公共库 API/ABI 按需审查、crosscheck 冻结预算与原子批量 Read 声明、Python/Windows Node 启动处理。本批继续选择性适配维护自检解释器子链、Git 有界诊断、静态规则复用、执行证据与链接拒绝边界；保留现有工作流及 metadata schema，不代表全量合并或全量升级。
+
 ## 安装
 
 把仓库克隆或同步到：
@@ -96,12 +98,21 @@ bash ~/.codex/skills/icodex/mcp/install-codex.sh
 
 现有 `record-verification --input-json` 可选接收工程相对路径 `test_report`（真实 JUnit XML）和整数 `test_exit_code`，由 writer 生成 test_summary，拒绝自填计数。零用例/全部跳过为 inconclusive，实际失败保持 fail；当前 baseline/cell 已有报告证据后，无计数 pass 不能覆盖它。摘要证明读到的报告字节，实际执行仍须 runner 输出与来源。详见[测试报告合同](references/workflow_contract.md#测试报告证据)。
 
+报告须列实际流程步骤，并把 `verification_runs[].id` 或供应方执行标识与独立原始日志逐项对账。每次新执行使用新标识和独立证据路径（包括实际生成的报告）；同 ID 原样重放仅为幂等登记。HANDOFF 只定位上下文，不能代替原始观测；不新增 schema 字段，也不追补旧票命名要求。
+
+静态规则遵守 [读取与复用合同](references/thinking_core.md#静态-references-读取与复用合同)：首次完整实读正文并计算 SHA256，仅同绝对 skill 根、文件路径、SHA256 且完整正文仍在当前上下文时复用。压缩、正文丢失、换根或内容变化须重读，确认区分实读与复用；业务源码实读、每轮判断和 Read/worklist 登记不得复用。
+
 先在测试环境安装 `pytest`，再执行完整测试。
 
+维护自检及 contract/demo shell 夹具使用独立变量 `ICODEX_TEST_PYTHON_BIN`，值为 Python 3.9+ 可执行文件路径，支持含空格路径；显式无效立即失败，不回退，`py -3` 等命令字符串不能当路径。选中的 `sys.executable` 以单路径传入子 shell，使 contract/demo/pytest 使用同一解释器和环境。维护选择不依赖 MCP runtime override，MCP 启动器原有 override 语义保持不变。
+
 ```bash
-python3 -m pytest -q tests
+export ICODEX_TEST_PYTHON_BIN="/absolute/path/to/venv/bin/python"
+"$ICODEX_TEST_PYTHON_BIN" -m pytest -q tests
 bash tests/test_mcp_codex_install.sh
-python3 tools/lint_codex_contract.py .
+"$ICODEX_TEST_PYTHON_BIN" tools/lint_codex_contract.py .
+bash tools/selfcheck_crosscheck.sh 3
+bash tools/selfcheck_inspection_worklist.sh 3
 ```
 
 许可证：[MIT](LICENSE)。

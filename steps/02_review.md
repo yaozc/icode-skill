@@ -126,12 +126,7 @@
 
 **步骤 2.5.7 — 语义重复函数检测（轻量 top 5）**：
 
-> **强证据场景判定**（详见 [references/mcp_per_step.md §2 review](../references/mcp_per_step.md)）：
->
-> - cheap-research 🟢（`mcp__cheap-research__extract` 可用）
-> - **函数数 ≥ 50**（ripgrep catalog.json 函数条目数判定）
->
-> **任一不满足 → 整个 §2.5.7 跳过**，在思考块 `MCP 调用` 段写明降级原因，不写产物文件。
+> 按[语义去重覆盖规则](../references/mcp_integration.md#语义去重覆盖规则)决定适用范围、枚举可信度和工具降级。可信枚举达到阈值后按宿主实际可用性执行。
 
 **执行步骤**（AI 直接照填）：
 
@@ -157,9 +152,9 @@
 
    输出按行解析 → catalog.json 格式：`[{file, name, line, signature, context}, ...]`。context 取函数定义行 + 后 5 行（用 `rg -A 5` 重抽或 Read 补足）。
 
-   **ripgrep 不可用**（未装）：整个 §2.5.7 跳过
+   核对枚举命令与限额的实际结果。命令缺失、失败或枚举范围不足时，按共享规则尝试可信替代，记录未覆盖范围。
 2. **函数数判定**（阈值与分批）：
-   - 函数数 < 50 → 输出 `▶ §2.5.7 跳过：函数数 {N} < 50，工程规模太小无需 dedup`，整个 §2.5.7 结束
+   - 可信枚举完整覆盖适用范围且函数数 < 50 → 输出 `▶ §2.5.7 跳过：函数数 {N} < 50`，附枚举范围和方法。
    - 函数数 > 500 → 分批（每批 100）。**理由**：high质量模型(用户配置)单次处理 5-10 函数合理，10000 函数全跑高质量模型不可能；500 函数通常分 ~30-50 sub_category，每个 5-15 函数，高质量模型 50 次 ≈ $0.04 cost。
 3. **分类阶段（haiku 降本）——双层分类**：调 `mcp__cheap-research__extract` 输入 = catalog.json 文本 + **双层分类 schema**（实测单层分类后处理映射会跨家族合并——例如把"JSON解析"/"字典合并"/"列表过滤"全部归到 `data-transform`，高质量模型找重复时跨家族做无意义比较）。**必须用 `parent_category`（25 类标准化）+ `sub_category`（LLM 自由细粒度）双层**，高质量模型按 `sub_category` 分组工作，输出 → `{ICODE_OUT_DIR}/<ticket>/dedup/categorized.json`：
 
@@ -332,9 +327,9 @@
 
 **降级路径**：
 
-- cheap-research 不可用 → 整个 §2.5.7 跳过，记 `[降级-cheap-research 不可用]`
-- extract 返回 `schema_validation_failed` → 重试 1 次（自动改 instruction 加"严格按 schema 输出"），仍失败标"分类降级-单类跳过"
-- 高质量模型某类返回空数组 → 该类跳过（无重复），不报错
+- cheap-research 不可用或调用失败 → 按共享规则记录状态，基于可读源码核查关键候选，在本轮审查报告列出实际范围和缺口。
+- extract 返回 `schema_validation_failed` → 重试 1 次（自动改 instruction 加"严格按 schema 输出"），仍失败则把受影响批次列为覆盖缺口。
+- 有效结果中的 `duplicates: []` 只支持当前已核查的子家族。
 
 **反偷懒第 21 条合规**：步骤末尾在思考块输出 `cheap-research 调用: extract x {1+5}` 或对应降级声明，**无记录 = 违规**。
 
