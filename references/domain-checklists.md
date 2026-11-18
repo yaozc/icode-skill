@@ -63,6 +63,11 @@ Inspect authorization provenance independently of scanner output and permission 
 - Missing authorization proof is a gap; an independently established unauthorized action is a violation. Keep the review read-only rather than rerunning a target scanner or operation.
 - Host simulation is not a native runtime observation. MCP installation/configuration does not prove process reload; access policy refusal is not file absence. Keep explicit PATH/access roots and supplied host/execution/artifact identities visible.
 
+Separate source, installation, registration, handshake and current-session MCP evidence without performing target operations.
+
+- Bind each relevant layer to the supplied candidate, installed artifact, host/process/session and observation window. Static configuration or an old handshake cannot prove current-session exposure; a schema alone is not a successful invocation.
+- Preserve called/degraded_after_attempt/unavailable_before_call and actual attempted status under the producer's execution contract. Missing schema is not business ineligibility or a fabricated failed call; use supplied discovery/alternative evidence and residual risk. Do not perform discovery, handshake, installation, reload or target calls to upgrade evidence during review.
+
 ## Public Library API/ABI
 
 Inspect supplied public headers, exported symbols and old consumer binary evidence separately.
@@ -98,6 +103,12 @@ A registered path or Read receipt is not evidence of actual review coverage.
 - Host or simulated evidence cannot satisfy a physical requirement; required missing or stale evidence remains debt.
 - Keep workflow status, `delivery_verdict`, direction `verdict` and external review PASS separate. Confirmed violations take precedence over gaps; gaps alone require SKIPPED.
 - No-version legacy and explicit unsupported versions have different handling. Never repair or migrate either during review.
+
+Reconcile verification registration with original execution observations; HANDOFF and replay are not new runtime evidence.
+
+- Distinguish declared workflow step, actual observed phase, lifecycle cell.phase and crosscheck phase. run_id names the existing verification id or supplied execution identity; it adds no field to metadata or crosscheck JSON.
+- Bind original command/output, path/hash, actual result/timeout, environment/device/artifact and observation window to the candidate. New actual executions keep independent original output; exact same-id replay preserves the original receipt and paths without creating a new run.
+- HANDOFF locates continuity and debt; inspect original observations before accepting execution claims. Missing proof is a gap, established contradictions or fabrication are violations, and later failures remain debt. Do not rename historical evidence or demand new fields; retain existing historical summary rules.
 
 ## Test Execution and Report Evidence
 

@@ -65,6 +65,7 @@ Actual model and host, or SKIPPED with reason; never claim a different reviewer.
 - git diff: present / missing / empty, with the scope that produced it
 - Verification output: present / missing
 - Test evidence: observed cases, report identity, actual process result and missing proof; legacy/no-summary boundary
+- Execution evidence: declared step, observed phase, run_id (existing id or supplied execution identity), original path/hash, candidate, environment and observation window; mark missing proof.
 
 ## Root Cause Review
 
@@ -86,6 +87,7 @@ Compare unordered membership only where the producer contract declares a set; re
 PASS / FAIL / INSUFFICIENT_EVIDENCE; actual mode, prefix, schema, decisions/replan, and current artifact generation.
 Check frozen scope/attempt/phase and actual coverage evidence; a registered path or batch Read receipt alone never proves complete reading.
 Where supported, inspect the frozen file budget and exact batch membership; do not require new options from older producers or unimplemented stage/provider fields.
+Distinguish declared workflow step, lifecycle cell.phase and crosscheck round phase; do not add run_id or stage fields to old schemas.
 
 ## Regression Review
 
@@ -96,6 +98,8 @@ PASS / FAIL / INSUFFICIENT_EVIDENCE
 PASS / FAIL / INSUFFICIENT_EVIDENCE; required cells, matching baseline/evidence, latest outcomes, lifecycle coverage and remaining debt.
 Report workflow status, implemented, delivery_verdict and direction verdict separately; none is Final Decision.
 Inspect true case counts and process failures; zero/all-skipped is inconclusive. Apply optional test_summary history and candidate/cell selection rules from the shared contract; do not run target helpers to manufacture missing evidence.
+Compare registration with actual execution identity, phase and independent original output; HANDOFF and same-id replay are not new observations.
+Retain original receipts for exact retries and historical records without adding fields or renaming output. New actual executions need independent original output; missing proof is a gap, while established contradictions or fabricated execution claims are violations.
 
 ## Security Review
 
@@ -109,7 +113,9 @@ Distinguish permission prose from supplied credential values/headers without rep
 PASS / FAIL / N/A / INSUFFICIENT_EVIDENCE
 
 Separate raw read limits, parser memory and soft deadlines from observed hard resource bounds.
+Separate source, installation, registration, handshake and current-session callability; consume supplied observations and retain the three MCP outcomes.
 Bind performance measurements to the candidate, workload and environment. Pure-data reuse must preserve fresh authorization/evidence checks; host simulation and MCP configuration changes do not prove a native runtime result or process reload.
+For relevant MCP claims, retain called/degraded_after_attempt/unavailable_before_call with actual call/discovery evidence and attempted status; configuration or an old handshake cannot prove a current-session call. Do not run discovery, handshake, installation or target helpers to fill review gaps.
 
 ## Findings
 

@@ -8,7 +8,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from tools import lint_review_contract as lint
 
@@ -45,13 +47,57 @@ PRECISE_RULES = (
     ("Do not require stage or provider fields from producers that do not implement those contracts.",
      "All schema-1 producers must provide stage and provider fields."),
 )
+EXECUTION_RULES = (
+    ("EVIDENCE", "Verification registration and receipt replay do not establish a new execution.",
+     "Registration and receipt replay prove a new execution."),
+    ("EVIDENCE", "run_id names an existing verification id or supplied execution identity; it is not a new schema field.",
+     "Every stored verification must add a run_id field."),
+    ("EVIDENCE", "HANDOFF is a continuity summary, not an original runtime observation.",
+     "HANDOFF replaces original runtime observations."),
+    ("EVIDENCE", "Each new actual execution needs independently identifiable original output; exact same-id replay preserves the original receipt.",
+     "New executions overwrite old output and exact retries require new paths."),
+    ("EVIDENCE", "Source presence, installed artifacts, static registration, handshake and current-session callability are separate evidence layers.",
+     "Static registration proves all MCP evidence layers."),
+    ("EVIDENCE", "Keep MCP outcomes called, degraded_after_attempt and unavailable_before_call unchanged.",
+     "Replace the three MCP outcomes with configured or missing."),
+    ("EVIDENCE", "Review supplied MCP observations without running discovery, handshake, installation or target helpers to fill gaps.",
+     "Run target discovery and handshake to fill missing MCP evidence."),
+    ("LEGACY", "Execution identity and phase descriptions do not add required fields or naming rules to historical records.",
+     "Historical records require new execution fields and paths."),
+    ("READ_ONLY", "Reject symbolic links, directory links and Windows LX symlink tag 0xA000001D before resolving any root, parent or leaf.",
+     "Resolve paths first and reject every reparse point."),
+)
+EXECUTION_REPORT = {
+    "Inputs": "Execution evidence: declared step, observed phase, run_id (existing id or supplied execution identity), original path/hash, candidate, environment and observation window; mark missing proof.",
+    "Workflow Contract Review": "Distinguish declared workflow step, lifecycle cell.phase and crosscheck round phase; do not add run_id or stage fields to old schemas.",
+    "Verification and Delivery Review": "Compare registration with actual execution identity, phase and independent original output; HANDOFF and same-id replay are not new observations.",
+}
+MCP_REPORT = "Separate source, installation, registration, handshake and current-session callability; consume supplied observations and retain the three MCP outcomes."
+EXECUTION_READMES = {
+    "README.md": (
+        "登记和同ID重放不等于新执行；run_id仅指既有id或供应方执行标识，不新增schema字段或追补旧票。",
+        "新实际执行保留可独立定位的原始输出；HANDOFF仅作续接摘要，不能替代原始观测。",
+        "源码、安装、注册、握手、当前会话可调用分层核对；保持called/degraded_after_attempt/unavailable_before_call，不为补证运行发现、握手、安装或目标helper。",
+        "linter在resolve前检查根、父级和叶子的普通链接及LX tag 0xA000001D，不按reparse属性一刀切；报告解析器原有更严格策略不变。",
+    ),
+    "README.en.md": (
+        "Registration and same-id replay do not establish a new execution; run_id names an existing id or supplied execution identity, without new schema fields or retroactive migration.",
+        "Each new actual execution keeps independently identifiable original output; HANDOFF is only a continuity summary and cannot replace original observations.",
+        "Review source, installation, registration, handshake and current-session callability separately; retain called/degraded_after_attempt/unavailable_before_call without running discovery, handshake, installation or target helpers to fill gaps.",
+        "Before resolve, the linter checks roots, parents and leaves for ordinary links and LX tag 0xA000001D, without rejecting all reparse points; the report parser retains its stricter policy.",
+    ),
+}
+EXECUTION_DOMAIN = (
+    "Reconcile verification registration with original execution observations; HANDOFF and replay are not new runtime evidence.",
+    "Separate source, installation, registration, handshake and current-session MCP evidence without performing target operations.",
+)
 
 
 class DocumentContractTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="icodex-review-doc-")
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name) / "skill"
+        self.root = Path(self.temp.name).resolve() / "skill"
         self.original = {}
         for name in lint.DOCUMENTS:
             path = self.root / name; path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,6 +111,150 @@ class DocumentContractTests(unittest.TestCase):
     def test_current_documents_pass(self):
         self.assertEqual(lint.lint_repo(ROOT), [])
         self.assertEqual(lint.lint_repo(self.root), [])
+
+    def test_execution_rules_reject_removal_inversion_and_hidden_text(self):
+        name = "references/workflow-contract.md"
+        for section, clause, opposite in EXECUTION_RULES:
+            for replacement in ("", opposite, f"<!-- {clause} -->", f"```text\n{clause}\n```"):
+                with self.subTest(clause=clause, replacement=replacement):
+                    self.edit(name, clause, replacement)
+                    self.assertTrue(any(section in error for error in lint.lint_repo(self.root)))
+
+    def test_execution_report_guidance_is_normative_in_existing_sections(self):
+        for title, clause in {**EXECUTION_REPORT, "Performance Review": MCP_REPORT}.items():
+            for replacement in ("", "The opposite rule applies.", f"<!-- {clause} -->", f"```text\n{clause}\n```"):
+                with self.subTest(title=title, replacement=replacement):
+                    self.edit("SKILL.md", clause, replacement)
+                    self.assertTrue(lint.lint_repo(self.root))
+
+    def test_execution_bilingual_guidance_cannot_be_hidden_or_reversed(self):
+        for name, clauses in EXECUTION_READMES.items():
+            for clause in clauses:
+                for replacement in ("", "相反结论 / opposite conclusion", f"<!-- {clause} -->", f"```text\n{clause}\n```"):
+                    with self.subTest(name=name, clause=clause, replacement=replacement):
+                        self.edit(name, clause, replacement)
+                        self.assertTrue(any(name in error for error in lint.lint_repo(self.root)))
+                (self.root / name).write_bytes(self.original[name])
+
+    def test_execution_domain_guidance_cannot_be_hidden_or_reversed(self):
+        name = "references/domain-checklists.md"
+        for clause in EXECUTION_DOMAIN:
+            for replacement in ("", "The opposite rule applies.", f"<!-- {clause} -->", f"```text\n{clause}\n```"):
+                with self.subTest(clause=clause, replacement=replacement):
+                    self.edit(name, clause, replacement)
+                    self.assertTrue(any(name in error for error in lint.lint_repo(self.root)))
+
+    def test_legacy_target_metadata_is_not_read_or_migrated(self):
+        target = self.root / ".ai/icode/legacy"
+        target.mkdir(parents=True)
+        metadata = target / ".ico_metadata.json"
+        metadata.write_text('{"verification_runs":[{"id":"old"}]}')
+        handoff = target / "HANDOFF.md"
+        handoff.write_text("Historical summary; no original execution proof.\n")
+        before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (metadata, handoff)}
+        read_text = Path.read_text
+
+        def document_only(path, *args, **kwargs):
+            self.assertNotIn(target, path.parents, "linter must not inspect target runs")
+            return read_text(path, *args, **kwargs)
+
+        with patch.object(Path, "read_text", document_only):
+            self.assertEqual(lint.lint_repo(self.root), [])
+        self.assertEqual({p: (p.read_bytes(), p.stat().st_mtime_ns) for p in before}, before)
+
+    def test_real_symlink_root_and_root_parent_are_rejected(self):
+        alias = self.root.parent / "root-link"
+        alias.symlink_to(self.root, target_is_directory=True)
+        parent = self.root.parent / "parent-link"
+        parent.symlink_to(self.root.parent, target_is_directory=True)
+        for root in (alias, parent / self.root.name):
+            with self.subTest(root=root):
+                self.assertTrue(any("link" in e for e in lint.lint_repo(root)))
+
+    def test_real_document_parent_link_inside_root_is_rejected(self):
+        directory = self.root / "references"
+        actual = self.root / "real-references"
+        directory.rename(actual)
+        directory.symlink_to(actual, target_is_directory=True)
+        self.assertTrue(any("references/workflow-contract.md" in e and "link" in e
+                            for e in lint.lint_repo(self.root)))
+
+    def test_markdown_links_reject_leaf_and_parent_links_inside_root(self):
+        notes = self.root / "notes"
+        notes.mkdir()
+        (notes / "actual.md").write_text("ordinary local document\n")
+        (notes / "linked.md").symlink_to(notes / "actual.md")
+        alias = self.root / "notes-link"
+        alias.symlink_to(notes, target_is_directory=True)
+        for target in ("notes/linked.md", "notes-link/actual.md", "notes-link/../README.md"):
+            with self.subTest(target=target):
+                self.edit("README.md", "references/workflow-contract.md", target)
+                self.assertTrue(any("broken or escaping local link" in e for e in lint.lint_repo(self.root)))
+
+    def test_windows_link_tags_reject_document_and_markdown_components(self):
+        notes = self.root / "notes"
+        notes.mkdir()
+        ordinary = notes / "actual.md"
+        ordinary.write_text("ordinary local document\n")
+        (self.root / "README.md").write_text(
+            self.original["README.md"].decode() + "\n[Local note](notes/actual.md)\n", encoding="utf-8")
+        lstat = Path.lstat
+        read_text = Path.read_text
+        suspects = (self.root / "README.en.md", self.root / "references", ordinary, notes)
+        for tag in (0xA000001D, 0xA000000C, 0xA0000003):
+            for suspect in suspects:
+                def tagged(path, *args, **kwargs):
+                    result = lstat(path, *args, **kwargs)
+                    if path == suspect:
+                        return SimpleNamespace(st_mode=result.st_mode, st_reparse_tag=tag,
+                                               st_file_attributes=0x400)
+                    return result
+
+                def no_follow(path, *args, **kwargs):
+                    self.assertFalse(path == suspect or suspect in path.parents,
+                                     "link components must be rejected before reading")
+                    return read_text(path, *args, **kwargs)
+
+                with self.subTest(tag=hex(tag), suspect=suspect):
+                    with patch.object(Path, "lstat", tagged), patch.object(Path, "read_text", no_follow):
+                        errors = lint.lint_repo(self.root)
+                    self.assertTrue(any("link" in e for e in errors))
+
+    def test_lx_root_and_ancestor_rejected_before_resolve(self):
+        lstat = Path.lstat
+        resolve = Path.resolve
+        for suspect in (self.root, self.root.parent):
+            def tagged(path, *args, **kwargs):
+                result = lstat(path, *args, **kwargs)
+                if path == suspect:
+                    return SimpleNamespace(st_mode=result.st_mode, st_reparse_tag=0xA000001D)
+                return result
+
+            def no_resolve(path, *args, **kwargs):
+                self.assertFalse(path == suspect or suspect in path.parents,
+                                 "LX identity must be checked before resolve")
+                return resolve(path, *args, **kwargs)
+
+            with self.subTest(suspect=suspect):
+                with patch.object(Path, "lstat", tagged), patch.object(Path, "resolve", no_resolve):
+                    errors = lint.lint_repo(self.root)
+                self.assertTrue(any("link" in e for e in errors))
+
+    def test_non_link_reparse_components_remain_readable(self):
+        notes = self.root / "notes"
+        notes.mkdir()
+        (notes / "ordinary.md").write_text("ordinary document\n")
+        (self.root / "README.md").write_text(
+            self.original["README.md"].decode() + "\n[Local note](notes/ordinary.md)\n", encoding="utf-8")
+        lstat = Path.lstat
+
+        def non_link(path, *args, **kwargs):
+            result = lstat(path, *args, **kwargs)
+            return SimpleNamespace(st_mode=result.st_mode, st_reparse_tag=0x80000020,
+                                   st_file_attributes=0x400)
+
+        with patch.object(Path, "lstat", non_link):
+            self.assertEqual(lint.lint_repo(self.root), [])
 
     def test_test_truth_abi_and_coverage_contracts_are_present(self):
         text = (self.root / "references/workflow-contract.md").read_text()

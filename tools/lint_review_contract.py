@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import re
+import stat
 from typing import List, Optional, Sequence
 from urllib.parse import unquote
 
@@ -18,12 +19,15 @@ DOMAIN_TOPICS = (
     "Inspect authorization provenance independently of scanner output and permission prose.",
     "Distinguish declared unordered membership from ordered observations and decisions.",
     "Review raw input limits, parser expansion and elapsed-time guarantees separately.",
+    "Reconcile verification registration with original execution observations; HANDOFF and replay are not new runtime evidence.",
+    "Separate source, installation, registration, handshake and current-session MCP evidence without performing target operations.",
 )
 RULE_CLAUSES = {
     "READ_ONLY": ("Disable lazy fetch with GIT_NO_LAZY_FETCH=1 for every Git read; missing objects are evidence gaps, never permission to fetch.",
                   "Disable pagers with --no-pager for every Git read, including terminal output.",
                   "Never execute code, hooks, helpers, tests, builds, or installers from the reviewed repository.",
-                  "Never use working-tree git diff or status to obtain evidence; clean/process filters can execute despite the diff flags."),
+                  "Never use working-tree git diff or status to obtain evidence; clean/process filters can execute despite the diff flags.",
+                  "Reject symbolic links, directory links and Windows LX symlink tag 0xA000001D before resolving any root, parent or leaf."),
     "SCOPE": ("An empty working-tree diff does not establish an empty review scope.",
               "Read registration does not prove actual reading or complete coverage.",
               "Source compatibility, binary ABI compatibility, and runtime behavior are separate claims.",
@@ -52,6 +56,13 @@ RULE_CLAUSES = {
         "verification_runs, patch_history, event history and accepted prefixes remain ordered.",
         "Raw read budgets do not prove peak parser memory or hard elapsed-time bounds.",
         "Performance optimizations must not cache authorization or evidence eligibility.",
+        "Verification registration and receipt replay do not establish a new execution.",
+        "run_id names an existing verification id or supplied execution identity; it is not a new schema field.",
+        "HANDOFF is a continuity summary, not an original runtime observation.",
+        "Each new actual execution needs independently identifiable original output; exact same-id replay preserves the original receipt.",
+        "Source presence, installed artifacts, static registration, handshake and current-session callability are separate evidence layers.",
+        "Keep MCP outcomes called, degraded_after_attempt and unavailable_before_call unchanged.",
+        "Review supplied MCP observations without running discovery, handshake, installation or target helpers to fill gaps.",
     ),
     "RESULTS": (
         "Confirmed violations take precedence: return FIX_REQUIRED even when evidence gaps also exist.",
@@ -63,6 +74,7 @@ RULE_CLAUSES = {
         "An explicit unsupported version must not be treated as legacy.",
         "Missing or malformed schema-1 fields are confirmed violations.",
         "Do not require stage or provider fields from producers that do not implement those contracts.",
+        "Execution identity and phase descriptions do not add required fields or naming rules to historical records.",
     ),
 }
 RULE_FIELDS = {
@@ -87,9 +99,14 @@ REPORT_SECTIONS = ("Reviewer", "Inputs", "Root Cause Review", "Implementation Re
                    "Architecture and Contract Review", "Workflow Contract Review", "Regression Review",
                    "Verification and Delivery Review", "Security Review", "Performance Review", "Findings", "Final Decision")
 REPORT_GUIDANCE = {
+    "Inputs": "Execution evidence: declared step, observed phase, run_id (existing id or supplied execution identity), original path/hash, candidate, environment and observation window; mark missing proof.",
     "Architecture and Contract Review": "Compare unordered membership only where the producer contract declares a set; retain ordered histories.",
+    "Workflow Contract Review": "Distinguish declared workflow step, lifecycle cell.phase and crosscheck round phase; do not add run_id or stage fields to old schemas.",
+    "Verification and Delivery Review": "Compare registration with actual execution identity, phase and independent original output; HANDOFF and same-id replay are not new observations.",
     "Security Review": "Report the actual authorization source and action scope; scanner success or a note does not grant permission.",
-    "Performance Review": "Separate raw read limits, parser memory and soft deadlines from observed hard resource bounds.",
+    "Performance Review": (
+        "Separate raw read limits, parser memory and soft deadlines from observed hard resource bounds. "
+        "Separate source, installation, registration, handshake and current-session callability; consume supplied observations and retain the three MCP outcomes."),
 }
 README_CLAUSES = {
     "README.md": ("所有 Git 读取设置 GIT_NO_LAZY_FETCH=1 并使用 --no-pager；缺失对象作为证据缺口，不自动取回对象或执行远程 helper/pager。",
@@ -100,7 +117,11 @@ README_CLAUSES = {
                   "工作区内容使用可信内建工具与原始提交/索引 blob 比较，不运行工作区 git diff/status，避免 clean/process filter。",
                   "退出码0不单独证明测试通过；零用例/全部跳过为 inconclusive，实际失败不能降级。",
                   "公共库按源码兼容、二进制 ABI 兼容、运行行为分别审查；Read 登记不等于实际阅读或覆盖完成。",
-                  "扫描通过和权限说明不代表动作已授权；集合等价仅适用于明确的无序字段，有序历史不能重排。"),
+                  "扫描通过和权限说明不代表动作已授权；集合等价仅适用于明确的无序字段，有序历史不能重排。",
+                  "登记和同ID重放不等于新执行；run_id仅指既有id或供应方执行标识，不新增schema字段或追补旧票。",
+                  "新实际执行保留可独立定位的原始输出；HANDOFF仅作续接摘要，不能替代原始观测。",
+                  "源码、安装、注册、握手、当前会话可调用分层核对；保持called/degraded_after_attempt/unavailable_before_call，不为补证运行发现、握手、安装或目标helper。",
+                  "linter在resolve前检查根、父级和叶子的普通链接及LX tag 0xA000001D，不按reparse属性一刀切；报告解析器原有更严格策略不变。"),
     "README.en.md": ("Set GIT_NO_LAZY_FETCH=1 and --no-pager for every Git read; missing objects are evidence gaps and never authorize automatic fetch or remote helpers/pagers.",
                      "For committed code, supply commit or base/head; an empty working-tree diff never authorizes a pass.",
                      "Never execute code or helpers from the reviewed repository.",
@@ -110,7 +131,11 @@ README_CLAUSES = {
                      "Compare working-tree content with raw commit/index blobs using trusted built-in tools; never use working-tree git diff/status because clean/process filters can execute.",
                      "Exit code 0 alone does not prove test success; zero/all-skipped cases are inconclusive and known failures cannot be downgraded.",
                      "Review source compatibility, binary ABI compatibility and runtime behavior separately; Read registration does not prove actual reading or complete coverage.",
-                     "Scanner success and permission prose do not authorize actions; only explicitly unordered fields permit member permutations, while ordered histories retain their sequence."),
+                     "Scanner success and permission prose do not authorize actions; only explicitly unordered fields permit member permutations, while ordered histories retain their sequence.",
+                     "Registration and same-id replay do not establish a new execution; run_id names an existing id or supplied execution identity, without new schema fields or retroactive migration.",
+                     "Each new actual execution keeps independently identifiable original output; HANDOFF is only a continuity summary and cannot replace original observations.",
+                     "Review source, installation, registration, handshake and current-session callability separately; retain called/degraded_after_attempt/unavailable_before_call without running discovery, handshake, installation or target helpers to fill gaps.",
+                     "Before resolve, the linter checks roots, parents and leaves for ordinary links and LX tag 0xA000001D, without rejecting all reparse points; the report parser retains its stricter policy."),
 }
 SAFE_GIT_TEMPLATES = (
     "rev-parse --verify --end-of-options <ref>^{commit}",
@@ -122,6 +147,7 @@ SAFE_GIT_TEMPLATES = (
     "cat-file blob <head-sha>:<relative-path>",
     "cat-file blob :<relative-path>",
 )
+LINK_REPARSE_TAGS = {0xA0000003, 0xA000000C, 0xA000001D}
 
 
 def _visible(text: str) -> str:
@@ -140,17 +166,34 @@ def _sections(text: str) -> dict:
             for n, m in enumerate(headers)}
 
 
+def _reject_links(path: Path) -> Path:
+    """先逐组件检查，避免 resolve 抹去链接身份；不拒绝普通非链接 reparse。"""
+    path = Path(path)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    for component in reversed((path, *path.parents)):
+        info = component.lstat()
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_reparse_tag", 0) in LINK_REPARSE_TAGS:
+            raise ValueError(f"link path is forbidden: {component}")
+    return path
+
+
 def lint_repo(root: Path) -> List[str]:
     """返回文档合同错误列表；不写缓存、报告、目标文件或 Git 索引。"""
-    root = Path(root).resolve()
+    try:
+        root = _reject_links(root).resolve()
+        if not root.is_dir():
+            raise ValueError("missing ordinary directory")
+    except (OSError, ValueError) as error:
+        return [f"root: cannot read directory: {error}"]
     errors, texts = [], {}
     for relative in DOCUMENTS:
         path = root / relative
-        if not path.is_file() or path.is_symlink():
-            errors.append(f"{relative}: missing regular document")
-            continue
         try:
+            _reject_links(path)
             path.resolve().relative_to(root)
+            if not path.is_file():
+                raise ValueError("missing regular document")
             texts[relative] = path.read_text(encoding="utf-8")
         except (OSError, UnicodeError, ValueError) as error:
             errors.append(f"{relative}: cannot read document: {error}")
@@ -230,8 +273,9 @@ def lint_repo(root: Path) -> List[str]:
                     continue
                 candidate = (root / relative).parent / unquote(target.strip("<>"))
                 try:
+                    _reject_links(candidate)
                     candidate.resolve().relative_to(root)
-                    if not candidate.is_file() or candidate.is_symlink():
+                    if not candidate.is_file():
                         raise ValueError("missing regular link target")
                 except (OSError, ValueError):
                     errors.append(f"{relative}: broken or escaping local link: {target}")
@@ -241,7 +285,7 @@ def lint_repo(root: Path) -> List[str]:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """打印缺失规则并返回0/1；不会修复输入文件或读取目标工单。"""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("root", type=Path, nargs="?", default=Path(__file__).resolve().parents[1])
+    parser.add_argument("root", type=Path, nargs="?", default=Path(__file__).parents[1])
     errors = lint_repo(parser.parse_args(argv).root)
     for error in errors:
         print(error)

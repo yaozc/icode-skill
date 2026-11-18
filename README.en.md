@@ -68,6 +68,20 @@ Exit code 0 alone does not prove test success; zero/all-skipped cases are inconc
 
 Check optional test_report/test_summary/test_exit_code against real report counts, original identity, the current candidate/cell and exact history replay. Do not fabricate summaries for old runs or execute reviewed tests/helpers to obtain missing evidence.
 
+Registration and same-id replay do not establish a new execution; run_id names an existing id or supplied execution identity, without new schema fields or retroactive migration.
+
+Each new actual execution keeps independently identifiable original output; HANDOFF is only a continuity summary and cannot replace original observations.
+
+Within existing report sections, distinguish the declared step, observed execution phase, lifecycle cell.phase and crosscheck phase; bind original paths/hashes to the candidate, environment and execution window. Exact same-id replay retains original paths and requires no new file. Missing proof is an evidence gap; known failures or fabricated execution claims retain violation precedence.
+
+Review source, installation, registration, handshake and current-session callability separately; retain called/degraded_after_attempt/unavailable_before_call without running discovery, handshake, installation or target helpers to fill gaps.
+
+Configuration or a successful handshake in another process/old session does not establish current-session callability; visible schema alone does not prove call success. Check only layers relevant to the capability claim, without making all five mandatory or changing business eligibility and action authorization.
+
+Before resolve, the linter checks roots, parents and leaves for ordinary links and LX tag 0xA000001D, without rejecting all reparse points; the report parser retains its stricter policy.
+
+Retain ordinary-file and containment checks. Real link fixtures and simulated tags do not establish native Windows runtime behavior or eliminate every file replacement race.
+
 Review source compatibility, binary ABI compatibility and runtime behavior separately; Read registration does not prove actual reading or complete coverage.
 
 Scanner success and permission prose do not authorize actions; only explicitly unordered fields permit member permutations, while ordered histories retain their sequence.
