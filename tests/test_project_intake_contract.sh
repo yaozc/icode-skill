@@ -14,8 +14,10 @@ MANIFEST="mcp/icode-workspace/tools_manifest.json"
 POLICY="mcp/icode-mcp-policy/policy.json"
 REFERENCE="references/project_intake.md"
 
-if ! grep -Eq 'cwd 不在 git 仓库' SKILL.md \
-  && grep -Eq 'L1·致命.*工程接入.*解析失败' SKILL.md; then
+if grep -Fq 'L1·致命' SKILL.md \
+  && grep -Fq '工程接入失败' SKILL.md \
+  && grep -Fq '解析对象是用户请求的目标路径，不是承载代理的临时 cwd' "$REFERENCE" \
+  && grep -Fq '不能把宿主非 Git 目录作为目标 L1 失败证据' "$REFERENCE"; then
   ok "入口阻断以目标工程解析结果为准，不与唯一嵌套根支持冲突"
 else
   bad "入口仍将宿主非 Git cwd 直接当作目标解析失败"
