@@ -376,10 +376,24 @@ def finish_scoped_review(candidate, step, attempt, scope, *, generic_worklist_ar
             f.call("artifact", "--dir", f.ticket, "--step", step, "--attempt", attempt,
                    "--path", path, "--scope", "workspace")
     else:
+        manual = fixtures.manual_dedup_report(f.repo, "candidate-1", attempt, scope)
+        function_count = sum(len(source["functions"]) for source in manual["sources"])
+        threshold = ctl.load_json(fixtures.ROOT / "mcp/cheap-research/gates.json",
+                                  "cheap gate catalog")["constants"]["dedup_min_functions"]
+        if step == "deepcheck":
+            trace = {"schema_version": 2, "ticket_id": "candidate-1", "step": step,
+                     "gate_id": "deepcheck.dedup", "tool": "extract", "eligible": False,
+                     "attempt": attempt, "decision": "skipped_not_eligible", "attempted": False,
+                     "result": "not_applicable", "at": "2026-11-15T00:00:00Z",
+                     "evidence": {"mode": "full", "phase": "dedup", "function_count": function_count,
+                                  "threshold": threshold}}
+            (f.ticket / ".mcp_gate_trace.jsonl").write_text(json.dumps(trace) + "\n", encoding="utf-8")
         coverage = {"schema_version": 1, "ticket_id": "candidate-1", "attempt": attempt,
                     "review_scope": [scope], "coverage_status": "complete_within_scope", "unobserved": [],
-                    "dedup_unobserved": [], "dedup_status": "not_eligible", "dedup_reason": "small fixture",
-                    "read_phases": {phase: members for phase in report["required_phases"]}}
+                    "dedup_unobserved": [], "dedup_status": "not_eligible", "dedup_reason": "fixture AST catalog",
+                    "read_phases": {phase: dict(members) for phase in report["required_phases"]}}
+        if step == "audit":
+            coverage["manual_dedup"] = manual
         name = step + "_coverage.json"
         (f.ticket / name).write_text(json.dumps(coverage), encoding="utf-8")
         f.call("artifact", "--dir", f.ticket, "--step", step, "--attempt", attempt, "--path", name)

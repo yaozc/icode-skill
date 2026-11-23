@@ -14,6 +14,33 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("candidate_control", ROOT / "tools/icode_control.py")
 ctl = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ctl)
+DEDUP_SPEC = importlib.util.spec_from_file_location("test_manual_dedup", ROOT / "tools/manual_dedup_evidence.py")
+dedup = importlib.util.module_from_spec(DEDUP_SPEC)
+DEDUP_SPEC.loader.exec_module(dedup)
+
+
+def manual_dedup_report(workspace, ticket_id, attempt, scope):
+    """Build current AST-backed evidence for the exact fixture scope."""
+    sources = dedup.collect_sources(workspace, [scope])
+    entries = []
+    families = []
+    for relative, digest in sources.items():
+        path = Path(workspace) / relative
+        data = path.read_bytes()
+        functions = []
+        if path.suffix.lower() in {".py", ".pyi"}:
+            tree = ast.parse(data.decode("utf-8"), filename=relative)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    family = f"{relative}:{node.lineno}:{node.name}"
+                    functions.append({"line": node.lineno, "name": node.name, "family": family})
+                    families.append({"name": family, "members": [f"{relative}:{node.lineno}:{node.name}"],
+                                     "conclusion": "single", "reason": "fixture catalog entry",
+                                     "evidence": [f"{relative}:{node.lineno}"]})
+        entries.append({"path": relative, "sha256": digest, "catalog_method": "python_ast",
+                        "functions": functions})
+    return {"schema_version": 1, "ticket_id": ticket_id, "attempt": attempt,
+            "review_scope": [scope], "unobserved": [], "sources": entries, "families": families}
 
 
 class CandidateTests(unittest.TestCase):
@@ -77,6 +104,7 @@ class CandidateTests(unittest.TestCase):
         self.call("inspection", "--dir", self.ticket, "--step", step, "--phase", "prepare",
                   "--attempt", attempt, "--scope", scope, "--baselines-json", json.dumps({".": self.base}))
         report = json.loads((self.ticket / (step + "_worklist.json")).read_text(encoding="utf-8"))
+        members = {row["path"]: row["sha256"] for unit in report["units"] for row in unit["files"]}
         for phase in report["required_phases"]:
             for unit in report["units"]:
                 for row in unit["files"]:
@@ -92,36 +120,27 @@ class CandidateTests(unittest.TestCase):
                       "--path", "source.py", "--scope", "workspace")
         else:
             ticket_id = ctl.load_metadata(self.ticket)["ticket_id"]
+            phases = report["required_phases"]
+            manual = manual_dedup_report(self.repo, ticket_id, attempt, scope)
+            function_count = sum(len(source["functions"]) for source in manual["sources"])
+            threshold = ctl.load_json(ROOT / "mcp/cheap-research/gates.json", "cheap gate catalog")["constants"]["dedup_min_functions"]
             if step == "deepcheck" and write_dedup_trace:
                 trace = {"schema_version": 2, "ticket_id": ticket_id, "step": step,
                          "gate_id": "deepcheck.dedup", "tool": "extract", "eligible": False,
                          "attempt": attempt, "decision": "skipped_not_eligible", "attempted": False,
                          "result": "not_applicable", "at": "2026-11-15T00:00:00Z",
-                         "evidence": {"mode": "full", "phase": "dedup", "function_count": 0, "threshold": 50}}
+                         "evidence": {"mode": "full", "phase": "dedup", "function_count": function_count,
+                                      "threshold": threshold}}
                 (self.ticket / ".mcp_gate_trace.jsonl").write_text(json.dumps(trace) + "\n", encoding="utf-8")
-            phases = report["required_phases"]
             coverage = {"schema_version": 1, "ticket_id": ticket_id, "attempt": attempt,
-                        "review_scope": ["."], "coverage_status": "complete_within_scope",
+                        "review_scope": [scope], "coverage_status": "complete_within_scope",
                         "unobserved": [], "dedup_unobserved": [], "dedup_status": "not_eligible",
-                        "dedup_reason": "single fixture", "read_phases": {
-                            phase: {"source.py": ctl.file_sha256(self.repo / "source.py")} for phase in phases}}
-            events, _ = ctl.read_events(self.ticket)
-            has_deepcheck = any(event.get("event_type") == "step_finished"
-                                and (event.get("payload") or {}).get("step") == "deepcheck"
-                                and (event.get("payload") or {}).get("outcome") == "success"
-                                for event in events)
-            if step == "audit" and not has_deepcheck:
-                # Standalone audit has no earlier receipt to reuse. Inspect the
-                # actual fixture source and declare its real empty catalog.
-                source = self.repo / "source.py"
-                tree = ast.parse(source.read_text(encoding="utf-8"))
-                self.assertFalse(any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                                     for node in ast.walk(tree)))
-                coverage["manual_dedup"] = {
-                    "schema_version": 1, "ticket_id": ticket_id, "attempt": attempt,
-                    "review_scope": ["."], "unobserved": [], "sources": [{
-                        "path": "source.py", "sha256": ctl.file_sha256(source),
-                        "catalog_method": "python_ast", "functions": []}], "families": []}
+                        "dedup_reason": "fixture AST catalog", "read_phases": {
+                            phase: dict(members) for phase in phases}}
+            if step == "audit":
+                # An audit must prove the current scope even when an earlier
+                # deepcheck exists but refers to an older candidate.
+                coverage["manual_dedup"] = manual
             name = step + "_coverage.json"
             (self.ticket / name).write_text(json.dumps(coverage), encoding="utf-8", newline="\n")
             self.call("artifact", "--dir", self.ticket, "--step", step, "--attempt", attempt, "--path", name)
