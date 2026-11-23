@@ -320,6 +320,17 @@ class LiteWorkflowTests(unittest.TestCase):
         self.assertTrue(ctl.delivery_freshness(self.ticket)["ok"])
         self.assertFalse((self.ticket / "01_plan.md").exists())
 
+    def test_test_host_adapter_must_remain_under_overridden_root(self):
+        outside = self.repo.parent / "outside-host-root"
+        outside.mkdir()
+        adapter = outside / "adapter.py"
+        adapter.write_text("print('fixture')\n", encoding="utf-8")
+        adapter.chmod(0o700)
+        with patch.object(ctl, "_HOST_CONFIG_ROOT_OVERRIDE", self.host_root):
+            with self.assertRaises(ctl.ControlError) as caught:
+                ctl._require_host_owned_location(adapter)
+        self.assertEqual(caught.exception.extra["gate_id"], "lite_host_adapter_unavailable")
+
     def test_degraded_review_completes_only_as_verification_pending(self):
         # P1：无适配器时不能停在 Review。降级工单应能走完并交付，但只能
         # verification_pending，不能声称 verified。

@@ -8193,9 +8193,13 @@ def _require_host_owned_location(adapter):
 
     摘要只能证明文件未被替换，不能证明它来自宿主。这里要求从适配器到根的
     每一级父目录都不可被旁人写入：调用方私有的可写目录、工程工作区中由
-    调用方创建的可写目录都会被拒绝。
+    调用方创建的可写目录都会被拒绝。测试注入信任根时，只检查该根以内的目录链。
     """
     resolved = adapter.resolve()
+    override_root = Path(_HOST_CONFIG_ROOT_OVERRIDE).resolve() if _HOST_CONFIG_ROOT_OVERRIDE is not None else None
+    if override_root is not None and not resolved.is_relative_to(override_root):
+        raise ControlError("测试宿主适配器必须位于注入的信任根内",
+                           gate_id="lite_host_adapter_unavailable")
     for parent in adapter.parents:
         try:
             linked = _host_path_is_link(parent)
@@ -8208,11 +8212,10 @@ def _require_host_owned_location(adapter):
         if _path_is_others_writable(parent, ancestor=True):
             raise ControlError("宿主适配器所在目录可被其他用户改写，拒绝信任",
                                gate_id="lite_host_adapter_unavailable")
+        if override_root is not None and parent.resolve() == override_root:
+            return
     # 调用方的工作区与临时目录即使权限收紧也属调用方，不能作为信任来源。
-    # 只有"进程内注入了信任根"的测试才能落在临时目录：该信号不走环境变量，
-    # 生产 CLI 拿不到，因此这条豁免无法被调用方利用。
-    if _HOST_CONFIG_ROOT_OVERRIDE is not None:
-        return
+    # 生产入口没有信任根注入能力，因此不能把调用方或临时目录纳入生产信任链。
     denied = [Path.cwd(), Path("/tmp"), Path("/var/tmp")]
     for raw in (os.environ.get("TMPDIR"), os.environ.get("TEMP")):
         if raw:

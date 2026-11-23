@@ -1,6 +1,7 @@
 # Keep scripts executable by Linux/WSL even with Windows core.autocrlf=true.
 *.sh text eol=lf
 *.py text eol=lf
+SKILL.md text eol=lf
 # Vendored browser resources are pinned by upstream byte hashes, including licenses.
 agent_runtime/icode_agent/ui_assets/vendor/* -text
 # Generated upstream bundles contain intentional template-literal whitespace;
