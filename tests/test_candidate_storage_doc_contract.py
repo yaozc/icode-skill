@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 
@@ -15,6 +16,20 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def shell_for_test():
+    if os.name != "nt":
+        return "bash"
+    git = shutil.which("git")
+    if git:
+        for git_root in Path(git).resolve().parents:
+            bash = git_root / "bin" / "bash.exe"
+            if bash.is_file():
+                return str(bash)
+    raise RuntimeError("Git for Windows Bash was not found; refusing the WSL bash launcher")
+
+
 spec = importlib.util.spec_from_file_location("doc_contract_control", ROOT / "tools/icode_control.py")
 ctl = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ctl)
@@ -200,7 +215,7 @@ def test_full_workflow_status_examples_read_storage_v2_metadata(tmp_path):
     for command in commands:
         command = command.replace("{ICODE_OUT_DIR}", ticket.as_posix())
         command = command.replace("{ICODE_SKILL_ROOT}", ROOT.as_posix())
-        result = subprocess.run(["bash", "-c", "set -e\n" + command], cwd=ticket.parents[1],
+        result = subprocess.run([shell_for_test(), "-c", "set -e\n" + command], cwd=ticket.parents[1],
                                 capture_output=True, text=True, encoding="utf-8")
         assert result.returncode == 0, result.stdout + result.stderr
         assert "❌ 前一步产物缺失/状态异常" not in result.stdout
