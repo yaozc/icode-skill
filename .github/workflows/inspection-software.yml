@@ -117,7 +117,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       PYTHONUTF8: '1'
       PYTHONDONTWRITEBYTECODE: '1'
