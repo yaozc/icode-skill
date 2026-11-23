@@ -79,9 +79,12 @@ def verify_batch(full, core, components, version):
         raise ValueError("core and components do not match the full source snapshot")
 
 
-def skillhub_snapshot(core, output, version):
+def skillhub_snapshot(core, output, version, license_source):
     """Project the same frozen core into one text-only, pinned upload skill."""
     shutil.copytree(core, output)
+    # The core profile moves LICENSE.txt into the support component. Restore it
+    # from the full profile, which verify_batch has already bound to this core.
+    shutil.copyfile(license_source, output / "LICENSE.txt")
     for name in SKILLHUB_OPTIONAL_UI:
         path = output / name
         if path.is_file():
@@ -139,7 +142,8 @@ def build_assets(source, output):
         if plugin_resources(full) != plugin_resources(core):
             raise ValueError("plugin resources changed between release profile builds")
         skillhub = work / "skillhub/icode"
-        skillhub_report = skillhub_snapshot(core / "skills/icode", skillhub, version)
+        skillhub_report = skillhub_snapshot(
+            core / "skills/icode", skillhub, version, full / "skills/icode/LICENSE.txt")
         assets = work / "assets"
         for path in files(components):
             shutil.copyfile(path, assets / path.name)
