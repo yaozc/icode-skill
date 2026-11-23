@@ -49,7 +49,19 @@ def finish_review(candidate, step, attempt, **options):
         candidate.call("artifact", "--dir", candidate.ticket, "--step", step, "--attempt", attempt,
                        "--path", "source.py", "--scope", "workspace")
     else:
-        coverage = {"schema_version": 1, "ticket_id": "candidate-1", "attempt": attempt,
+        ticket_id = ctl.load_metadata(candidate.ticket)["ticket_id"]
+        if step == "deepcheck":
+            threshold = json.loads((fixtures.ROOT / "mcp/cheap-research/gates.json").read_text(
+                encoding="utf-8"))["constants"]["dedup_min_functions"]
+            trace = {"schema_version": 2, "ticket_id": ticket_id, "step": step,
+                     "gate_id": "deepcheck.dedup", "tool": "extract", "eligible": False,
+                     "attempt": attempt, "decision": "skipped_not_eligible", "attempted": False,
+                     "result": "not_applicable", "at": "2026-11-15T00:00:00Z",
+                     "evidence": {"mode": "full", "phase": "dedup", "function_count": 0,
+                                  "threshold": threshold}}
+            (candidate.ticket / ".mcp_gate_trace.jsonl").write_text(
+                json.dumps(trace) + "\n", encoding="utf-8")
+        coverage = {"schema_version": 1, "ticket_id": ticket_id, "attempt": attempt,
                     "review_scope": [options.get("scope", ".")], "coverage_status": "complete_within_scope",
                     "unobserved": [], "dedup_unobserved": [], "dedup_status": "not_eligible",
                     "dedup_reason": "single fixture", "read_phases": {

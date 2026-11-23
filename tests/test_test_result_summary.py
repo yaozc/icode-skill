@@ -26,7 +26,9 @@ def load_tool(name):
 
 class ReportTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="icode-test-report-")
+        # Windows runner 的默认 Temp 路径可能经过 reparse point；测试文件放在
+        # 已解析的仓库目录下，继续验证报告路径本身的安全限制。
+        self.temp = tempfile.TemporaryDirectory(prefix=".icode-test-report-", dir=ROOT)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 

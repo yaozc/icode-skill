@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 
@@ -11,6 +12,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def read(path):
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def shell_for_test():
+    if os.name != "nt":
+        return "bash", str
+    git = shutil.which("git")
+    if git:
+        for git_root in Path(git).resolve().parents:
+            bash = git_root / "bin" / "bash.exe"
+            cygpath = git_root / "usr" / "bin" / "cygpath.exe"
+            if bash.is_file() and cygpath.is_file():
+                def to_shell_path(path):
+                    result = subprocess.run([str(cygpath), "-u", str(path)],
+                                            text=True, capture_output=True, check=True)
+                    return result.stdout.strip()
+                return str(bash), to_shell_path
+    raise RuntimeError("Git for Windows Bash was not found; refusing the WSL bash launcher")
 
 
 def test_ticket_directory_rules_do_not_require_gnu_grep():
@@ -31,19 +49,20 @@ def test_directory_selection_uses_numeric_latest_and_detects_entry_ambiguity(tmp
     rules = read("references/dir_and_metadata.md")
     section = rules.split("### 复用 / 创建新目录决策", 1)[1].split("```bash", 1)[1].split("```", 1)[0]
     snippet = section[section.index("LAST=$("):section.index("# REUSE=2")]
-    snippet = snippet.replace('"{ICODE_SKILL_ROOT}"', shlex.quote(str(ROOT)))
-    snippet = snippet.replace("python3 -c", f"{shlex.quote(sys.executable)} -c")
-    env = dict(os.environ, WORKSPACE_ROOT=str(root))
-    result = subprocess.run(["bash", "-c", snippet + '\nprintf "%s:%s\\n" "$LAST" "$REUSE"'],
+    bash, to_shell_path = shell_for_test()
+    snippet = snippet.replace('"{ICODE_SKILL_ROOT}"', shlex.quote(to_shell_path(ROOT)))
+    snippet = snippet.replace("python3 -c", f"{shlex.quote(to_shell_path(sys.executable))} -c")
+    env = dict(os.environ, WORKSPACE_ROOT=to_shell_path(root))
+    result = subprocess.run([bash, "-c", snippet + '\nprintf "%s:%s\\n" "$LAST" "$REUSE"'],
                             env=env, text=True, capture_output=True, check=True)
     assert result.stdout.strip() == "10:2"
     (candidate / "01_plan.md").write_text("已有计划")
-    result = subprocess.run(["bash", "-c", snippet + '\nprintf "%s:%s\\n" "$LAST" "$REUSE"'],
+    result = subprocess.run([bash, "-c", snippet + '\nprintf "%s:%s\\n" "$LAST" "$REUSE"'],
                             env=env, text=True, capture_output=True, check=True)
     assert result.stdout.strip() == "10:0"
     (candidate / "01_plan.md").unlink()
     (candidate / ".ico_metadata.json").write_text("not-json")
-    result = subprocess.run(["bash", "-c", snippet], env=env, text=True, capture_output=True)
+    result = subprocess.run([bash, "-c", snippet], env=env, text=True, capture_output=True)
     assert result.returncode != 0
     assert "禁止猜测复用" in result.stderr
 
