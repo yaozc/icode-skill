@@ -15,6 +15,7 @@
 import json
 import os
 import shutil
+import stat
 import sys
 import tempfile
 import time
@@ -71,11 +72,30 @@ def _read_cfg(path: Path) -> dict:
     return data
 
 
-def _check_registry_path(path: Path) -> None:
+# macOS 把 /var、/tmp、/etc 做成指向 /private/... 的系统别名。它们由 OS 提供、不可被
+# 同级用户替换，放行不会削弱"防重定向写入"的目标；否则临时目录与放在这些路径下的
+# 宿主配置会一律失败（历史表现：测试与首次安装在 macOS 上报"含符号链接"）。
+SYSTEM_LINK_ALIASES = frozenset({"/var", "/tmp", "/etc"})
+
+
+def link_chain_violation(path) -> str | None:
+    """Return the first path component that is a symlink/reparse point, else None."""
+    path = Path(path)
     for part in (path, *path.parents):
-        if (part.is_symlink() or (part.exists()
-                and getattr(part.lstat(), "st_file_attributes", 0) & 0x400)):
-            raise RuntimeError("注册路径不能包含符号链接或重解析点")
+        if str(part) in SYSTEM_LINK_ALIASES and part.is_symlink():
+            continue
+        try:
+            info = part.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            return str(part)
+    return None
+
+
+def _check_registry_path(path: Path) -> None:
+    if link_chain_violation(path) is not None:
+        raise RuntimeError("注册路径不能包含符号链接或重解析点")
 
 
 def _write_cfg(path: Path, cfg: dict) -> None:

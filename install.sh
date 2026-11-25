@@ -164,7 +164,7 @@ if [[ "$DRY_RUN" == false && "$SKIP_MCP" == false ]]; then
   fi
   # Validate the selected MCP and its host-side registration dependencies
   # before ICODE or shared skills are written.
-  bash "$SOURCE_MCP_INSTALLER" --check --client "$CLIENT" "${MCP_NAMES[@]}"
+  bash "$SOURCE_MCP_INSTALLER" --check --client "$CLIENT" ${MCP_NAMES[@]+"${MCP_NAMES[@]}"}
 fi
 
 # Plan against the old installation before synchronization replaces its code.
@@ -227,7 +227,8 @@ if [[ ! -f "$MCP_INSTALLER" || ! -r "$MCP_INSTALLER" ]]; then
   exit 1
 fi
 
-MCP_INSTALL_ARGS=(--client "$CLIENT" "${MCP_NAMES[@]}")
+# bash 3.2（macOS 自带）在 set -u 下展开空数组会报 unbound variable。
+MCP_INSTALL_ARGS=(--client "$CLIENT" ${MCP_NAMES[@]+"${MCP_NAMES[@]}"})
 [[ "$NO_DELETE" == false ]] || MCP_INSTALL_ARGS+=(--no-delete)
 bash "$MCP_INSTALLER" "${MCP_INSTALL_ARGS[@]}"
 MCP_FINISH=(finish --plan "$ICODE_MCP_RECONCILE_PLAN")

@@ -45,8 +45,16 @@ class InstallConflict(RuntimeError):
     """Raised when an existing target is not owned by this installer."""
 
 
+# macOS 把 /var、/tmp、/etc 做成指向 /private/... 的系统别名。它们是 OS 提供的稳定
+# 路径，不是可以被替换的重定向点；一律拒绝会让临时目录安装、以及把宿主 skills 根放在
+# 这些路径下的用户全部失败。只放行这三个固定别名，其余软链仍按可疑处理。
+SYSTEM_LINK_ALIASES = {"/var", "/tmp", "/etc"}
+
+
 def component_no_links(path):
     for item in (path, *path.parents):
+        if str(item) in SYSTEM_LINK_ALIASES and item.is_symlink():
+            continue
         if item.is_symlink() or (item.exists() and getattr(item.lstat(), "st_file_attributes", 0) & 0x400):
             raise InstallConflict(f"component path must not contain links: {item}")
 

@@ -892,9 +892,13 @@ commit_icode_stages() {
   # sandbox delete time budget and be SIGTERM'd, which must not fail an
   # otherwise successful commit. Leftover backups are reaped by the next run's
   # startup reaper (see reap_transaction_leftovers).
-  for backup in "${committed_backups[@]}"; do
-    [[ -z "$backup" ]] || { remove_transaction_tree "$backup" >/dev/null 2>&1 & }
-  done
+  # bash 3.2（macOS 自带）在 set -u 下展开空数组会报 unbound variable；
+  # 索引展开 "${!arr[@]}" 是安全的，但值展开 "${arr[@]}" 需要先判长度。
+  if [[ ${#committed_backups[@]} -gt 0 ]]; then
+    for backup in "${committed_backups[@]}"; do
+      [[ -z "$backup" ]] || { remove_transaction_tree "$backup" >/dev/null 2>&1 & }
+    done
+  fi
 }
 
 if [[ "$MODE" == "dry-run" ]]; then

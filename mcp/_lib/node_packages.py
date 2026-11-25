@@ -193,16 +193,37 @@ def default_runtime_root():
     return state / "icode/mcp-node"
 
 
+def _npm_candidates(node):
+    """Yield bundled npm-cli.js locations for this Node, nearest first.
+
+    Homebrew(macOS) keeps node in `Cellar/<version>/bin` (symlinked from `bin/`)
+    while npm lives in `<prefix>/lib/node_modules`, so the prefix can sit a few
+    levels above the executable. Upstream Node/nvm layouts put it one or two
+    levels up, hence the bounded ancestor walk.
+    """
+    yield node.parent / "node_modules/npm/bin/npm-cli.js"
+    parent = node.parent
+    for _ in range(4):
+        if parent.parent == parent:
+            return
+        parent = parent.parent
+        yield parent / "lib/node_modules/npm/bin/npm-cli.js"
+        yield parent / "share/nodejs/npm/bin/npm-cli.js"
+
+
 def resolve_npm_cli(node_path):
     """Find npm bundled beside this Node, without PATH, npx or shell wrappers."""
-    node = Path(node_path).expanduser().resolve()
+    node = Path(node_path).expanduser()
     if not node.is_file():
         raise ValueError("Node executable does not exist")
-    for candidate in (node.parent / "node_modules/npm/bin/npm-cli.js",
-                      node.parent.parent / "lib/node_modules/npm/bin/npm-cli.js",
-                      node.parent.parent / "share/nodejs/npm/bin/npm-cli.js"):
-        if candidate.is_file():
-            return candidate.resolve()
+    bases = [node]
+    resolved = node.resolve()
+    if resolved != node:
+        bases.append(resolved)
+    for base in bases:
+        for candidate in _npm_candidates(base):
+            if candidate.is_file():
+                return candidate.resolve()
     raise ValueError("npm-cli.js is missing beside the selected Node executable")
 
 

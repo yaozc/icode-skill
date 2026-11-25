@@ -44,17 +44,15 @@ def _name(name):
 
 def _safe(path, within=None):
     path = Path(os.path.abspath(path))
-    for part in (path, *path.parents):
-        try:
-            metadata = part.lstat()
-        except FileNotFoundError:
-            continue
-        # st_file_attributes is present on Windows before Path.is_junction
-        # (Python 3.12). Reject every reparse point, not just symlink tags.
-        if stat.S_ISLNK(metadata.st_mode) or getattr(metadata, "st_file_attributes", 0) & 0x400:
-            raise RuntimeError("refusing linked MCP path")
-    if within is not None and not path.is_relative_to(Path(within).resolve()):
-        raise RuntimeError("MCP path escapes permitted root")
+    # 与注册路径共用同一套链路判定（含 POSIX 系统别名的例外）。
+    if claude_registry.link_chain_violation(path) is not None:
+        raise RuntimeError("refusing linked MCP path")
+    if within is not None:
+        # 两边都按真实路径比较：POSIX 系统别名（/var → /private/var）本身合法，
+        # 用字面路径比较会把同一个目录误判成"逃逸"。
+        root = Path(within).resolve()
+        if not path.resolve().is_relative_to(root):
+            raise RuntimeError("MCP path escapes permitted root")
     return path
 
 
