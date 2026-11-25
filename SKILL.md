@@ -149,7 +149,7 @@ Windows/WSL 构建按需加载 [WSL 构建合同](references/wsl_build.md)；本
 
 **步骤 0 派生例外**：`init --guide` 两个 `deliverables/` 产物由 [guide_contract.md](references/guide_contract.md) 约束，不写步骤号、不改 status。
 
-**status 词表**（写回 metadata 前逐字对照，禁止自定义）：正常流 `log_in_progress` / `log_done` → `init_in_progress` → `plan_done` → `review_in_progress` / `review_done` → `plan_finalized` → `code_in_progress` / `code_done` → `deepcheck_in_progress` / `deepcheck_done` → `completed`（终态）；debug 隔离流 `debug_in_progress` → `debug_done`。
+**status 词表**（写回 metadata 前逐字对照，禁止自定义）：正常流 `log_in_progress` / `log_done` → `init_in_progress` → `plan_done` → `review_in_progress` / `review_done` → `plan_finalized` → `code_in_progress` / `code_done` → `deepcheck_in_progress` / `deepcheck_done` → `completed`（终态）；debug 隔离流 `debug_in_progress` → `debug_done`；lite 走 `lite_*` 流（见 [steps/lite.md](steps/lite.md)）。
 
 **产物命名硬性条款**：产物必须按 `steps/XX_*.md` 规定的**文件名、目录、格式**产出；metadata 的 `status` 必须在本词表内。**自定义文件名 / 自定义格式 / 词表外状态值 = 不合规**，内容质量高也不能豁免——内容好 ≠ 机制合规。发现命名/状态不在上表，停下对照对应 `steps/XX_*.md` 修正，不得沿用自造近似（如用 `03_merge.md` 替代 `03_plan_final.md`、自造 `audit_done` 状态）。
 
@@ -187,8 +187,10 @@ Windows/WSL 构建按需加载 [WSL 构建合同](references/wsl_build.md)；本
 **status 写回校验（强制，防词表外值落盘）**：每步写 `.ico_metadata.json` 前，必须先对照上方词表校验 `status` 在枚举内（`completed_steps` 中的步骤号须是 `steps/*.md` 清单里存在的合法值），词表外值直接判不合规、拒绝写回并修正。按上面的技能根约定替换占位符后执行：
 
 ```bash
-python3 -c "import sys; sys.path.insert(0,'{ICODE_SKILL_ROOT}/tools'); import icode_control as ctl; d=ctl.read_metadata_readonly('{ICODE_OUT_DIR}'); valid={'init_in_progress','plan_done','review_in_progress','review_done','plan_finalized','code_in_progress','code_done','deepcheck_in_progress','deepcheck_done','completed','log_in_progress','log_done','debug_in_progress','debug_done'}; s=d.get('status'); print('status:', s); sys.exit(0 if s in valid else 1)"
+python3 -c "import sys; sys.path.insert(0,'{ICODE_SKILL_ROOT}/tools'); import icode_control as ctl; d=ctl.read_metadata_readonly('{ICODE_OUT_DIR}'); valid=set(ctl.load_state_machine(d)['states']); s=d.get('status'); print('status:', s); sys.exit(0 if s in valid else 1)"
 ```
+
+词表按 profile 由 `ctl.load_state_machine(meta)['states']` 解析（真源 `gates.json`），片段不硬编码——旧词表曾把 lite 状态判为词表外。
 
 
 

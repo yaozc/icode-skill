@@ -45,7 +45,7 @@ CASES = [
     ("plan_limit", "steps/01_plan.md", "refs={int(r['redline_no'])"),
     ("log_limit", "steps/log.md", "refs={int(r['redline_no'])"),
     ("runtime", "steps/log.md", "runs=m.get('runtime_code_baselines'"),
-    ("validate", "steps/status.md", "json_cnt=len(glob.glob"),
+    ("validate", "steps/status.md", "artifact_set_report"),
     ("backup", "steps/bak.md", "by_id ="),
     ("active", "references/dir_and_metadata.md", 'p["control_root"]'),
     ("reuse", "references/dir_and_metadata.md", "STATUS=$("),
@@ -204,6 +204,55 @@ def test_no_raw_ticket_readers_in_executable_docs():
                         or re.search(r"json\.load\(f\)\.get\([\"']ticket_id", line)):
                     violations.append(f"{path.relative_to(ROOT)}: {line}")
     assert not violations, "Raw ticket readers bypass storage/pending checks:\n" + "\n".join(violations)
+
+
+STATUS_LITERALS = ("log_in_progress", "log_done", "init_in_progress", "plan_done",
+                   "review_in_progress", "review_done", "plan_finalized", "code_in_progress",
+                   "code_done", "deepcheck_in_progress", "deepcheck_done", "completed",
+                   "debug_in_progress", "debug_done", "lite_prepare_in_progress",
+                   "lite_prepare_done", "lite_code_in_progress", "lite_code_done",
+                   "lite_review_in_progress")
+
+
+def test_doc_status_vocabulary_is_resolved_from_the_contract():
+    """Executable doc snippets must not inline the status vocabulary.
+
+    A hardcoded mirror in SKILL.md silently rejected lite's `lite_*` states as
+    out-of-vocabulary; the profile-aware source is `load_state_machine`/`artifact_set_report`.
+    """
+    literal = re.compile(r"['\"](" + "|".join(STATUS_LITERALS) + r")['\"]")
+    violations = []
+    for path in [ROOT / "SKILL.md", *sorted((ROOT / "steps").glob("*.md")),
+                 *sorted((ROOT / "references").glob("*.md"))]:
+        for body in blocks(path.relative_to(ROOT)):
+            hits = set(literal.findall(body))
+            consults = "load_state_machine" in body or "artifact_set_report" in body
+            if len(hits) >= 3 and not consults:
+                violations.append(f"{path.relative_to(ROOT)}: {sorted(hits)}")
+    assert not violations, ("Status vocabulary must come from the workflow contract:\n"
+                            + "\n".join(violations))
+
+
+@pytest.mark.parametrize("status,expected_ok", [
+    ("lite_prepare_in_progress", True),
+    ("lite_code_done", True),
+    ("completed", True),
+    ("audit_done", False),
+])
+def test_skill_status_writeback_example_accepts_profile_states(status, expected_ok, tmp_path):
+    ticket = tmp_path / "project/.icode_output/.icode_output_1"
+    ticket.mkdir(parents=True)
+    dump(ticket / ctl.METADATA_NAME,
+         {"schema_version": 3, "ticket_id": "lite-1", "mode": "lite", "workflow_version": 1,
+          "status": status, "artifact_root": str(ticket), "completed_steps": []})
+    code = python_fragment("SKILL.md", "print('status:'")
+    code = code.replace("{ICODE_OUT_DIR}", ticket.as_posix())
+    code = code.replace("{ICODE_SKILL_ROOT}", ROOT.as_posix())
+    result = subprocess.run([sys.executable, "-X", "utf8", "-c", code],
+                            capture_output=True, text=True, encoding="utf-8")
+    assert (result.returncode == 0) == expected_ok, result.stdout + result.stderr
+    assert f"status: {status}" in result.stdout
+
 
 
 def test_full_workflow_status_examples_read_storage_v2_metadata(tmp_path):

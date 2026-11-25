@@ -185,8 +185,10 @@ Windows/WSL 构建按需加载 [WSL 构建合同](wsl_build.md)；本地 MCP 采
 **status 写回校验（强制，防词表外值落盘）**：每步写 `.ico_metadata.json` 前，必须先对照上方词表校验 `status` 在枚举内（`completed_steps` 中的步骤号须是 `steps/*.md` 清单里存在的合法值），词表外值直接判不合规、拒绝写回并修正。校验用一行命令：
 
 ```bash
-python3 -c 'import pathlib,sys; sys.path.insert(0,str(pathlib.Path(sys.argv[2]) / "tools")); import icode_control as ctl; d=ctl.read_metadata_readonly(sys.argv[1]); valid={"init_in_progress","plan_done","review_in_progress","review_done","plan_finalized","code_in_progress","code_done","deepcheck_in_progress","deepcheck_done","completed","log_in_progress","log_done","debug_in_progress","debug_done"}; s=d.get("status"); print("status:",s); sys.exit(0 if s in valid else 1)' "{ICODE_OUT_DIR}" "{ICODE_SKILL_ROOT}"
+python3 -c 'import pathlib,sys; sys.path.insert(0,str(pathlib.Path(sys.argv[2]) / "tools")); import icode_control as ctl; d=ctl.read_metadata_readonly(sys.argv[1]); valid=set(ctl.load_state_machine(d)["states"]); s=d.get("status"); print("status:",s); sys.exit(0 if s in valid else 1)' "{ICODE_OUT_DIR}" "{ICODE_SKILL_ROOT}"
 ```
+
+状态词表由 `ctl.load_state_machine(meta)["states"]` 按工单 profile 解析（full 取 gates.json `state_machine.states`，lite 取 `workflow_profiles.lite["1"]`），**可执行校验片段内不再硬编码词表**；上段词表与 SKILL.md 速查表只是人类可读镜像，判断一律走合同。
 
 
 

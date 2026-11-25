@@ -160,28 +160,31 @@ worktree: {worktree_path 字段读取方式：读 metadata.active_checkout（缺
 
 ```bash
 python3 -c "
-import json,sys,os,glob
+import sys
 sys.path.insert(0,'{ICODE_SKILL_ROOT}/tools')
 import icode_control as ctl
 d='.icode_output/.icode_output_'+('N' if len(sys.argv)<2 else sys.argv[1])
-req=['00_init.md','01_plan.md','02_review.md','03_plan_final.md','04_code_review_fix.md','05_deepcheck.md','06_audit.md']
-p=[f for f in req if os.path.exists(os.path.join(d,f))]
-missing=[f for f in ['01_plan.md','02_review.md','03_plan_final.md','04_code_review_fix.md','05_deepcheck.md','06_audit.md'] if not os.path.exists(os.path.join(d,f))]
-json_cnt=len(glob.glob(os.path.join(d,'review_round_*.json')))
-m=ctl.read_metadata_readonly(d)
-valid={'init_in_progress','plan_done','review_in_progress','review_done','plan_finalized','code_in_progress','code_done','deepcheck_in_progress','deepcheck_done','completed','log_in_progress','log_done'}
-st=m.get('status'); bad=st not in valid
-cf=m.get('code_files'); empty_cf=not cf
+r=ctl.artifact_set_report(d)
+profile=r['profile']; st=r['status']; missing=r['missing']
+have=len(r['present']); need=len(r['required']); rounds=r['review_round_json']
 miss_txt='无' if not missing else ','.join(missing)
-status_txt='词表内' if not bad else '词表外(禁止自定义,见 SKILL.md status 枚举)'
-cf_txt=('空/缺失(步骤4 后必须记录)' if empty_cf else str(len(cf))+' 个')
+status_txt='词表内' if r['status_legal'] else '词表外(禁止自定义,见 SKILL.md status 枚举)'
+if r['code_files_empty']:
+    cf_txt='空/缺失(实施阶段必须记录)'
+elif r['code_files_required']:
+    cf_txt=str(r['code_files_count'])+' 个'
+else:
+    cf_txt='尚未进入实施,暂不要求'
 print(f'工单 {d}')
-print(f'  产物: 存在 {len(p)}/7 主流程; 缺失 {miss_txt}; review_round_*.json {json_cnt} 个')
+print(f'  profile: {profile}')
+print(f'  产物: 存在 {have} 份; 必需 {need} 份, 缺失 {miss_txt}; review_round_*.json {rounds} 个')
 print(f'  status: {st} {status_txt}')
 print(f'  code_files: {cf_txt}')
-sys.exit(1 if (missing or bad or empty_cf) else 0)
+sys.exit(0 if r['ok'] else 1)
 "
 ```
+
+判据由 `ctl.artifact_set_report` 提供（**单一真源**）：状态词表与该 profile 的 `state_machine.states` 一致，必需产物按 profile 取值——full 为 6 份主流程产物，lite 无步骤 Markdown、只在 `completed` 后要求 `lite.md`。**禁止在文档或脚本的可执行片段内另抄一份状态词表**（人类速查镜像见 SKILL.md；曾因硬编码旧词表把 `lite_prepare_in_progress` 误判为词表外）。
 
 3. **拓扑检查（接入共享检查器）**：按 [references/worktree_isolation.md](../references/worktree_isolation.md) §3.8 执行统一拓扑门禁（只读），输出 verdict：
    - `pass` → `✅ 拓扑判定：PASS（单活动实现根）`

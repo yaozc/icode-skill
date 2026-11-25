@@ -5669,6 +5669,54 @@ def required_archive_files(meta, events=()):
     return required
 
 
+def artifact_set_report(out_dir, meta=None):
+    """产物集完整性判据，按 workflow profile 取状态词表与必需产物。
+
+    只读：不写 metadata、事件或产物。`/icode status --validate`（steps/status.md）
+    与 SKILL.md 的 status 写回校验都经本判据/同源合同取词表，避免文档内再维护
+    第二套状态词表（lite 的 lite_* 状态曾被旧硬编码词表误判为词表外）。步骤6
+    的产物集终检走 `check-outputs --step audit` 的步骤端口合同，与本判据同源
+    gates.json，但不调用本函数。
+    """
+    out_dir = Path(out_dir)
+    meta = read_metadata_readonly(out_dir) if meta is None else meta
+    profile = "lite" if meta.get("mode") == "lite" else "full"
+    contract = workflow_contract(meta)
+    states = list(contract["state_machine"]["states"])
+    terminals = list(contract["state_machine"].get("terminal_states_of_ticket") or [])
+    legal = set(states) | set(terminals)
+    status = meta.get("status")
+    # 必需产物：full 保持既有 6 份主流程产物判据；lite 无步骤 Markdown 产物，
+    # 其人类交付物 lite.md 由 lite-report 在终态前生成，故只在 completed 后要求。
+    if profile == "lite":
+        required = ["lite.md"] if status == "completed" else []
+    else:
+        required = ["01_plan.md", "02_review.md", "03_plan_final.md",
+                    "04_code_review_fix.md", "05_deepcheck.md", "06_audit.md"]
+    present = [name for name in (["00_init.md"] + required) if (out_dir / name).exists()]
+    missing = [name for name in required if not (out_dir / name).exists()]
+    review_round_json = len(list(out_dir.glob("review_round_*.json"))) if profile != "lite" else 0
+    code_files = meta.get("code_files")
+    code_files_count = len(code_files) if isinstance(code_files, list) else 0
+    # full：步骤4 起必须记录 code_files（既有判据不变，06 终检依赖同值）。
+    # lite：进入实施后才要求，prepare 阶段尚未确定改动文件属正常。
+    code_files_required = profile != "lite" or status in {
+        "lite_code_in_progress", "lite_code_done", "lite_review_in_progress", "completed"}
+    code_files_empty = not code_files_count and code_files_required
+    status_legal = status in legal
+    issues = []
+    if not status_legal:
+        issues.append(f"status 词表外: {status!r}（{profile} 合法状态: {', '.join(states)}）")
+    issues.extend(f"产物缺失: {name}" for name in missing)
+    if code_files_empty:
+        issues.append("code_files 空/缺失")
+    return {"ok": not issues, "profile": profile, "status": status, "status_legal": status_legal,
+            "legal_statuses": states, "required": required, "present": present, "missing": missing,
+            "review_round_json": review_round_json, "code_files_count": code_files_count,
+            "code_files_empty": code_files_empty, "code_files_required": code_files_required,
+            "issues": issues}
+
+
 def definition_store_entries(root):
     """Relative POSIX paths of every content-addressed definition side file."""
     store = Path(root) / DEFINITION_STORE_DIR
