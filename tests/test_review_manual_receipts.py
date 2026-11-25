@@ -339,6 +339,13 @@ def _repo(tmp_path, count=50):
     (workspace / "src").mkdir()
     source = workspace / "src/app.py"
     source.write_text("".join(f"def f{i}(): pass\n" for i in range(count)), encoding="utf-8")
+    # workspace_git_head 端口要读 HEAD：空仓库会让 deepcheck 起步报 step_ports_transient，
+    # 因此夹具必须先落一个基线 commit（与真实工作区一致）。
+    for command in (["config", "user.email", "fixture@example.invalid"],
+                    ["config", "user.name", "Fixture"],
+                    ["add", "-A"], ["commit", "-qm", "base"]):
+        subprocess.run(["git", "-C", str(workspace), *command], check=True,
+                       capture_output=True, text=True)
     return workspace, source
 
 
