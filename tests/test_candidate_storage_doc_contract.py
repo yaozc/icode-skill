@@ -233,6 +233,24 @@ def test_doc_status_vocabulary_is_resolved_from_the_contract():
                             + "\n".join(violations))
 
 
+def test_status_mapping_table_covers_every_contract_state():
+    """steps/status.md 的中文映射表必须覆盖 full 与 lite 两个 profile 的全部合法状态。"""
+    text = (ROOT / "steps/status.md").read_text(encoding="utf-8")
+    table = text.split("| status | 中文说明 |", 1)[1].split("\n\n", 1)[0]
+    # 只看第一列（状态列），说明列里出现的字段名（如 lite_review_report）不算状态。
+    documented = set()
+    for line in table.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if cells:
+            documented |= set(re.findall(r"`([a-z_]+)`", cells[0]))
+    expected = set()
+    for meta in ({"mode": "full"}, {"mode": "lite", "workflow_version": 1}):
+        machine = ctl.load_state_machine(meta)
+        expected |= set(machine["states"]) | set(machine.get("terminal_states_of_ticket") or [])
+    assert expected - documented == set(), f"映射表缺少状态: {sorted(expected - documented)}"
+    assert documented - expected == set(), f"映射表含词表外状态: {sorted(documented - expected)}"
+
+
 @pytest.mark.parametrize("status,expected_ok", [
     ("lite_prepare_in_progress", True),
     ("lite_code_done", True),

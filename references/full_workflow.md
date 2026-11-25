@@ -26,6 +26,7 @@ skill 内所有 `python3 tools/...` 形式的命令执行前先选择并核实�
 
 Windows 上裸 `python` / `python3` 常解析到 `%LOCALAPPDATA%\Microsoft\WindowsApps` 的应用执行别名（假 stub），表现为**退出码 0、无任何输出**。出现这种"静默成功"一律视为失败：改用 `py -3` 重跑同一命令，不得据此判定步骤完成，也不得把空输出当作通过证据。可用性判定：`py -3 -c "import sys; print(sys.executable)"` 有真实路径输出即可用。
 
+<!-- BEGIN shared:natural-language-entry (generated from SKILL.md by tools/sync_shared_docs.py; do not edit inline) -->
 ## 自然语言入口
 
 用户可直接说“使用 ICODE 给这个模块增加重试，先出方案，不改代码”或“用 ICODE 测设备现有版本，不编译、不部署”。由**当前宿主 Agent**理解意图，不新增模型调用或 Runtime 依赖；`/icode <自然语言>` 与原有 `/icode <子命令>` 并存。
@@ -35,7 +36,9 @@ Windows 上裸 `python` / `python3` 常解析到 `%LOCALAPPDATA%\Microsoft\Windo
 用户明确要求“按计划分阶段开发，每阶段验收确认后再继续”时，读取[阶段真源](serial_evidence_stages.md)，由宿主 AI 按各阶段目标选择并冻结既有流程与验收合同，再注册阶段绑定；续接按真实绑定识别当前阶段。不根据文件名、阶段编号或普通“继续”猜测启用，不增加新的公开指令。
 
 裸 `/icode`、`/icode help` 和能力咨询只展示帮助，不建工单；帮助覆盖下表全部能力与上述参考文档的分类示例，用户要完整示例时展开，不能只给 start/plan/code。示例中的请求不是执行授权。普通未点名 ICODE 的新任务不强制接管。
+<!-- END shared:natural-language-entry -->
 
+<!-- BEGIN shared:command-catalog (generated from SKILL.md by tools/sync_shared_docs.py; do not edit inline) -->
 ## 调用命令
 
 正式工单产物保存在 `.icode_output/.icode_output_N/`（N 自动递增）；非工单命令按各自行指定隔离目录。**详细语义一律以 `steps/*.md` 为准，下表只给路由与关键 flag**：
@@ -47,6 +50,7 @@ Windows 上裸 `python` / `python3` 常解析到 `%LOCALAPPDATA%\Microsoft\Windo
 | `[辅助]` `/icode install [--client claude\|codex\|codebuddy\|workbuddy\|all] [--basic\|--preview]` | ICODE、宿主命令桥与 MCP 一键安装；`--basic` 跳过 MCP，`--preview` 零写入预览 | 否 |
 | `[入口]` `/icode log [零散信息...]` | 日志根因分析→转修复需求；版本基线门；TB 复用/批量/`--debug`/`--worktree`；对外简报 | ✅ 每次都新建（同 TB 单复用除外） |
 | `[入口]` `/icode init [--guide] [<需求或指南约束>]` | 常规：新建并产出 `00_init.md`；`--guide`：复用最新合格 init，刷新新人指南+审计 | 常规 ✅；guide 否 |
+| `[流程]` `/icode lite [<需求>\|--ticket <id>]` | 原生三阶段：规划、实现测试、独立审核；见 [lite](../steps/lite.md) | ✅ 新建 / 显式续跑 |
 | `[流程]` `/icode start <需求>` | 全流程：创建/复用目录 → 步骤1~6 串联；`--worktree` | ✅ 创建 / 复用 |
 | `[流程]` `/icode fast <需求>` | 精简全流程：plan→review(1轮无对抗)→merge→code→deepcheck(Reverse)→audit；`--worktree` | ✅ 创建 / 复用 |
 | `[流程]` `/icode plan <需求>` | 仅步骤1：拟定计划；`--worktree` | ✅ 创建 / 复用 |
@@ -83,6 +87,7 @@ DOC按当前工作区生成；模块族与精确版本快照、旧库保护及�
 > **init/log 入口状态转换时机**：新工单先生成非空 ID 并经 `create` 原子出生；`init` 为 `init_in_progress`+`["0"]`，`log` 为 `log_in_progress`+`[]`，收尾经 `transition` 到 `log_done` 并追加 `"log"`；plan 产物/合同完成后经 `transition` 到 `plan_done` 并追加 `"1"`。禁止直写完成态。
 
 > **公共选项**：`--worktree` 隔离；`--debug`（init/log）建孪生；`--guide`（仅 init，互斥）派生指南。
+<!-- END shared:command-catalog -->
 
 ## 控制面（工单 schema v3，vNext）
 
@@ -122,6 +127,7 @@ Windows/WSL 构建按需加载 [WSL 构建合同](wsl_build.md)；本地 MCP 采
 
 ## 通用规则
 
+<!-- BEGIN shared:artifact-vocabulary (generated from SKILL.md by tools/sync_shared_docs.py; do not edit inline) -->
 ### 产物命名 + status 词表速查表（硬性速查，防"发明命名/状态"）
 
 > **产物文件名与 status 值一律以 `steps/XX_*.md` 各步骤规定为准，下表只是速查不是第二真源**（完整 status 语义见下方「status 字段枚举」段）。写产物 / 写 metadata 前对照下表核对，命名或状态不在表内 = 不合规（见下方「产物命名硬性条款」）。
@@ -131,7 +137,7 @@ Windows/WSL 构建按需加载 [WSL 构建合同](wsl_build.md)；本地 MCP 采
 | 步骤 | 产物文件名 | 备注 |
 |------|-----------|------|
 | 1 | `01_plan.md` | 计划全文 |
-| 2 | `02_review.md` + `review_round_{N}.json` + `_review_summary.md` | 多轮审查；首轮必须写 JSON；后续轮次有 new_issues / pending_verification / refuted_issues 任一非空时写 JSON；`_review_summary.md` 为步骤2 末尾压缩摘要（供 merge 消费，cheap-research 不可用时跳过，详见 [steps/02_review.md](../steps/02_review.md) 步骤5） |
+| 2 | `02_review.md` + `review_round_{N}.json` + `_review_summary.md` | 多轮审查；首轮必须写 JSON，后续轮次有 new_issues / pending_verification / refuted_issues 任一非空时写 JSON；`_review_summary.md` 为步骤2 末尾压缩摘要（供 merge 消费，cheap-research 不可用时跳过，详见 [steps/02_review.md](../steps/02_review.md) 步骤6） |
 | 3 | `03_plan_final.md` | **完整计划副本**（复制 `01_plan.md` 全文 + 审查采纳标记 + 末尾「实现偏差备忘」空段），不是元数据摘要 |
 | 4 | `04_code_review_fix.md` | 步骤4 末尾 1.5「Code Review Fix」复检产物（所有工单都触发，不论入口） |
 | 5 | `05_deepcheck.md` | 三阶段复检 |
@@ -140,9 +146,10 @@ Windows/WSL 构建按需加载 [WSL 构建合同](wsl_build.md)；本地 MCP 采
 
 **步骤 0 派生例外**：`init --guide` 两个 `deliverables/` 产物由 [guide_contract.md](guide_contract.md) 约束，不写步骤号、不改 status。
 
-**status 词表**（写回 metadata 前逐字对照，禁止自定义）：正常流 `log_in_progress` / `log_done` → `init_in_progress` → `plan_done` → `review_in_progress` / `review_done` → `plan_finalized` → `code_in_progress` / `code_done` → `deepcheck_in_progress` / `deepcheck_done` → `completed`（终态）；debug 隔离流 `debug_in_progress` → `debug_done`。
+**status 词表**（写回 metadata 前逐字对照，禁止自定义）：正常流 `log_in_progress` / `log_done` → `init_in_progress` → `plan_done` → `review_in_progress` / `review_done` → `plan_finalized` → `code_in_progress` / `code_done` → `deepcheck_in_progress` / `deepcheck_done` → `completed`（终态）；debug 隔离流 `debug_in_progress` → `debug_done`；lite 走 `lite_prepare_in_progress` → `lite_prepare_done` → `lite_code_in_progress` → `lite_code_done` → `lite_review_in_progress` → `completed`（见 [steps/lite.md](../steps/lite.md)）。
 
 **产物命名硬性条款**：产物必须按 `steps/XX_*.md` 规定的**文件名、目录、格式**产出；metadata 的 `status` 必须在本词表内。**自定义文件名 / 自定义格式 / 词表外状态值 = 不合规**，内容质量高也不能豁免——内容好 ≠ 机制合规。发现命名/状态不在上表，停下对照对应 `steps/XX_*.md` 修正，不得沿用自造近似（如用 `03_merge.md` 替代 `03_plan_final.md`、自造 `audit_done` 状态）。
+<!-- END shared:artifact-vocabulary -->
 
 ### 强制阻断边界矩阵
 
@@ -192,9 +199,11 @@ python3 -c 'import pathlib,sys; sys.path.insert(0,str(pathlib.Path(sys.argv[2]) 
 
 
 
+<!-- BEGIN shared:execution-mode (generated from SKILL.md by tools/sync_shared_docs.py; do not edit inline) -->
 ### 执行模式
 
 所有步骤（含可选步骤0）在主会话中执行，使用当前会话模型。**不主动切换模型**，用户如需切换可手动 `/model`。
+<!-- END shared:execution-mode -->
 
 ### 强制思考前置 + 反偷懒约束（所有步骤必须遵守，硬性总则）
 

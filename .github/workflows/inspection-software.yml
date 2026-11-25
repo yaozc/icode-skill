@@ -2,7 +2,7 @@ name: Inspection helper software
 on:
   push:
     branches: [main]
-    paths:
+    paths: &inspection_paths
       - '.gitattributes'
       - 'tools/inspection_worklist.py'
       - 'tools/icode_control.py'
@@ -42,6 +42,8 @@ on:
       - 'tests/test_candidate_storage_faults.py'
       - 'tests/test_candidate_storage_readers.py'
       - 'tests/test_candidate_storage_doc_contract.py'
+      - 'tools/sync_shared_docs.py'
+      - 'tests/test_shared_doc_sync.py'
       - 'tests/test_step_port_protection_unit.py'
       - 'mcp/icode-workspace/**'
       - 'mcp/icode-evidence/**'
@@ -85,6 +87,8 @@ on:
       - '.github/workflows/candidate-provider-software.yml'
       - 'tests/test_candidate_workflow_triggers.py'
       - 'tests/test_candidate_code_inspection_provider_unit.py'
+  pull_request:
+    paths: *inspection_paths
   workflow_dispatch:
 permissions:
   contents: read
@@ -171,7 +175,7 @@ jobs:
       - name: Source-bound execution profiles, rule coverage and batched-write equivalence
         run: python -m pytest -p no:anyio tests/test_execution_profile.py tests/test_execution_profile_integration.py tests/test_execution_profile_rule_coverage.py tests/test_fast_execution_contract.py tests/test_execution_closeout_recipe.py tests/test_control_batching_equivalence.py tests/test_step_port_protection_unit.py -q
       - name: Candidate storage roundtrip, recovery and legacy compaction contracts
-        run: python -m pytest -p no:anyio tests/test_candidate_storage.py tests/test_candidate_storage_control.py tests/test_candidate_storage_stage.py tests/test_candidate_storage_faults.py tests/test_candidate_storage_readers.py tests/test_candidate_storage_doc_contract.py tests/test_storage_compaction.py -q
+        run: python -m pytest -p no:anyio tests/test_candidate_storage.py tests/test_candidate_storage_control.py tests/test_candidate_storage_stage.py tests/test_candidate_storage_faults.py tests/test_candidate_storage_readers.py tests/test_candidate_storage_doc_contract.py tests/test_shared_doc_sync.py tests/test_storage_compaction.py -q
       - name: Offline distribution resource contract
         if: runner.os == 'Linux'
         run: python -m pytest -p no:anyio tests/test_skill_distribution.py -q

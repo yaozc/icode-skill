@@ -140,7 +140,7 @@ Windows/WSL 构建按需加载 [WSL 构建合同](references/wsl_build.md)；本
 | 步骤 | 产物文件名 | 备注 |
 |------|-----------|------|
 | 1 | `01_plan.md` | 计划全文 |
-| 2 | `02_review.md` + `review_round_{N}.json` + `_review_summary.md` | 多轮审查；每轮有 new_issues / pending_verification / refuted_issues 任一非空才写 JSON；`_review_summary.md` 为步骤2 末尾压缩摘要（供 merge 消费，cheap-research 不可用时跳过，详见 [steps/02_review.md](steps/02_review.md) 步骤6） |
+| 2 | `02_review.md` + `review_round_{N}.json` + `_review_summary.md` | 多轮审查；首轮必须写 JSON，后续轮次有 new_issues / pending_verification / refuted_issues 任一非空时写 JSON；`_review_summary.md` 为步骤2 末尾压缩摘要（供 merge 消费，cheap-research 不可用时跳过，详见 [steps/02_review.md](steps/02_review.md) 步骤6） |
 | 3 | `03_plan_final.md` | **完整计划副本**（复制 `01_plan.md` 全文 + 审查采纳标记 + 末尾「实现偏差备忘」空段），不是元数据摘要 |
 | 4 | `04_code_review_fix.md` | 步骤4 末尾 1.5「Code Review Fix」复检产物（所有工单都触发，不论入口） |
 | 5 | `05_deepcheck.md` | 三阶段复检 |
@@ -149,7 +149,7 @@ Windows/WSL 构建按需加载 [WSL 构建合同](references/wsl_build.md)；本
 
 **步骤 0 派生例外**：`init --guide` 两个 `deliverables/` 产物由 [guide_contract.md](references/guide_contract.md) 约束，不写步骤号、不改 status。
 
-**status 词表**（写回 metadata 前逐字对照，禁止自定义）：正常流 `log_in_progress` / `log_done` → `init_in_progress` → `plan_done` → `review_in_progress` / `review_done` → `plan_finalized` → `code_in_progress` / `code_done` → `deepcheck_in_progress` / `deepcheck_done` → `completed`（终态）；debug 隔离流 `debug_in_progress` → `debug_done`；lite 走 `lite_*` 流（见 [steps/lite.md](steps/lite.md)）。
+**status 词表**（写回 metadata 前逐字对照，禁止自定义）：正常流 `log_in_progress` / `log_done` → `init_in_progress` → `plan_done` → `review_in_progress` / `review_done` → `plan_finalized` → `code_in_progress` / `code_done` → `deepcheck_in_progress` / `deepcheck_done` → `completed`（终态）；debug 隔离流 `debug_in_progress` → `debug_done`；lite 走 `lite_prepare_in_progress` → `lite_prepare_done` → `lite_code_in_progress` → `lite_code_done` → `lite_review_in_progress` → `completed`（见 [steps/lite.md](steps/lite.md)）。
 
 **产物命名硬性条款**：产物必须按 `steps/XX_*.md` 规定的**文件名、目录、格式**产出；metadata 的 `status` 必须在本词表内。**自定义文件名 / 自定义格式 / 词表外状态值 = 不合规**，内容质量高也不能豁免——内容好 ≠ 机制合规。发现命名/状态不在上表，停下对照对应 `steps/XX_*.md` 修正，不得沿用自造近似（如用 `03_merge.md` 替代 `03_plan_final.md`、自造 `audit_done` 状态）。
 
@@ -190,7 +190,6 @@ Windows/WSL 构建按需加载 [WSL 构建合同](references/wsl_build.md)；本
 python3 -c "import sys; sys.path.insert(0,'{ICODE_SKILL_ROOT}/tools'); import icode_control as ctl; d=ctl.read_metadata_readonly('{ICODE_OUT_DIR}'); valid=set(ctl.load_state_machine(d)['states']); s=d.get('status'); print('status:', s); sys.exit(0 if s in valid else 1)"
 ```
 
-词表按 profile 由 `ctl.load_state_machine(meta)['states']` 解析（真源 `gates.json`），片段不硬编码——旧词表曾把 lite 状态判为词表外。
 
 
 

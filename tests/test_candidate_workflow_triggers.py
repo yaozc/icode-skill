@@ -6,16 +6,25 @@ import unittest
 
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/inspection-software.yml"
-START = "on:\n  push:\n    branches: [main]\n    paths:\n"
-END = "  workflow_dispatch:\n"
+# 两种受支持布局：单字面清单（push 用），或被 pull_request 以别名复用的同一清单。
+LAYOUTS = [
+    ("on:\n  push:\n    branches: [main]\n    paths: &inspection_paths\n",
+     "  pull_request:\n    paths: *inspection_paths\n  workflow_dispatch:\n"),
+    ("on:\n  push:\n    branches: [main]\n    paths:\n",
+     "  workflow_dispatch:\n"),
+]
 
 
 def push_paths(text):
-    # Deliberately bounded to this workflow's current literal-list layout.
-    if text.count(START) != 1 or text.count(END) != 1:
+    # Deliberately bounded to this workflow's supported layouts: exactly one literal path
+    # list under push; a pull_request trigger may reuse it through an alias.
+    matches = [(start, end) for start, end in LAYOUTS
+               if text.count(start) == 1 and text.count(end) == 1]
+    if len(matches) != 1:
         raise AssertionError("inspection push paths boundaries changed")
-    before, body = text.split(START)
-    paths, after = body.split(END)
+    start, end = matches[0]
+    before, body = text.split(start)
+    paths, after = body.split(end)
     values = []
     for line in paths.splitlines():
         match = re.fullmatch(r"      - (['\"])(.+)\1", line)

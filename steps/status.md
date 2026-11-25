@@ -50,7 +50,7 @@ worktree: {worktree_path 字段读取方式：读 metadata.active_checkout（缺
 索引工单: {全局索引 tickets 数} 条（stale: {stale=true 条数} 条 / disproved: {verdict=disproved 条数} 条）（用 `json.load` 全量解析 `~/.claude/icode_data/index.json` 的 `tickets` 数组取长度并统计 stale=true / verdict=disproved 数，禁止按行截断--「前 50 行」仅适用于 project_docs 章节）
 ```
 
-**`status` -> 中文说明映射**（与 SKILL.md `status` 字段枚举表一致）：
+**`status` -> 中文说明映射**（与 SKILL.md `status` 词表一致；机器真源是 `gates.json` 的 `state_machine.states`，按工单 profile 解析）：
 
 | status | 中文说明 |
 |--------|----------|
@@ -61,7 +61,11 @@ worktree: {worktree_path 字段读取方式：读 metadata.active_checkout（缺
 | `plan_finalized` | 步骤3 定稿完成 |
 | `code_in_progress` / `code_done` | 步骤4 编码中 / 完成 |
 | `deepcheck_in_progress` / `deepcheck_done` | 步骤5 复检中 / 完成 |
-| `completed` | 步骤6 终审完成（终态） |
+| `completed` | 步骤6 终审完成（full/lite 共同终态） |
+| `debug_in_progress` / `debug_done` | debug 隔离流分析中 / 完成（`debug_done` 是 debug 流终态） |
+| `lite_prepare_in_progress` / `lite_prepare_done` | lite 准备阶段（合同/范围形成）进行中 / 完成 |
+| `lite_code_in_progress` / `lite_code_done` | lite 实施阶段进行中 / 完成 |
+| `lite_review_in_progress` | lite 独立审核阶段进行中（回执绑定 `lite_review_report`，成品报告为 `lite.md`） |
 
 5. 若无 `.icode_output_N` 目录，输出提示："未找到工单目录，请先运行 /icode start/init/log"
 6. **debug 工单隔离**（详 [references/debug_mode.md](../references/debug_mode.md)）：本模式默认**只看正常工单**——`ls .icode_output/.icode_output_*` 仅匹配正常目录，天然排除 `.icode_output/.debug/.icode_output_*`。**debug 工单不入本模式的查询范围**。如需查 debug 工单，手动 `ls .icode_output/.debug/` 或直接 `cd .icode_output/.debug/.icode_output_N/` + Read `.ico_metadata.json`
