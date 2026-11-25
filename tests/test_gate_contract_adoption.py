@@ -261,6 +261,7 @@ def test_adopt_gate_contract_retracts_boundary_for_open_attempts():
     assert meta3["mcp_gate_contract_history_boundary"] == meta3["mcp_gate_contract_adopted_at"]
 
 
+@_REQUIRES_SYMLINK
 def test_plan_attempt_remains_compatible_when_optional_output_is_added(tmp_path):
     out = tmp_path / ".icode_output/.icode_output_1"
     legacy = _write_legacy_sim(tmp_path, legacy_plan_contract=True)
@@ -617,6 +618,7 @@ def test_foreign_trace_makes_ticket_debt_unknown(tmp_path):
     assert control.ticket_enumeration_debt(out, control.load_metadata(out)) is None
 
 
+@_REQUIRES_SYMLINK
 def test_step_start_replay_across_contract_upgrade(tmp_path):
     """P2 回归：工具升级为步骤合同新增端口后，旧 attempt 的同请求重试是跨版本
     幂等重放（非 idempotency_conflict），且升级中的恢复（check-outputs）不再把
@@ -650,6 +652,7 @@ def test_step_start_replay_across_contract_upgrade(tmp_path):
     assert "contract_drift_reenter" not in (result.stdout + result.stderr), result.stdout[-400:]
 
 
+@_REQUIRES_SYMLINK
 def test_same_request_with_different_attempt_is_not_replayed(tmp_path):
     """P2 回归：同 request 但换了 attempt 是不同执行，兼容分支不得重放旧事件
     （否则调用方按新 attempt 找不到启动事件）。"""
@@ -679,6 +682,7 @@ def test_same_request_with_different_attempt_is_not_replayed(tmp_path):
     assert payload.get("gate_id") == "idempotency_conflict", payload
 
 
+@_REQUIRES_SYMLINK
 def test_upgraded_contract_attempt_can_pass_boundary_checks(tmp_path):
     """P2 回归：旧合同启动的 attempt 在升级后重放启动成功，紧接着的边界检查
     也必须按升级兼容继续（不得因新增端口被判漂移并路由回 plan）。"""
@@ -715,6 +719,7 @@ def test_upgraded_contract_attempt_can_pass_boundary_checks(tmp_path):
     assert finish["outcome"] == "degraded"
 
 
+@_REQUIRES_SYMLINK
 @pytest.mark.parametrize("drift", ["required_checks", "outputs", "drift_routes"])
 def test_review_upgrade_blocks_unrecognized_contract(tmp_path, drift):
     def change_contract(contract):

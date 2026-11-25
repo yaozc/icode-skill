@@ -229,7 +229,8 @@ def test_transient_mode_change_is_detected_when_profile_later_overrides_mode():
     assert module.step_mode_changed(start, {"mode": "fast", "risk_profile": {"effective_mode": "full"}}, events)
 
 
-@pytest.mark.parametrize("replacement", ["def changed(): pass\n", "#" * (1048576 + 1)])
+@pytest.mark.parametrize("replacement", ["def changed(): pass\n", "#" * (1048576 + 1)],
+                         ids=["small_change", "over_byte_budget"])
 def test_threshold_rejects_source_changed_after_enumeration(tmp_path, monkeypatch, replacement):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     src = tmp_path / "src"
