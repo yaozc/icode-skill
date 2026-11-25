@@ -76,7 +76,7 @@ fi
 
 if [[ -d "$FRESH/fixture-skill" ]]; then
   BEFORE_REPEAT="$(tree_hash "$FRESH/fixture-skill")"
-  BEFORE_REPEAT_INODE="$(stat -c %i "$FRESH/fixture-skill")"
+  BEFORE_REPEAT_INODE="$(icode_inode "$FRESH/fixture-skill")"
 else
   BEFORE_REPEAT="missing"
   BEFORE_REPEAT_INODE="missing"
@@ -85,7 +85,7 @@ if [[ -x "$INSTALLER" ]] \
   && python3 "$INSTALLER" --manifest "$PACKS/manifest.json" \
      --target-root "$FRESH" >"$TMP/repeat-output.txt" 2>&1 \
   && [[ "$BEFORE_REPEAT" == "$(tree_hash "$FRESH/fixture-skill")" ]] \
-  && [[ "$BEFORE_REPEAT_INODE" == "$(stat -c %i "$FRESH/fixture-skill")" ]] \
+  && [[ "$BEFORE_REPEAT_INODE" == "$(icode_inode "$FRESH/fixture-skill")" ]] \
   && grep -q '^current:' "$TMP/repeat-output.txt"; then
   ok "repeated installation is a no-write current-state operation"
 else

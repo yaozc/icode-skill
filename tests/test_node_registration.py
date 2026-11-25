@@ -264,7 +264,9 @@ def test_reconcile_accepts_host_receipts_and_retains_unknown_ownership(isolated,
         directory = root / "mcp/context7"
         directory.mkdir(parents=True)
         (directory / "install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
-    node = {"command": "custom-context7", "args": [], "disabled": True} if custom else legacy(f, env={"HOST_SECRET": "private"}, timeout=72)
+    # 秘密值必须是唯一串：macOS 的临时路径含 /private/var，用 "private" 当哨兵会假红。
+    node = ({"command": "custom-context7", "args": [], "disabled": True} if custom
+            else legacy(f, env={"HOST_SECRET": "leaked-host-secret-9f3a"}, timeout=72))
     put("codebuddy", f, node)
     # Per-host settings do not match a shared Claude export, but are safe to
     # migrate or explicitly retain without granting ownership of custom code.
@@ -272,7 +274,7 @@ def test_reconcile_accepts_host_receipts_and_retains_unknown_ownership(isolated,
     f.module.register_managed("context7", f.runtime["node"], hosts=["codebuddy"])
     result = r.finish(plan, [installed])
     assert result["status"] == "complete" and result["registered"] == 1
-    assert "private" not in Path(plan).read_text(encoding="utf-8")
+    assert "leaked-host-secret-9f3a" not in Path(plan).read_text(encoding="utf-8")
     if custom:
         (source / "mcp/context7/install.sh").unlink()
         retired = r.prepare(source, [installed], "codebuddy", state_root=state)

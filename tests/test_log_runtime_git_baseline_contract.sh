@@ -229,13 +229,16 @@ fi
 # 运行时防回归：真实提取 9.6 完成门代码，验证"§2.0.1 有矩阵 + §2.1 业务 unknown + metadata 空"必须被拦截
 #   （第 1 轮自检发现：9.6 曾用裸 'unknown' in s2 判降级，§2.1 业务 unknown 会把偷懒场景误放行 → 已收紧为精确短语）
 if command -v python3 >/dev/null 2>&1; then
-  gate96=$(python3 - "$LOG_DOC" <<'PYEOF'
+  # bash 3.2（macOS 自带）无法解析 "heredoc 直接写在 $( ) 里"，会报
+  # unmatched backtick；先把提取器落到临时文件，再从文件执行。
+  gate_extract="$(mktemp -d)/extract_gate96.py"
+  cat >"$gate_extract" <<'PYEOF'
 import re, sys, io
 src = io.open(sys.argv[1], encoding="utf-8").read()
 m = re.search(r"### 9\.6 版本基线完成门.*?```bash\n(python3 -c \"\n.*?\n\"\n)", src, re.S)
 sys.stdout.write(m.group(1) if m else "")
 PYEOF
-)
+  gate96=$(python3 "$gate_extract" "$LOG_DOC")
   if [ -z "$gate96" ]; then
     echo "  ❌ 运行时 9.6：未能从 log.md 提取完成门代码"
     FAIL=$((FAIL+1))

@@ -23,7 +23,9 @@ if [ -z "$NODE" ] || [ -z "$NPX" ]; then
 fi
 
 # 1) 默认注入：空 HOME 下注册 → env.DISABLE_THOUGHT_LOGGING == "true"，且回读一致
-HOME1="$(mktemp -d)"
+# macOS 的 /var、/tmp 是指向 /private/... 的符号链接，而注册器拒绝含符号链接的
+# 父目录（防重定向写入）；临时 HOME 先解析为真实路径，避免平台性假红。
+HOME1="$(cd "$(mktemp -d)" && pwd -P)"
 (
   export HOME="$HOME1"
   mkdir -p "$HOME/.claude"
@@ -39,7 +41,7 @@ PY
 if [ "$OUT" = "true" ]; then
   ok "默认注册注入 DISABLE_THOUGHT_LOGGING=true"
 else
-  bad "默认注册未注入 DISABLE_THOUGHT_LOGGING=true（got: $OUT）"
+  bad "默认注册未注入 DISABLE_THOUGHT_LOGGING=true（got: ${OUT}）"
 fi
 # Codex 导出 entry 也带 env
 if [ -f "$HOME1/.claude/icode_data/mcp_entries/sequential-thinking.json" ] && \
@@ -75,7 +77,7 @@ PY
 if [ "$OUT2" = "false" ]; then
   ok "用户 DISABLE_THOUGHT_LOGGING=false 不被 install 覆盖"
 else
-  bad "用户 DISABLE_THOUGHT_LOGGING=false 被覆盖（got: $OUT2）"
+  bad "用户 DISABLE_THOUGHT_LOGGING=false 被覆盖（got: ${OUT2}）"
 fi
 rm -rf "$HOME2"
 

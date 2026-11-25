@@ -6,6 +6,7 @@ import re
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -17,7 +18,7 @@ class ToolSupportProgressTest(unittest.TestCase):
         environment = {key: value for key, value in os.environ.items()
                        if key not in {'ICODE_RUN_HOST_LOADING', 'ICODE_SKILLS_CLI'}}
         result = subprocess.run(
-            ['python3', '-B', '-m', 'unittest', 'discover', '-s', 'tests',
+            [sys.executable, '-B', '-m', 'unittest', 'discover', '-s', 'tests',
              '-p', 'test_host_skill_loading.py', '-v'], cwd=ROOT, env=environment,
             capture_output=True, text=True, timeout=15,
         )

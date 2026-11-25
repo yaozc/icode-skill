@@ -177,7 +177,11 @@ else
 fi
 
 FAKE_PYTHON="$TMP/fake-python"
-printf '#!/usr/bin/env bash\nexit 0\n' >"$FAKE_PYTHON"
+# 安装器把这个值同时用于版本探测、路径规范化（canonical_path）和 DOCX 引导，
+# 全空响应的桩会让"源与目标相同"误判并跳过同步。因此除 DOCX 引导外一律透传
+# 真实解释器，只把两个 bootstrap 脚本换成零网络的成功回执。
+REAL_PYTHON="$(command -v python3)"
+printf '#!/usr/bin/env bash\ncase "${1:-}" in\n  *bootstrap_runtime.py|*bootstrap_renderer.py) echo \'{"state":"installed"}\'; exit 0 ;;\nesac\nexec "%s" "$@"\n' "$REAL_PYTHON" >"$FAKE_PYTHON"
 chmod +x "$FAKE_PYTHON"
 APPLY_INSTALL_HOME="$TMP/apply-install-home"
 APPLY_INSTALL_WB="$TMP/apply-install-wb"

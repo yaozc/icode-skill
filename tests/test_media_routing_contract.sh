@@ -22,6 +22,9 @@ HOST_ADAPTERS="references/host_adapters.md"
 LOG_STEP="steps/log.md"
 LOG_MEDIA_REF="references/log_tb_and_media.md"
 TMP="$(mktemp -d -t icode-media-routing.XXXXXX)"
+# macOS 的 /var、/tmp 是指向 /private/... 的符号链接：注册路径校验会拒绝
+# 含符号链接的父目录，先把临时目录解析为真实路径，避免平台性假红。
+TMP="$(cd "$TMP" && pwd -P)"
 trap 'rm -rf "$TMP"' EXIT
 
 cat >"$TMP/profile.json" <<'JSON'

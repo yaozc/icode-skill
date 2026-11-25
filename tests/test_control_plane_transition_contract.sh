@@ -71,7 +71,16 @@ cat > "$T/idx.json" <<'EOF'
  {"control_schema_version":3,"ticket_id":"intruder","project_path":"__T__","out_dir":".icode_output/.icode_output_1","status":"completed"}
 ]}
 EOF
-sed -i "s|__T__|$W2|" "$T/idx.json"
+python3 - "$T/idx.json" "$W2" <<'PY'
+import json, sys
+path, workspace = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as fh:
+    data = json.load(fh)
+for row in data["tickets"]:
+    row["project_path"] = workspace
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=False)
+PY
 if $CTL index-write --ticket-dir "$D2" --index "$T/idx.json" 2>/dev/null | grep -q 'out_dir_ownership'; then
   ok "同 out_dir 不同 ticket_id 拒绝写入"; else bad "out_dir 所有权冲突未拦截"; fi
 

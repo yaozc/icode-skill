@@ -357,6 +357,12 @@ import sys
 sys.path.insert(0, sys.argv[1])
 import claude_registry
 claude_registry.register("fixture-mcp", {"command": sys.executable, "args": ["-c", "pass"]})
+# --client all 在装有 codex CLI 的机器上会把 codex 纳入 desired 校验；
+# 与真实 mcp/install.sh 同语义补注册（CLI 缺失时 codex_register 自动跳过）。
+import client_registry
+message, ok = client_registry.codex_register("fixture-mcp")
+if not ok:
+    raise SystemExit(message)
 PY
 SH
 mkdir -p "$MCP_SOURCE/mcp/fixture-mcp"

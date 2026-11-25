@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Windows: python3 可能是 WindowsApps 假 stub（无输出、exit 49）；加载共享 shim
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/python3-shim.sh" 2>/dev/null || true
+# macOS 默认没有 GNU timeout：缺省时直接执行，避免 "timeout: command not found"（rc=127）
+# 被当成被测逻辑失败；冒烟脚本自带 MCP 客户端超时，不会无限挂起。
+_run_with_timeout() {
+  _ic_seconds="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$_ic_seconds" "$@"; else "$@"; fi
+}
 # 契约测试：cheap-research 执行门（gate）机器真源 + 运行时校验器
 #
 # 覆盖 ICODE_CHEAP_RESEARCH_EXECUTION_GATE_OPTIMIZATION.md §12：
@@ -518,7 +524,7 @@ echo "=== 14. stdio 冒烟回归（R-2：Output validation error 再犯防护）
 # 真实 stdio 冒烟需要 mcp Python SDK；缺 SDK 时 client 会一直等，表现为超时而非明确报错
 if [ "$(python3 -c 'import mcp.server; print(1)' 2>/dev/null)" != "1" ]; then
   echo "  SKIP T14 stdio 冒烟（本机未安装 mcp Python SDK）"
-elif timeout 120 python3 "$(dirname "$0")/test_cheap_research_stdio_smoke.py" >/dev/null 2>&1; then
+elif _run_with_timeout 120 python3 "$(dirname "$0")/test_cheap_research_stdio_smoke.py" >/dev/null 2>&1; then
   ok "T14 stdio 冒烟：真实 spawn server describe_capabilities 无 Output validation error"
 else
   bad "T14 stdio 冒烟失败（R-2 复发？）——直接运行 test_cheap_research_stdio_smoke.py 查看细节"

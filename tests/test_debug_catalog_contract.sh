@@ -145,12 +145,13 @@ if icode_symlink_ok; then
   test ! -e "$ESCAPE_TARGET/debug_catalog.json"
 
   OUTSIDE_META="$TMP/outside-metadata.json"
-  printf '%s\n' '{"debug":true,"tb_source":{"pid":"private","lib":"BUG","num":"1"}}' \
+  # 哨兵必须是唯一串：macOS 解析后的临时路径本身含 /private/var，用它当哨兵会假红。
+  printf '%s\n' '{"debug":true,"tb_source":{"pid":"leaked-outside-scope-9f3a","lib":"BUG","num":"1"}}' \
     > "$OUTSIDE_META"
   mkdir -p "$DEBUG_ROOT/twin-symlink"
   ln -s "$OUTSIDE_META" "$DEBUG_ROOT/twin-symlink/.ico_metadata.json"
   python3 "$TOOL" rebuild --project "$PROJECT" > "$TMP/rebuild-symlink.json"
-  if rg -q 'private' "$CATALOG"; then
+  if rg -q 'leaked-outside-scope-9f3a' "$CATALOG"; then
     printf 'outside metadata symlink leaked into catalog\n' >&2
     exit 1
   fi

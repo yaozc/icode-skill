@@ -7,13 +7,22 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 test_python="${ICODE_TEST_PYTHON:-python3}"
-test_output="${ICODE_VALIDATION_DIR:-.icode_output/validation/$(date -u +%Y%m%dT%H%M%SZ)-$$}"
-mkdir -p "$(dirname "$test_output")"
-mkdir "$test_output"
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONUTF8=1
 
-"$test_python" -c 'import pytest, serial; assert serial.VERSION == "3.5", "tests require pyserial==3.5"'
+# 缺依赖时显式 SKIP 并说明原因，而不是让 ImportError 变成与改动无关的假红。
+if ! "$test_python" -c 'import pytest, serial; assert serial.VERSION == "3.5"' 2>/dev/null; then
+  echo "SKIP serial/evidence stage contract（需要 pytest + pyserial==3.5；未安装）"
+  exit 0
+fi
+
+# 默认产物写临时目录：写进仓库 .icode_output/ 会污染宿主工程，也干扰 .icode_output_N 递增。
+if [ -n "${ICODE_VALIDATION_DIR:-}" ]; then
+  test_output="$ICODE_VALIDATION_DIR"
+else
+  test_output="$(mktemp -d)/validation-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+fi
+mkdir -p "$test_output"
 "$test_python" -B -m pytest -p no:cacheprovider -q \
   --junitxml="$test_output/pytest.xml" \
   tests/test_evidence_schemas.py \

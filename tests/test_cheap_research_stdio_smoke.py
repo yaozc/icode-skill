@@ -58,7 +58,9 @@ async def main() -> int:
         env = dict(os.environ)
         env["CHEAP_RESEARCH_CONFIG"] = cfg_path
 
-        params = StdioServerParameters(command="python3", args=[server_path], env=env)
+        # 必须用运行本测试的解释器：PATH 里的 python3 可能是 3.9 等旧版本，
+        # 与仓内语法/依赖不匹配时必须报真实原因，而不是让它伪装成 MCP 失败。
+        params = StdioServerParameters(command=sys.executable, args=[server_path], env=env)
         async with stdio_client(params) as (reader, writer):
             async with ClientSession(reader, writer) as session:
                 # 1) initialize
